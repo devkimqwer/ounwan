@@ -9,7 +9,12 @@
     "lint": "next lint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:generate:local": "node --env-file=.env.local ./node_modules/drizzle-kit/bin.cjs generate",
+    "db:migrate:local": "node --env-file=.env.local ./node_modules/drizzle-kit/bin.cjs migrate",
+    "db:studio:local": "node --env-file=.env.local ./node_modules/drizzle-kit/bin.cjs studio",
+    "db:up:local": "docker compose --env-file .env.local up -d postgres",
+    "db:down": "docker compose down"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
