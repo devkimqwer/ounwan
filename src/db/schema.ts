@@ -71,7 +71,6 @@ export const groups = pgTable("groups", {
   ownerUserId: bigint("owner_user_id", { mode: "bigint" })
     .notNull()
     .references(() => users.id),
-  activeSeasonId: bigint("active_season_id", { mode: "bigint" }),
   ...timestamps,
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
@@ -367,3 +366,4 @@ export const bankBalanceRecords = pgTable(
   },
   (table) => [index("idx_bank_balance_records_group_created").on(table.groupId, table.createdAt.desc())],
 );
+

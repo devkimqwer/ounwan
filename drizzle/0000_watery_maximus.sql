@@ -74,7 +74,6 @@ CREATE TABLE "groups" (
 	"name" varchar(100) NOT NULL,
 	"visibility" "group_visibility" DEFAULT 'private' NOT NULL,
 	"owner_user_id" bigint NOT NULL,
-	"active_season_id" bigint,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"deleted_at" timestamp with time zone

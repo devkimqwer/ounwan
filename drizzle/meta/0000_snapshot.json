@@ -1,5 +1,5 @@
 {
-  "id": "5cb7d228-e94d-4578-ae94-546d8118dd26",
+  "id": "c9c5fcb7-e702-4899-b994-8ce0e3599f89",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -652,12 +652,6 @@
           "type": "bigint",
           "primaryKey": false,
           "notNull": true
-        },
-        "active_season_id": {
-          "name": "active_season_id",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
         },
         "created_at": {
           "name": "created_at",
