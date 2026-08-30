@@ -14,7 +14,8 @@
     "db:migrate:local": "node --env-file=.env.local ./node_modules/drizzle-kit/bin.cjs migrate",
     "db:studio:local": "node --env-file=.env.local ./node_modules/drizzle-kit/bin.cjs studio",
     "db:up:local": "docker compose --env-file .env.local up -d postgres",
-    "db:down": "docker compose down"
+    "db:down": "docker compose down",
+    "db:seed:local": "node --env-file=.env.local --import tsx src/db/seed.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
@@ -30,6 +31,7 @@
     "@types/react-dom": "19.2.3",
     "drizzle-kit": "^0.31.10",
     "tailwindcss": "4.1.18",
+    "tsx": "^4.23.13",
     "typescript": "5.9.3"
   }
 }
