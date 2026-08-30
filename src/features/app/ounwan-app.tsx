@@ -2,21 +2,8 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  accountInfo,
-  bankRecords,
-  CURRENT_GROUP_ID,
-  CURRENT_SEASON_ID,
-  CURRENT_USER_ID,
-  getCurrentMembership,
-  getUser,
-  groups,
-  posts,
-  seasons,
-  settlement,
-  settlementRows,
-} from "@/domain/mock-data";
-import type { WorkoutPost } from "@/domain/models";
+import type { OunwanAppData } from "@/domain/app-data";
+import type { AccountInfo, BankRecord, Settlement, SettlementRow, User, WorkoutPost } from "@/domain/models";
 
 type TabId = "home" | "feed" | "cert" | "calendar" | "more";
 
@@ -28,14 +15,12 @@ const tabs: Array<{ id: TabId; label: string }> = [
   { id: "more", label: "더보기" },
 ];
 
-export function OunwanApp() {
+export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [mineOnly, setMineOnly] = useState(false);
-  const group = groups.find((item) => item.id === CURRENT_GROUP_ID) ?? groups[0];
-  const season = seasons.find((item) => item.id === CURRENT_SEASON_ID) ?? seasons[0];
-  const currentUser = getUser(CURRENT_USER_ID);
-  const membership = getCurrentMembership();
-  const roles = membership?.roles ?? ["member"];
+  const { accountInfo, bankRecords, currentUserId, membership, posts, season, settlement, settlementRows, users } = appData;
+  const currentUser = getUserById(users, currentUserId);
+  const roles = membership.roles;
   const isAdmin = roles.includes("admin");
   const isTreasurer = roles.includes("treasurer");
   const validPostCount = posts.filter((post) => !post.isInvalid).length;
@@ -86,6 +71,9 @@ export function OunwanApp() {
               onCert={() => setActiveTab("cert")}
               onFeed={() => setActiveTab("feed")}
               isAdmin={isAdmin}
+              posts={posts}
+              settlement={settlement}
+              users={users}
             />
           )}
           {activeTab === "feed" && (
@@ -93,12 +81,22 @@ export function OunwanApp() {
               mineOnly={mineOnly}
               onMineOnlyChange={setMineOnly}
               isAdmin={isAdmin}
+              posts={posts}
+              currentUserId={currentUserId}
+              users={users}
             />
           )}
           {activeTab === "cert" && <CertView />}
-          {activeTab === "calendar" && <CalendarView isAdmin={isAdmin} />}
+          {activeTab === "calendar" && <CalendarView isAdmin={isAdmin} posts={posts} users={users} />}
           {activeTab === "more" && (
-            <MoreView isAdmin={isAdmin} isTreasurer={isTreasurer} />
+            <MoreView
+              isAdmin={isAdmin}
+              isTreasurer={isTreasurer}
+              accountInfo={accountInfo}
+              bankRecords={bankRecords}
+              settlement={settlement}
+              settlementRows={settlementRows}
+            />
           )}
         </div>
 
@@ -197,6 +195,9 @@ function HomeView({
   onCert,
   onFeed,
   isAdmin,
+  posts,
+  settlement,
+  users,
 }: {
   userName: string;
   validPostCount: number;
@@ -204,6 +205,9 @@ function HomeView({
   onCert: () => void;
   onFeed: () => void;
   isAdmin: boolean;
+  posts: WorkoutPost[];
+  settlement: Settlement;
+  users: User[];
 }) {
   const recentPosts = posts.filter((post) => !post.isInvalid).slice(0, 2);
   const completedCount = Math.min(validPostCount, targetCount);
@@ -288,7 +292,7 @@ function HomeView({
         </div>
         <div className="space-y-3">
           {recentPosts.map((post) => (
-            <PostCard key={post.id} post={post} isAdmin={isAdmin} />
+            <PostCard key={post.id} post={post} isAdmin={isAdmin} users={users} />
           ))}
         </div>
       </section>
@@ -305,14 +309,20 @@ function FeedView({
   mineOnly,
   onMineOnlyChange,
   isAdmin,
+  posts,
+  currentUserId,
+  users,
 }: {
   mineOnly: boolean;
   onMineOnlyChange: (next: boolean) => void;
   isAdmin: boolean;
+  posts: WorkoutPost[];
+  currentUserId: string;
+  users: User[];
 }) {
   const visiblePosts = useMemo(
-    () => posts.filter((post) => !mineOnly || post.userId === CURRENT_USER_ID),
-    [mineOnly],
+    () => posts.filter((post) => !mineOnly || post.userId === currentUserId),
+    [currentUserId, mineOnly, posts],
   );
 
   return (
@@ -329,7 +339,7 @@ function FeedView({
         </label>
       </div>
       {visiblePosts.map((post) => (
-        <PostCard key={post.id} post={post} isAdmin={isAdmin} />
+        <PostCard key={post.id} post={post} isAdmin={isAdmin} users={users} />
       ))}
     </div>
   );
@@ -371,7 +381,7 @@ function CertView() {
   );
 }
 
-function CalendarView({ isAdmin }: { isAdmin: boolean }) {
+function CalendarView({ isAdmin, posts, users }: { isAdmin: boolean; posts: WorkoutPost[]; users: User[] }) {
   const days = Array.from({ length: 31 }, (_, index) => index + 1);
   const certifiedDays = new Set([14, 15, 17, 18]);
 
@@ -406,7 +416,7 @@ function CalendarView({ isAdmin }: { isAdmin: boolean }) {
           {posts
             .filter((post) => post.workoutDate === "2026-08-18")
             .map((post) => (
-              <PostCard key={post.id} post={post} isAdmin={isAdmin} />
+              <PostCard key={post.id} post={post} isAdmin={isAdmin} users={users} />
             ))}
         </div>
       </section>
@@ -414,7 +424,21 @@ function CalendarView({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-function MoreView({ isAdmin, isTreasurer }: { isAdmin: boolean; isTreasurer: boolean }) {
+function MoreView({
+  isAdmin,
+  isTreasurer,
+  accountInfo,
+  bankRecords,
+  settlement,
+  settlementRows,
+}: {
+  isAdmin: boolean;
+  isTreasurer: boolean;
+  accountInfo: AccountInfo;
+  bankRecords: BankRecord[];
+  settlement: Settlement;
+  settlementRows: SettlementRow[];
+}) {
   const finalFineTotal = settlementRows.reduce((sum, row) => sum + row.finalFineAmount, 0);
 
   return (
@@ -454,14 +478,16 @@ function MoreView({ isAdmin, isTreasurer }: { isAdmin: boolean; isTreasurer: boo
 
 function PostCard({
   post,
+  users,
   isAdmin = false,
   compact = false,
 }: {
   post: WorkoutPost;
+  users: User[];
   isAdmin?: boolean;
   compact?: boolean;
 }) {
-  const user = getUser(post.userId);
+  const user = getUserById(users, post.userId);
   const createdAt = new Date(post.createdAt);
   const createdAtText = formatPostDateTime(createdAt);
   const adminMenuRef = useRef<HTMLDivElement>(null);
@@ -583,6 +609,9 @@ function PostCard({
   );
 }
 
+function getUserById(users: User[], userId: string) {
+  return users.find((user) => user.id === userId) ?? users[0];
+}
 function formatPostDateTime(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -631,3 +660,4 @@ function MenuBlock({ title, rows }: { title: string; rows: string[] }) {
     </section>
   );
 }
+

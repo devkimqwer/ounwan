@@ -1,5 +1,10 @@
+import { getOunwanAppData } from "@/db/queries";
 import { OunwanApp } from "@/features/app/ounwan-app";
 
-export default function Home() {
-  return <OunwanApp />;
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const appData = await getOunwanAppData();
+
+  return <OunwanApp appData={appData} />;
 }

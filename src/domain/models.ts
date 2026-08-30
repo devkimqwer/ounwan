@@ -14,7 +14,6 @@ export interface Group {
   name: string;
   visibility: GroupVisibility;
   ownerUserId: string;
-  activeSeasonId: string;
 }
 
 export interface GroupMembership {
@@ -97,3 +96,4 @@ export interface AccountInfo {
   accountNumber: string;
   holderName: string;
 }
+

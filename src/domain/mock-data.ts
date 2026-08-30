@@ -29,7 +29,6 @@ export const groups: Group[] = [
     name: "오운완",
     visibility: "private",
     ownerUserId: CURRENT_USER_ID,
-    activeSeasonId: CURRENT_SEASON_ID,
   },
 ];
 
@@ -169,3 +168,4 @@ export function getCurrentMembership() {
       membership.groupId === CURRENT_GROUP_ID && membership.userId === CURRENT_USER_ID,
   );
 }
+
