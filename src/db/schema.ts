@@ -216,7 +216,7 @@ export const workoutPosts = pgTable(
       .notNull()
       .references(() => users.id),
     workoutDate: date("workout_date").notNull(),
-    workoutType: varchar("workout_type", { length: 50 }).notNull(),
+    workoutType: varchar("workout_type", { length: 50 }),
     content: text("content"),
     isInvalid: boolean("is_invalid").notNull().default(false),
     invalidatedByUserId: bigint("invalidated_by_user_id", { mode: "bigint" }).references(() => users.id),

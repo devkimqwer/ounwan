@@ -227,7 +227,7 @@ async function getWorkoutPosts(groupId: string, seasonId: string): Promise<Worko
       workoutDate: post.workoutDate,
       createdAt: post.createdAt.toISOString(),
       content: post.content ?? undefined,
-      workoutType: post.workoutType,
+      workoutType: post.workoutType ?? undefined,
       isInvalid: post.isInvalid,
       invalidatedByUserId: post.invalidatedByUserId?.toString(),
       invalidatedAt: post.invalidatedAt?.toISOString(),

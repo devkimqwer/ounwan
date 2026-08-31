@@ -28,16 +28,12 @@ export async function createWorkoutPostAction(
     return { status: "error", message: "이미지 또는 영상 파일만 업로드할 수 있습니다." };
   }
 
-  if (!workoutType) {
-    return { status: "error", message: "운동 종류를 입력해주세요." };
-  }
-
   if (workoutType.length > 50) {
     return { status: "error", message: "운동 종류는 50자 이내로 입력해주세요." };
   }
 
   await createWorkoutPost({
-    workoutType,
+    workoutType: workoutType.length > 0 ? workoutType : undefined,
     content: content.length > 0 ? content : undefined,
     mediaFiles,
   });

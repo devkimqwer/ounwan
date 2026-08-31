@@ -1,0 +1,1 @@
+ALTER TABLE "workout_posts" ALTER COLUMN "workout_type" DROP NOT NULL;

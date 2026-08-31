@@ -52,7 +52,7 @@ export interface WorkoutPost {
   workoutDate: string;
   createdAt: string;
   content?: string;
-  workoutType: string;
+  workoutType?: string;
   isInvalid: boolean;
   invalidatedByUserId?: string;
   invalidatedAt?: string;

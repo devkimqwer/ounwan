@@ -10,7 +10,7 @@ import { groupMembers, oauthAccounts, postMedia, seasons, users, workoutPosts } 
 const seedCurrentKakaoId = "kakao-1";
 
 type CreateWorkoutPostInput = {
-  workoutType: string;
+  workoutType?: string;
   content?: string;
   mediaFiles: File[];
 };
@@ -24,7 +24,7 @@ export async function createWorkoutPost(input: CreateWorkoutPostInput) {
       seasonId: BigInt(context.seasonId),
       userId: BigInt(context.userId),
       workoutDate: getKoreanWorkoutDate(),
-      workoutType: input.workoutType,
+      workoutType: input.workoutType ?? null,
       content: input.content,
     })
     .returning({ id: workoutPosts.id });
