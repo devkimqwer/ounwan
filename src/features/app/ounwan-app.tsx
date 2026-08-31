@@ -13,6 +13,7 @@ type CertMediaPreview = {
   name: string;
   type: "image" | "video";
   url: string;
+  file: File;
 };
 
 const tabs: Array<{ id: TabId; label: string }> = [
@@ -357,27 +358,68 @@ function CertView() {
   const recentTypes = ["러닝", "헬스", "요가", "자전거", "수영"];
   const [workoutType, setWorkoutType] = useState("");
   const [mediaPreviews, setMediaPreviews] = useState<CertMediaPreview[]>([]);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const mediaPreviewsRef = useRef<CertMediaPreview[]>([]);
   const initialState: CreateWorkoutPostState = { status: "idle", message: "" };
   const [state, formAction, isPending] = useActionState(createWorkoutPostAction, initialState);
 
   useEffect(() => {
-    return () => {
-      mediaPreviews.forEach((preview) => URL.revokeObjectURL(preview.url));
-    };
+    mediaPreviewsRef.current = mediaPreviews;
   }, [mediaPreviews]);
 
+  useEffect(() => {
+    return () => {
+      mediaPreviewsRef.current.forEach((preview) => URL.revokeObjectURL(preview.url));
+    };
+  }, []);
+
+  const syncMediaInputFiles = (previews: CertMediaPreview[]) => {
+    if (!mediaInputRef.current) {
+      return;
+    }
+
+    const dataTransfer = new DataTransfer();
+    previews.forEach((preview) => dataTransfer.items.add(preview.file));
+    mediaInputRef.current.files = dataTransfer.files;
+  };
+
+  const createMediaPreview = (file: File): CertMediaPreview => ({
+    id: `${file.name}-${file.lastModified}-${file.size}`,
+    name: file.name,
+    type: file.type.startsWith("video/") || isPhoneVideoFile(file) ? "video" : "image",
+    url: URL.createObjectURL(file),
+    file,
+  });
+
   const handleMediaChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
+    const selectedPreviews = Array.from(event.target.files ?? [])
+      .filter(isPreviewableMediaFile)
+      .map(createMediaPreview);
+
     setMediaPreviews((previousPreviews) => {
-      previousPreviews.forEach((preview) => URL.revokeObjectURL(preview.url));
-      return files
-        .filter(isPreviewableMediaFile)
-        .map((file) => ({
-          id: `${file.name}-${file.lastModified}-${file.size}`,
-          name: file.name,
-          type: file.type.startsWith("video/") || isPhoneVideoFile(file) ? "video" : "image",
-          url: URL.createObjectURL(file),
-        }));
+      const previousIds = new Set(previousPreviews.map((preview) => preview.id));
+      const appendedPreviews = selectedPreviews.filter((preview) => {
+        const isDuplicate = previousIds.has(preview.id);
+        if (isDuplicate) {
+          URL.revokeObjectURL(preview.url);
+        }
+        return !isDuplicate;
+      });
+      const nextPreviews = [...previousPreviews, ...appendedPreviews];
+      syncMediaInputFiles(nextPreviews);
+      return nextPreviews;
+    });
+  };
+
+  const handleRemoveMedia = (mediaId: string) => {
+    setMediaPreviews((previousPreviews) => {
+      const removedPreview = previousPreviews.find((preview) => preview.id === mediaId);
+      const nextPreviews = previousPreviews.filter((preview) => preview.id !== mediaId);
+      if (removedPreview) {
+        URL.revokeObjectURL(removedPreview.url);
+      }
+      syncMediaInputFiles(nextPreviews);
+      return nextPreviews;
     });
   };
 
@@ -394,6 +436,7 @@ function CertView() {
           type="file"
           accept="image/*,video/*,.heic,.heif,.mov,.m4v,.mp4"
           multiple
+          ref={mediaInputRef}
           className="sr-only"
           onChange={handleMediaChange}
         />
@@ -401,7 +444,15 @@ function CertView() {
       {mediaPreviews.length > 0 && (
         <div className="grid grid-cols-3 gap-2">
           {mediaPreviews.map((preview) => (
-            <div key={preview.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div key={preview.id} className="relative overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <button
+                type="button"
+                aria-label={`${preview.name} 삭제`}
+                className="absolute right-1.5 top-1.5 z-10 grid h-6 w-6 place-items-center rounded-full bg-slate-950/75 text-xs font-extrabold leading-none text-white shadow-sm"
+                onClick={() => handleRemoveMedia(preview.id)}
+              >
+                X
+              </button>
               <div className="aspect-square bg-slate-100">
                 {preview.type === "image" ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -418,14 +469,14 @@ function CertView() {
       <textarea
         name="content"
         className="min-h-24 w-full resize-none rounded-2xl border border-slate-200 bg-white p-3.5 text-sm leading-5 outline-none placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5]"
-        placeholder="운동 소감을 입력하세요. 선택 입력입니다."
+        placeholder="운동 소감을 입력하세요. (선택사항)"
       />
       <input
         name="workoutType"
         value={workoutType}
         onChange={(event) => setWorkoutType(event.target.value)}
         className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm leading-5 outline-none placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5]"
-        placeholder="운동 종류 직접 입력"
+        placeholder="운동 종류 직접 입력 또는 아래 목록에서 선택 (선택사항)"
       />
       <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
         {recentTypes.map((type) => (
