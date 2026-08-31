@@ -16,12 +16,17 @@ export async function createWorkoutPostAction(
 ): Promise<CreateWorkoutPostState> {
   const workoutType = String(formData.get("workoutType") ?? "").trim();
   const content = String(formData.get("content") ?? "").trim();
-  const hasMediaFile = formData
+  const mediaFiles = formData
     .getAll("mediaFiles")
-    .some((value) => value instanceof File && value.size > 0);
+    .filter((value): value is File => value instanceof File && value.size > 0);
+  const hasMediaFile = mediaFiles.length > 0;
 
   if (!hasMediaFile) {
     return { status: "error", message: "사진 또는 영상을 1개 이상 선택해주세요." };
+  }
+
+  if (mediaFiles.some((file) => !isSupportedMediaFile(file))) {
+    return { status: "error", message: "이미지 또는 영상 파일만 업로드할 수 있습니다." };
   }
 
   if (!workoutType) {
@@ -39,5 +44,12 @@ export async function createWorkoutPostAction(
   revalidatePath("/");
 
   return { status: "success", message: "운동 인증이 등록됐습니다." };
+}
+function isSupportedMediaFile(file: File) {
+  return file.type.startsWith("image/") || file.type.startsWith("video/") || isPhoneMediaFile(file);
+}
+
+function isPhoneMediaFile(file: File) {
+  return /\.(heic|heif|mov|m4v|mp4)$/i.test(file.name);
 }
 

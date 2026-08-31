@@ -1,13 +1,19 @@
 "use client";
 
 import Image from "next/image";
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { createWorkoutPostAction } from "@/app/actions";
 import type { CreateWorkoutPostState } from "@/app/actions";
 import type { OunwanAppData } from "@/domain/app-data";
 import type { AccountInfo, BankRecord, Settlement, SettlementRow, User, WorkoutPost } from "@/domain/models";
 
 type TabId = "home" | "feed" | "cert" | "calendar" | "more";
+type CertMediaPreview = {
+  id: string;
+  name: string;
+  type: "image" | "video";
+  url: string;
+};
 
 const tabs: Array<{ id: TabId; label: string }> = [
   { id: "home", label: "홈" },
@@ -350,8 +356,30 @@ function FeedView({
 function CertView() {
   const recentTypes = ["러닝", "헬스", "요가", "자전거", "수영"];
   const [workoutType, setWorkoutType] = useState("");
+  const [mediaPreviews, setMediaPreviews] = useState<CertMediaPreview[]>([]);
   const initialState: CreateWorkoutPostState = { status: "idle", message: "" };
   const [state, formAction, isPending] = useActionState(createWorkoutPostAction, initialState);
+
+  useEffect(() => {
+    return () => {
+      mediaPreviews.forEach((preview) => URL.revokeObjectURL(preview.url));
+    };
+  }, [mediaPreviews]);
+
+  const handleMediaChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    setMediaPreviews((previousPreviews) => {
+      previousPreviews.forEach((preview) => URL.revokeObjectURL(preview.url));
+      return files
+        .filter(isPreviewableMediaFile)
+        .map((file) => ({
+          id: `${file.name}-${file.lastModified}-${file.size}`,
+          name: file.name,
+          type: file.type.startsWith("video/") || isPhoneVideoFile(file) ? "video" : "image",
+          url: URL.createObjectURL(file),
+        }));
+    });
+  };
 
   return (
     <form action={formAction} className="space-y-4 p-4">
@@ -359,8 +387,32 @@ function CertView() {
       <label className="block rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center">
         <span className="block text-xs font-bold text-slate-700">사진 또는 영상 업로드</span>
         <span className="mt-1 block text-xs text-slate-400">1개 이상 선택 필수. 파일 저장 기능은 다음 단계에서 연결 예정</span>
-        <input name="mediaFiles" type="file" accept="image/*,video/*" multiple className="mt-4 block w-full text-xs text-slate-500" />
+        <input
+          name="mediaFiles"
+          type="file"
+          accept="image/*,video/*,.heic,.heif,.mov,.m4v,.mp4"
+          multiple
+          className="mt-4 block w-full text-xs text-slate-500"
+          onChange={handleMediaChange}
+        />
       </label>
+      {mediaPreviews.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          {mediaPreviews.map((preview) => (
+            <div key={preview.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <div className="aspect-square bg-slate-100">
+                {preview.type === "image" ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={preview.url} alt={preview.name} className="h-full w-full object-cover" />
+                ) : (
+                  <video src={preview.url} muted preload="metadata" className="h-full w-full object-cover" />
+                )}
+              </div>
+              <p className="truncate px-2 py-1.5 text-[11px] font-semibold text-slate-500">{preview.name}</p>
+            </div>
+          ))}
+        </div>
+      )}
       <textarea
         name="content"
         className="min-h-24 w-full resize-none rounded-2xl border border-slate-200 bg-white p-3.5 text-sm leading-5 outline-none placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5]"
@@ -403,6 +455,24 @@ function CertView() {
       </button>
     </form>
   );
+}
+
+
+function isPreviewableMediaFile(file: File) {
+  return (
+    file.type.startsWith("image/") ||
+    file.type.startsWith("video/") ||
+    isPhoneImageFile(file) ||
+    isPhoneVideoFile(file)
+  );
+}
+
+function isPhoneImageFile(file: File) {
+  return /\.(heic|heif)$/i.test(file.name);
+}
+
+function isPhoneVideoFile(file: File) {
+  return /\.(mov|m4v|mp4)$/i.test(file.name);
 }
 
 function CalendarView({ isAdmin, posts, users }: { isAdmin: boolean; posts: WorkoutPost[]; users: User[] }) {
