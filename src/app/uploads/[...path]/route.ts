@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/db/client";
@@ -9,9 +9,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pat
   const { path } = await params;
   const storageKey = path.join("/");
   const rows = await db
-    .select({ contentType: postMedia.contentType })
+    .select({ contentType: postMedia.contentType, thumbnailUrl: postMedia.thumbnailUrl })
     .from(postMedia)
-    .where(eq(postMedia.storageKey, storageKey))
+    .where(or(eq(postMedia.storageKey, storageKey), eq(postMedia.thumbnailUrl, `/uploads/${storageKey}`)))
     .limit(1);
 
   if (!rows[0]) {
@@ -22,7 +22,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pat
     const file = await readLocalMediaFile(storageKey);
     return new Response(file, {
       headers: {
-        "Content-Type": rows[0].contentType ?? "application/octet-stream",
+        "Content-Type":
+          rows[0].thumbnailUrl === `/uploads/${storageKey}`
+            ? "image/webp"
+            : rows[0].contentType ?? "application/octet-stream",
         "Cache-Control": "private, max-age=3600",
       },
     });

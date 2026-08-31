@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, eq, isNull } from "drizzle-orm";
 
-import { saveWorkoutPostMediaFiles } from "@/storage/local";
+import { deleteLocalMediaFiles, saveWorkoutPostMediaFiles } from "@/storage/local";
 
 import { db } from "./client";
 import { groupMembers, oauthAccounts, postMedia, seasons, users, workoutPosts } from "./schema";
@@ -30,8 +30,10 @@ export async function createWorkoutPost(input: CreateWorkoutPostInput) {
     .returning({ id: workoutPosts.id });
   const postId = postRows[0].id;
 
+  let storedMediaFiles: Awaited<ReturnType<typeof saveWorkoutPostMediaFiles>> = [];
+
   try {
-    const storedMediaFiles = await saveWorkoutPostMediaFiles({
+    storedMediaFiles = await saveWorkoutPostMediaFiles({
       files: input.mediaFiles,
       groupId: context.groupId,
       seasonId: context.seasonId,
@@ -46,10 +48,12 @@ export async function createWorkoutPost(input: CreateWorkoutPostInput) {
         storageKey: file.storageKey,
         fileSizeBytes: file.fileSizeBytes,
         contentType: file.contentType,
+        thumbnailUrl: file.thumbnailStorageKey ? `/uploads/${file.thumbnailStorageKey}` : null,
         sortOrder: index + 1,
       })),
     );
   } catch (error) {
+    await deleteLocalMediaFiles(storedMediaFiles.flatMap((file) => [file.storageKey, file.thumbnailStorageKey]));
     await db.delete(workoutPosts).where(eq(workoutPosts.id, postId));
     throw error;
   }
