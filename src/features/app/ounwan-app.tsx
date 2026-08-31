@@ -728,7 +728,7 @@ function PostCard({
       <div className="space-y-3 p-4">
         {post.content && <p className="text-sm leading-5 text-slate-700">{post.content}</p>}
         <div>
-          <Badge tone="green">{post.workoutType}</Badge>
+          {post.workoutType && <Badge tone="green">{post.workoutType}</Badge>}
           <div className="mt-3 flex items-center gap-2">
             <button
               type="button"
@@ -797,7 +797,7 @@ function Badge({ children, tone }: { children: React.ReactNode; tone: "green" | 
   }[tone];
 
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-bold leading-none ${className}`}>
+    <span className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold leading-none ${className}`}>
       {children}
     </span>
   );
