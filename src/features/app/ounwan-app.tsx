@@ -660,10 +660,14 @@ function PostCard({
       </div>
       {!compact && (
         <div className="mx-4 aspect-[4/3] overflow-hidden rounded-2xl bg-slate-100">
-          {post.media[0]?.url ? (
+          {post.media[0]?.url && post.media[0].type === "image" && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={post.media[0].url} alt="운동 인증" className="h-full w-full object-cover" />
-          ) : (
+          )}
+          {post.media[0]?.url && post.media[0].type === "video" && (
+            <video src={post.media[0].url} controls preload="metadata" className="h-full w-full object-cover" />
+          )}
+          {!post.media[0]?.url && (
             <div className="grid h-full place-items-center text-xs font-bold text-slate-400">이미지 없음</div>
           )}
         </div>
@@ -758,4 +762,3 @@ function MenuBlock({ title, rows }: { title: string; rows: string[] }) {
     </section>
   );
 }
-

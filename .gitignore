@@ -80,3 +80,6 @@ desktop.ini
 # Misc
 # ==============================
 *.pem
+
+# Local uploaded files
+.local/

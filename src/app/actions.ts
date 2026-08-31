@@ -9,7 +9,6 @@ export type CreateWorkoutPostState = {
   message: string;
 };
 
-
 export async function createWorkoutPostAction(
   _previousState: CreateWorkoutPostState,
   formData: FormData,
@@ -40,11 +39,13 @@ export async function createWorkoutPostAction(
   await createWorkoutPost({
     workoutType,
     content: content.length > 0 ? content : undefined,
+    mediaFiles,
   });
   revalidatePath("/");
 
   return { status: "success", message: "운동 인증이 등록됐습니다." };
 }
+
 function isSupportedMediaFile(file: File) {
   return file.type.startsWith("image/") || file.type.startsWith("video/") || isPhoneMediaFile(file);
 }
@@ -52,4 +53,3 @@ function isSupportedMediaFile(file: File) {
 function isPhoneMediaFile(file: File) {
   return /\.(heic|heif|mov|m4v|mp4)$/i.test(file.name);
 }
-

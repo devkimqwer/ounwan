@@ -64,6 +64,13 @@ export const oauthAccounts = pgTable(
   ],
 );
 
+export const appSettings = pgTable("app_settings", {
+  key: varchar("key", { length: 100 }).primaryKey(),
+  value: text("value").notNull(),
+  description: text("description"),
+  updatedByUserId: bigint("updated_by_user_id", { mode: "bigint" }).references(() => users.id),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 export const groups = pgTable("groups", {
   id: bigserial("id", { mode: "bigint" }).primaryKey(),
   name: varchar("name", { length: 100 }).notNull(),
@@ -366,4 +373,3 @@ export const bankBalanceRecords = pgTable(
   },
   (table) => [index("idx_bank_balance_records_group_created").on(table.groupId, table.createdAt.desc())],
 );
-

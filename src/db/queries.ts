@@ -199,7 +199,7 @@ async function getWorkoutPosts(groupId: string, seasonId: string): Promise<Worko
         id: media.id.toString(),
         postId,
         type: media.mediaType,
-        url: media.url ?? `/${media.storageKey}`,
+        url: media.url ?? `/uploads/${media.storageKey}`,
         thumbnailUrl: media.thumbnailUrl ?? undefined,
         sortOrder: media.sortOrder,
       });
@@ -289,7 +289,7 @@ async function getBankRecords(groupId: string): Promise<BankRecord[]> {
     createdByUserId: row.createdByUserId.toString(),
     createdAt: row.createdAt.toISOString(),
     memo: row.memo ?? undefined,
-    imageUrl: row.imageUrl ?? `/${row.imageStorageKey}`,
+    imageUrl: row.imageUrl ?? `/uploads/${row.imageStorageKey}`,
   }));
 }
 
@@ -307,5 +307,3 @@ async function getAccountInfo(groupId: string): Promise<AccountInfo> {
     holderName: rows[0].holderName,
   };
 }
-
-

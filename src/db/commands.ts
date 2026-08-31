@@ -2,20 +2,22 @@ import "server-only";
 
 import { and, eq, isNull } from "drizzle-orm";
 
+import { saveWorkoutPostMediaFiles } from "@/storage/local";
+
 import { db } from "./client";
-import { groupMembers, oauthAccounts, seasons, users, workoutPosts } from "./schema";
+import { groupMembers, oauthAccounts, postMedia, seasons, users, workoutPosts } from "./schema";
 
 const seedCurrentKakaoId = "kakao-1";
 
 type CreateWorkoutPostInput = {
   workoutType: string;
   content?: string;
+  mediaFiles: File[];
 };
 
 export async function createWorkoutPost(input: CreateWorkoutPostInput) {
   const context = await getCurrentSeedContext();
-
-  const rows = await db
+  const postRows = await db
     .insert(workoutPosts)
     .values({
       groupId: BigInt(context.groupId),
@@ -26,8 +28,33 @@ export async function createWorkoutPost(input: CreateWorkoutPostInput) {
       content: input.content,
     })
     .returning({ id: workoutPosts.id });
+  const postId = postRows[0].id;
 
-  return { id: rows[0].id.toString() };
+  try {
+    const storedMediaFiles = await saveWorkoutPostMediaFiles({
+      files: input.mediaFiles,
+      groupId: context.groupId,
+      seasonId: context.seasonId,
+      postId: postId.toString(),
+    });
+
+    await db.insert(postMedia).values(
+      storedMediaFiles.map((file, index) => ({
+        postId,
+        mediaType: file.mediaType,
+        storageProvider: "local" as const,
+        storageKey: file.storageKey,
+        fileSizeBytes: file.fileSizeBytes,
+        contentType: file.contentType,
+        sortOrder: index + 1,
+      })),
+    );
+  } catch (error) {
+    await db.delete(workoutPosts).where(eq(workoutPosts.id, postId));
+    throw error;
+  }
+
+  return { id: postId.toString() };
 }
 
 async function getCurrentSeedContext() {
@@ -91,4 +118,3 @@ function getKoreanWorkoutDate(now = new Date()) {
 
   return date.toISOString().slice(0, 10);
 }
-

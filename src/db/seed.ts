@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import {
+  appSettings,
   bankAccounts,
   bankBalanceRecords,
   groupInvites,
@@ -159,6 +160,19 @@ async function main() {
     }
 
     const ownerUserId = requiredId(userIds, "user-1", "user");
+    const localUploadRoot = requiredEnv("LOCAL_UPLOAD_ROOT");
+    await tx
+      .insert(appSettings)
+      .values({
+        key: "local_upload_root",
+        value: localUploadRoot,
+        description: "로컬 파일 저장 루트 경로",
+        updatedByUserId: ownerUserId,
+      })
+      .onConflictDoUpdate({
+        target: appSettings.key,
+        set: { value: localUploadRoot, updatedByUserId: ownerUserId, updatedAt: new Date() },
+      });
     const existingGroups = await tx
       .select({ id: groups.id })
       .from(groups)
@@ -319,6 +333,16 @@ async function clearGroupData(tx: any, groupId: bigint) {
   await tx.delete(groupMembers).where(eq(groupMembers.groupId, groupId));
 }
 
+
+function requiredEnv(name: string) {
+  const value = process.env[name]?.trim();
+
+  if (!value) {
+    throw new Error(`${name} is required.`);
+  }
+
+  return value;
+}
 function requiredId(ids: Map<string, bigint>, key: string, label: string) {
   const id = ids.get(key);
   if (!id) {
