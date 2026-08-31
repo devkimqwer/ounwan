@@ -384,15 +384,17 @@ function CertView() {
   return (
     <form action={formAction} className="space-y-4 p-4">
       <h2 className="text-base font-extrabold">운동 인증 등록</h2>
-      <label className="block rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center">
-        <span className="block text-xs font-bold text-slate-700">사진 또는 영상 업로드</span>
-        <span className="mt-1 block text-xs text-slate-400">1개 이상 선택 필수. 파일 저장 기능은 다음 단계에서 연결 예정</span>
+      <label className="block cursor-pointer rounded-2xl border border-dashed border-[#CDC6E8] bg-[#F7F5FC] p-6 text-center">
+        <span className="block text-sm font-extrabold text-[#51438f]">사진 또는 영상 업로드</span>
+        <span className="mt-1 block text-xs font-semibold text-[#7568aa]">
+          1개 이상 선택 필수 <span className="text-red-500">*</span>
+        </span>
         <input
           name="mediaFiles"
           type="file"
           accept="image/*,video/*,.heic,.heif,.mov,.m4v,.mp4"
           multiple
-          className="mt-4 block w-full text-xs text-slate-500"
+          className="sr-only"
           onChange={handleMediaChange}
         />
       </label>
@@ -449,7 +451,7 @@ function CertView() {
       <button
         type="submit"
         disabled={isPending}
-        className="w-full rounded-2xl bg-slate-950 py-3 text-xs font-extrabold text-white disabled:bg-slate-300"
+        className="w-full rounded-2xl bg-slate-950 py-3.5 text-sm font-extrabold text-white disabled:bg-slate-300"
       >
         {isPending ? "등록 중" : "인증 등록"}
       </button>
