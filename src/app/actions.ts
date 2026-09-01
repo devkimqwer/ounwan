@@ -7,6 +7,7 @@ import { createWorkoutPost, deleteWorkoutPost } from "@/db/commands";
 export type CreateWorkoutPostState = {
   status: "idle" | "success" | "error";
   message: string;
+  postId?: string;
 };
 
 export async function deleteWorkoutPostAction(formData: FormData) {
@@ -43,14 +44,14 @@ export async function createWorkoutPostAction(
     return { status: "error", message: "운동 종류는 50자 이내로 입력해주세요." };
   }
 
-  await createWorkoutPost({
+  const post = await createWorkoutPost({
     workoutType: workoutType.length > 0 ? workoutType : undefined,
     content: content.length > 0 ? content : undefined,
     mediaFiles,
   });
   revalidatePath("/");
 
-  return { status: "success", message: "운동 인증이 등록됐습니다." };
+  return { status: "success", message: "운동 인증이 등록됐습니다.", postId: post.id };
 }
 
 function isSupportedMediaFile(file: File) {

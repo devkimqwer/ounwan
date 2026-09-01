@@ -36,9 +36,11 @@ const tabs: Array<{ id: TabId; label: string }> = [
 ];
 
 export function OunwanApp({ appData }: { appData: OunwanAppData }) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [menuOpen, setMenuOpen] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [pendingCreatedPostId, setPendingCreatedPostId] = useState<string | null>(null);
   const detailHistoryActiveRef = useRef(false);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTopRef = useRef(0);
@@ -82,6 +84,13 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     });
   };
 
+  const handlePostCreated = (postId: string) => {
+    setActiveTab("feed");
+    setSelectedPostId(null);
+    setPendingCreatedPostId(postId);
+    router.refresh();
+  };
+
   const selectTab = (tabId: TabId) => {
     if (detailHistoryActiveRef.current) {
       detailHistoryActiveRef.current = false;
@@ -102,6 +111,15 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
+
+  useEffect(() => {
+    if (!pendingCreatedPostId || !posts.some((post) => post.id === pendingCreatedPostId)) {
+      return;
+    }
+
+    openPostDetail(pendingCreatedPostId);
+    setPendingCreatedPostId(null);
+  }, [pendingCreatedPostId, posts]);
 
   return (
     <main className="min-h-dvh bg-slate-50 text-slate-950">
@@ -209,7 +227,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                   onPostOpen={openPostDetail}
                 />
               )}
-              {activeTab === "cert" && <CertView />}
+              {activeTab === "cert" && <CertView onPostCreated={handlePostCreated} />}
               {activeTab === "calendar" && (
                 <CalendarView
                   currentUserId={currentUserId}
@@ -611,7 +629,7 @@ function FeedView({
   );
 }
 
-function CertView() {
+function CertView({ onPostCreated }: { onPostCreated: (postId: string) => void }) {
   const recentTypes = ["러닝", "헬스", "요가", "자전거", "수영"];
   const [workoutType, setWorkoutType] = useState("");
   const [mediaPreviews, setMediaPreviews] = useState<CertMediaPreview[]>([]);
@@ -715,6 +733,14 @@ function CertView() {
     }
   };
 
+  const handleCloseCertMessageDialog = () => {
+    setCertMessageDialogOpen(false);
+
+    if (state.status === "success" && state.postId) {
+      onPostCreated(state.postId);
+    }
+  };
+
   const handleRemoveMedia = (mediaId: string) => {
     setMediaPreviews((previousPreviews) => {
       const removedPreview = previousPreviews.find((preview) => preview.id === mediaId);
@@ -812,12 +838,12 @@ function CertView() {
           description={state.message}
           role="alertdialog"
           dismissOnBackdrop
-          onClose={() => setCertMessageDialogOpen(false)}
+          onClose={handleCloseCertMessageDialog}
           actions={[
             {
               label: "확인",
               variant: "primary",
-              onClick: () => setCertMessageDialogOpen(false),
+              onClick: handleCloseCertMessageDialog,
             },
           ]}
         />
