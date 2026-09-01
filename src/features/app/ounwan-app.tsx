@@ -1097,6 +1097,7 @@ function PostCard({
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const router = useRouter();
+  const openPost = onOpen ? () => onOpen(post.id) : undefined;
 
   const handleDeletePostAction = async (formData: FormData) => {
     await deleteWorkoutPostAction(formData);
@@ -1190,7 +1191,10 @@ function PostCard({
       {!compact && (
         <MediaCarousel media={post.media} variant={mediaVariant} onOpen={onOpen ? () => onOpen(post.id) : undefined} />
       )}
-      <div className="space-y-3 p-4">
+      <div
+        className={`space-y-3 p-4 ${openPost ? "cursor-pointer" : ""}`}
+        onClick={openPost}
+      >
         {post.content && <p className="text-sm leading-5 text-slate-700">{post.content}</p>}
         <div>
           {post.workoutType && <Badge tone="green">{post.workoutType}</Badge>}
@@ -1199,6 +1203,7 @@ function PostCard({
               type="button"
               className="inline-flex min-h-9 items-center gap-1.5 rounded-full px-2.5 text-sm font-bold text-slate-700"
               aria-label={`좋아요 ${post.likeCount}개`}
+              onClick={(event) => event.stopPropagation()}
             >
               <span className="text-xl leading-none text-red-500" aria-hidden="true">♥</span>
               <span>{post.likeCount}</span>
@@ -1207,6 +1212,7 @@ function PostCard({
               type="button"
               className="inline-flex min-h-9 items-center gap-1.5 rounded-full px-2.5 text-sm font-bold text-slate-700"
               aria-label={`댓글 ${post.commentCount}개`}
+              onClick={openPost}
             >
               <svg
                 aria-hidden="true"
