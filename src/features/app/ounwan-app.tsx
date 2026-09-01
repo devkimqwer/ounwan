@@ -679,103 +679,107 @@ function CertView() {
   };
 
   return (
-    <form action={formAction} className="space-y-4 p-4">
+    <form action={formAction} className="p-4">
       <h2 className="text-base font-extrabold">운동 인증 등록</h2>
-      <label className="block cursor-pointer rounded-2xl border border-dashed border-[#CDC6E8] bg-[#F7F5FC] p-6 text-center">
-        <span className="block text-sm font-extrabold text-[#51438f]">사진 또는 영상 업로드</span>
-        <span className="mt-1 block text-xs font-semibold text-[#7568aa]">
-          1개 이상 선택 필수 <span className="text-red-500">*</span>
-        </span>
-        <input
-          name="mediaFiles"
-          type="file"
-          accept="image/*,video/*,.heic,.heif,.mov,.m4v,.mp4"
-          multiple
-          ref={mediaInputRef}
-          className="sr-only"
-          onChange={handleMediaChange}
-        />
-      </label>
-      {mediaPreviews.length > 0 && (
-        <div className="grid grid-cols-3 gap-2">
-          {mediaPreviews.map((preview) => (
-            <div key={preview.id} className="relative overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <button
-                type="button"
-                aria-label={`${preview.name} 삭제`}
-                className="absolute right-1.5 top-1.5 z-10 grid h-6 w-6 place-items-center rounded-full bg-slate-950/75 text-xs font-extrabold leading-none text-white shadow-sm"
-                onClick={() => handleRemoveMedia(preview.id)}
-              >
-                X
-              </button>
-              <div className="aspect-square bg-slate-100">
-                {preview.type === "image" ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={preview.url} alt={preview.name} className="h-full w-full object-cover" />
-                ) : (
-                  <video src={preview.url} muted preload="metadata" className="h-full w-full object-cover" />
-                )}
-              </div>
-              <p className="truncate px-2 py-1.5 text-[11px] font-semibold text-slate-500">{preview.name}</p>
+      <div className="mt-4 space-y-4">
+        <div>
+          <label className="block cursor-pointer rounded-2xl border border-dashed border-[#CDC6E8] bg-[#F7F5FC] p-6 text-center">
+            <span className="block text-sm font-extrabold text-[#51438f]">사진 또는 영상 업로드</span>
+            <span className="mt-1 block text-xs font-semibold text-[#7568aa]">
+              1개 이상 선택 필수 <span className="text-red-500">*</span>
+            </span>
+            <input
+              name="mediaFiles"
+              type="file"
+              accept="image/*,video/*,.heic,.heif,.mov,.m4v,.mp4"
+              multiple
+              ref={mediaInputRef}
+              className="sr-only"
+              onChange={handleMediaChange}
+            />
+          </label>
+          {mediaPreviews.length > 0 && (
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {mediaPreviews.map((preview) => (
+                <div key={preview.id} className="relative overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  <button
+                    type="button"
+                    aria-label={`${preview.name} 삭제`}
+                    className="absolute right-1.5 top-1.5 z-10 grid h-6 w-6 place-items-center rounded-full bg-slate-950/75 text-xs font-extrabold leading-none text-white shadow-sm"
+                    onClick={() => handleRemoveMedia(preview.id)}
+                  >
+                    X
+                  </button>
+                  <div className="aspect-square bg-slate-100">
+                    {preview.type === "image" ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={preview.url} alt={preview.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <video src={preview.url} muted preload="metadata" className="h-full w-full object-cover" />
+                    )}
+                  </div>
+                  <p className="truncate px-2 py-1.5 text-[11px] font-semibold text-slate-500">{preview.name}</p>
+                </div>
+              ))}
             </div>
+          )}
+        </div>
+        <div className="space-y-2">
+          <textarea
+            name="content"
+            className="min-h-24 w-full resize-none rounded-2xl border border-slate-200 bg-white p-3.5 text-sm leading-5 outline-none placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5]"
+            placeholder="운동 소감을 입력하세요. (선택사항)"
+          />
+          <input
+            name="workoutType"
+            value={workoutType}
+            onChange={(event) => setWorkoutType(event.target.value)}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm leading-5 outline-none placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5]"
+            placeholder="운동 종류 직접 입력 또는 아래 목록에서 선택 (선택사항)"
+          />
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+          {recentTypes.map((type) => (
+            <button
+              key={type}
+              type="button"
+              className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold leading-none ${
+                workoutType === type
+                  ? "border-[#5e4ea5] bg-[#5e4ea5] text-white"
+                  : "border-[#DDD8F1] bg-[#F2F0FA] text-[#51438f]"
+              }`}
+              onClick={() => setWorkoutType(type)}
+            >
+              {type}
+            </button>
           ))}
         </div>
-      )}
-      <textarea
-        name="content"
-        className="min-h-24 w-full resize-none rounded-2xl border border-slate-200 bg-white p-3.5 text-sm leading-5 outline-none placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5]"
-        placeholder="운동 소감을 입력하세요. (선택사항)"
-      />
-      <input
-        name="workoutType"
-        value={workoutType}
-        onChange={(event) => setWorkoutType(event.target.value)}
-        className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm leading-5 outline-none placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5]"
-        placeholder="운동 종류 직접 입력 또는 아래 목록에서 선택 (선택사항)"
-      />
-      <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-        {recentTypes.map((type) => (
-          <button
-            key={type}
-            type="button"
-            className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold leading-none ${
-              workoutType === type
-                ? "border-[#5e4ea5] bg-[#5e4ea5] text-white"
-                : "border-[#DDD8F1] bg-[#F2F0FA] text-[#51438f]"
-            }`}
-            onClick={() => setWorkoutType(type)}
-          >
-            {type}
-          </button>
-        ))}
+        <AppDialog
+          open={certMessageDialogOpen && Boolean(state.message)}
+          title={state.status === "success" ? "등록 완료" : "확인해주세요"}
+          description={state.message}
+          role="alertdialog"
+          dismissOnBackdrop
+          onClose={() => setCertMessageDialogOpen(false)}
+          actions={[
+            {
+              label: "확인",
+              variant: "primary",
+              onClick: () => setCertMessageDialogOpen(false),
+            },
+          ]}
+        />
+        <button
+          type="submit"
+          disabled={isPending}
+          className="w-full rounded-2xl bg-slate-950 py-3.5 text-sm font-extrabold text-white disabled:bg-slate-300"
+        >
+          {isPending ? "등록 중" : "인증 등록"}
+        </button>
       </div>
-      <AppDialog
-        open={certMessageDialogOpen && Boolean(state.message)}
-        title={state.status === "success" ? "등록 완료" : "확인해주세요"}
-        description={state.message}
-        role="alertdialog"
-        dismissOnBackdrop
-        onClose={() => setCertMessageDialogOpen(false)}
-        actions={[
-          {
-            label: "확인",
-            variant: "primary",
-            onClick: () => setCertMessageDialogOpen(false),
-          },
-        ]}
-      />
-      <button
-        type="submit"
-        disabled={isPending}
-        className="w-full rounded-2xl bg-slate-950 py-3.5 text-sm font-extrabold text-white disabled:bg-slate-300"
-      >
-        {isPending ? "등록 중" : "인증 등록"}
-      </button>
     </form>
   );
 }
-
-
 function isPreviewableMediaFile(file: File) {
   return (
     file.type.startsWith("image/") ||
