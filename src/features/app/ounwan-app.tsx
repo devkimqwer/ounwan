@@ -28,6 +28,7 @@ const tabs: Array<{ id: TabId; label: string }> = [
 
 export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const [activeTab, setActiveTab] = useState<TabId>("home");
+  const [menuOpen, setMenuOpen] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);
   const { accountInfo, bankRecords, currentUserId, membership, posts, season, settlement, settlementRows, users } = appData;
   const currentUser = getUserById(users, currentUserId);
@@ -40,7 +41,27 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     <main className="min-h-dvh bg-slate-50 text-slate-950">
       <section className="mx-auto flex h-dvh min-h-dvh w-full max-w-screen-sm flex-col overflow-hidden bg-white">
         <header className="z-50 flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
-          <div className="h-10 w-10" aria-hidden="true" />
+          <button
+            type="button"
+            className="grid h-10 w-10 place-items-center rounded-full text-slate-900 transition-colors hover:bg-slate-100 active:bg-slate-200"
+            aria-label="전체 메뉴 열기"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(true)}
+          >
+            <svg
+              aria-hidden="true"
+              className="h-[21px] w-[21px]"
+              viewBox="0 0 18 18"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            >
+              <path d="M3 5h12" />
+              <path d="M3 9h12" />
+              <path d="M3 13h12" />
+            </svg>
+          </button>
           <Image
             src="/assets/ounwan-logo-transparent-bg.png"
             alt="ounwan"
@@ -66,6 +87,18 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
             <span className="absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#FF6B35]" />
           </button>
         </header>
+
+        <MainMenuPanel
+          open={menuOpen}
+          userName={currentUser.name}
+          isAdmin={isAdmin}
+          isTreasurer={isTreasurer}
+          onClose={() => setMenuOpen(false)}
+          onSelect={(tabId) => {
+            setActiveTab(tabId);
+            setMenuOpen(false);
+          }}
+        />
 
         <div className="z-40 flex h-9 shrink-0 items-center justify-center border-b border-slate-200 bg-white">
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold leading-none text-slate-500">
@@ -137,6 +170,133 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   );
 }
 
+function MainMenuPanel({
+  open,
+  userName,
+  isAdmin,
+  isTreasurer,
+  onClose,
+  onSelect,
+}: {
+  open: boolean;
+  userName: string;
+  isAdmin: boolean;
+  isTreasurer: boolean;
+  onClose: () => void;
+  onSelect: (tabId: TabId) => void;
+}) {
+  return (
+    <aside
+      className={`fixed inset-0 z-[90] bg-white text-slate-950 transition-transform duration-300 ease-out ${
+        open ? "pointer-events-auto translate-x-0" : "pointer-events-none -translate-x-full"
+      }`}
+      aria-hidden={!open}
+    >
+      <div className="mx-auto flex h-dvh min-h-dvh w-full max-w-screen-sm flex-col bg-white">
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-100 px-5">
+          <div className="h-10 w-10" aria-hidden="true" />
+          <Image
+            src="/assets/ounwan-logo-transparent-bg.png"
+            alt="ounwan"
+            width={122}
+            height={28}
+            priority
+            className="h-3 w-auto object-contain"
+          />
+          <button
+            type="button"
+            className="grid h-10 w-10 place-items-center rounded-full text-slate-900 transition-colors hover:bg-slate-100 active:bg-slate-200"
+            aria-label="전체 메뉴 닫기"
+            onClick={onClose}
+          >
+            <svg
+              aria-hidden="true"
+              className="h-6 w-6"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+          <div className="mb-7">
+            <p className="text-xl font-extrabold tracking-normal">오운완</p>
+            <p className="mt-2 text-sm font-semibold text-slate-500">{userName}님</p>
+          </div>
+
+          <MainMenuSection
+            title="메뉴"
+            rows={[
+              { label: "홈", onClick: () => onSelect("home") },
+              { label: "피드", onClick: () => onSelect("feed") },
+              { label: "인증", onClick: () => onSelect("cert") },
+              { label: "캘린더", onClick: () => onSelect("calendar") },
+            ]}
+          />
+
+          <MainMenuSection
+            title="총무"
+            rows={[
+              { label: "계좌 정보 수정", onClick: () => onSelect("more") },
+              { label: "통장 잔고 등록", onClick: () => onSelect("more") },
+              { label: isTreasurer ? "정산 관리" : "정산 보기", onClick: () => onSelect("more") },
+            ]}
+          />
+
+          {isAdmin && (
+            <MainMenuSection
+              title="관리자"
+              rows={[
+                { label: "시즌 관리", onClick: () => onSelect("more") },
+                { label: "주간 결산 관리", onClick: () => onSelect("more") },
+                { label: "멤버 승인 관리", onClick: () => onSelect("more") },
+              ]}
+            />
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function MainMenuSection({ title, rows }: { title: string; rows: Array<{ label: string; onClick: () => void }> }) {
+  return (
+    <section className="mb-8 border-t border-dashed border-slate-300 pt-5 first:border-t-0 first:pt-0">
+      <h2 className="mb-3 text-base font-extrabold tracking-normal text-slate-950">{title}</h2>
+      <div className="space-y-1">
+        {rows.map((row) => (
+          <button
+            key={row.label}
+            type="button"
+            className="flex min-h-11 w-full items-center justify-between rounded-lg px-1 text-left text-lg font-semibold text-slate-800 transition-colors hover:bg-[#F6F3FF] active:bg-[#EFE9FF]"
+            onClick={row.onClick}
+          >
+            <span>{row.label}</span>
+            <svg
+              aria-hidden="true"
+              className="h-5 w-5 text-slate-300"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
 function TabIcon({ tabId }: { tabId: TabId }) {
   const commonProps = {
     className: "h-6 w-6",
