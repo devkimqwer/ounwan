@@ -2,12 +2,21 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { type ChangeEvent, type PointerEvent as ReactPointerEvent, useActionState, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  type FormEvent,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createWorkoutPostAction, deleteWorkoutPostAction } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
 import type { CreateWorkoutPostState } from "@/app/actions";
 import type { OunwanAppData } from "@/domain/app-data";
 import type { AccountInfo, BankRecord, Settlement, SettlementRow, User, WorkoutPost } from "@/domain/models";
+import { compressMediaFilesForUpload } from "./media-compression";
 
 type TabId = "home" | "feed" | "cert" | "calendar" | "more";
 type CertMediaPreview = {
@@ -610,7 +619,9 @@ function CertView() {
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const mediaPreviewsRef = useRef<CertMediaPreview[]>([]);
   const initialState: CreateWorkoutPostState = { status: "idle", message: "" };
-  const [state, formAction, isPending] = useActionState(createWorkoutPostAction, initialState);
+  const [state, setState] = useState<CreateWorkoutPostState>(initialState);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatusMessage, setSubmitStatusMessage] = useState("");
 
   useEffect(() => {
     if (state.message) {
@@ -666,6 +677,44 @@ function CertView() {
     });
   };
 
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (isSubmitting) {
+      return;
+    }
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    formData.delete("mediaFiles");
+    setState(initialState);
+    setCertMessageDialogOpen(false);
+    setIsSubmitting(true);
+    setSubmitStatusMessage("업로드 중입니다.");
+
+    try {
+      const compressionResults = await compressMediaFilesForUpload(mediaPreviews.map((preview) => preview.file));
+      compressionResults.forEach((result) => formData.append("mediaFiles", result.file));
+
+      const result = await createWorkoutPostAction(state, formData);
+      setState(result);
+
+      if (result.status === "success") {
+        mediaPreviewsRef.current.forEach((preview) => URL.revokeObjectURL(preview.url));
+        mediaPreviewsRef.current = [];
+        setMediaPreviews([]);
+        syncMediaInputFiles([]);
+        setWorkoutType("");
+        form.reset();
+      }
+    } catch {
+      setState({ status: "error", message: "인증 등록 중 문제가 발생했습니다." });
+    } finally {
+      setSubmitStatusMessage("");
+      setIsSubmitting(false);
+    }
+  };
+
   const handleRemoveMedia = (mediaId: string) => {
     setMediaPreviews((previousPreviews) => {
       const removedPreview = previousPreviews.find((preview) => preview.id === mediaId);
@@ -679,7 +728,7 @@ function CertView() {
   };
 
   return (
-    <form action={formAction} className="p-4">
+    <form onSubmit={handleSubmit} className="p-4">
       <h2 className="text-base font-extrabold">운동 인증 등록</h2>
       <div className="mt-4 space-y-4">
         <div>
@@ -754,6 +803,9 @@ function CertView() {
             </button>
           ))}
         </div>
+        {submitStatusMessage && (
+          <div className="rounded-2xl bg-[#F7F5FC] px-4 py-3 text-sm font-bold text-[#51438f]">{submitStatusMessage}</div>
+        )}
         <AppDialog
           open={certMessageDialogOpen && Boolean(state.message)}
           title={state.status === "success" ? "등록 완료" : "확인해주세요"}
@@ -771,10 +823,10 @@ function CertView() {
         />
         <button
           type="submit"
-          disabled={isPending}
+          disabled={isSubmitting}
           className="w-full rounded-2xl bg-slate-950 py-3.5 text-sm font-extrabold text-white disabled:bg-slate-300"
         >
-          {isPending ? "등록 중" : "인증 등록"}
+          {isSubmitting ? (submitStatusMessage || "등록 중") : "인증 등록"}
         </button>
       </div>
     </form>
