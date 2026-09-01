@@ -29,6 +29,9 @@ type CertMediaPreview = {
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
 const MAX_WORKOUT_POST_UPLOAD_BYTES = 5 * 1024 * 1024;
+const DEFAULT_WORKOUT_TYPES = ["러닝", "헬스"];
+const MAX_RECENT_WORKOUT_TYPE_COUNT = 10;
+const RECENT_WORKOUT_TYPES_STORAGE_KEY = "ounwan.recentWorkoutTypes";
 
 const tabs: Array<{ id: TabId; label: string }> = [
   { id: "home", label: "홈" },
@@ -633,8 +636,8 @@ function FeedView({
 }
 
 function CertView({ onPostCreated }: { onPostCreated: (postId: string) => void }) {
-  const recentTypes = ["러닝", "헬스", "요가", "자전거", "수영"];
   const [workoutType, setWorkoutType] = useState("");
+  const [recentWorkoutTypes, setRecentWorkoutTypes] = useState<string[]>(DEFAULT_WORKOUT_TYPES);
   const [mediaPreviews, setMediaPreviews] = useState<CertMediaPreview[]>([]);
   const [certMessageDialogOpen, setCertMessageDialogOpen] = useState(false);
   const mediaInputRef = useRef<HTMLInputElement>(null);
@@ -644,6 +647,10 @@ function CertView({ onPostCreated }: { onPostCreated: (postId: string) => void }
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatusMessage, setSubmitStatusMessage] = useState("");
   const [mediaLimitDialogOpen, setMediaLimitDialogOpen] = useState(false);
+
+  useEffect(() => {
+    setRecentWorkoutTypes(loadRecentWorkoutTypes());
+  }, []);
 
   useEffect(() => {
     if (state.message) {
@@ -746,6 +753,7 @@ function CertView({ onPostCreated }: { onPostCreated: (postId: string) => void }
         mediaPreviewsRef.current = [];
         setMediaPreviews([]);
         syncMediaInputFiles([]);
+        setRecentWorkoutTypes(saveRecentWorkoutType(workoutType));
         setWorkoutType("");
         form.reset();
       }
@@ -763,6 +771,12 @@ function CertView({ onPostCreated }: { onPostCreated: (postId: string) => void }
     if (state.status === "success" && state.postId) {
       onPostCreated(state.postId);
     }
+  };
+
+  const handleRemoveWorkoutType = (type: string) => {
+    const nextTypes = recentWorkoutTypes.filter((recentType) => recentType !== type);
+    setRecentWorkoutTypes(nextTypes);
+    saveRecentWorkoutTypes(nextTypes);
   };
 
   const handleRemoveMedia = (mediaId: string) => {
@@ -837,22 +851,37 @@ function CertView({ onPostCreated }: { onPostCreated: (postId: string) => void }
             placeholder="운동 종류 직접 입력 또는 아래 목록에서 선택 (선택사항)"
           />
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-          {recentTypes.map((type) => (
-            <button
-              key={type}
-              type="button"
-              className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold leading-none ${
-                workoutType === type
-                  ? "border-[#5e4ea5] bg-[#5e4ea5] text-white"
-                  : "border-[#DDD8F1] bg-[#F2F0FA] text-[#51438f]"
-              }`}
-              onClick={() => setWorkoutType(type)}
-            >
-              {type}
-            </button>
-          ))}
-        </div>
+        {recentWorkoutTypes.length > 0 && (
+          <div className="flex flex-wrap gap-2 pb-1">
+            {recentWorkoutTypes.map((type) => {
+              const selected = workoutType.trim() === type;
+              return (
+                <span
+                  key={type}
+                  className={`inline-flex min-h-8 items-center overflow-hidden rounded-full border text-xs font-semibold leading-none ${
+                    selected
+                      ? "border-[#5e4ea5] bg-[#5e4ea5] text-white"
+                      : "border-[#DDD8F1] bg-[#F2F0FA] text-[#51438f]"
+                  }`}
+                >
+                  <button type="button" className="min-h-8 px-3 text-xs font-semibold leading-none" onClick={() => setWorkoutType(type)}>
+                    {type}
+                  </button>
+                  <button
+                    type="button"
+                    className={`grid min-h-8 w-7 place-items-center border-l text-xs font-extrabold leading-none ${
+                      selected ? "border-white/20 text-white" : "border-[#DDD8F1] text-[#7568aa]"
+                    }`}
+                    aria-label={`${type} 삭제`}
+                    onClick={() => handleRemoveWorkoutType(type)}
+                  >
+                    X
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
         {submitStatusMessage && (
           <div className="rounded-2xl bg-[#F7F5FC] px-4 py-3 text-sm font-bold text-[#51438f]">{submitStatusMessage}</div>
         )}
@@ -896,6 +925,53 @@ function CertView({ onPostCreated }: { onPostCreated: (postId: string) => void }
       </div>
     </form>
   );
+}
+function loadRecentWorkoutTypes() {
+  try {
+    const storedValue = window.localStorage.getItem(RECENT_WORKOUT_TYPES_STORAGE_KEY);
+    if (storedValue === null) {
+      return DEFAULT_WORKOUT_TYPES;
+    }
+
+    const parsedValue: unknown = JSON.parse(storedValue);
+    return Array.isArray(parsedValue) ? normalizeRecentWorkoutTypes(parsedValue) : DEFAULT_WORKOUT_TYPES;
+  } catch {
+    return DEFAULT_WORKOUT_TYPES;
+  }
+}
+
+function saveRecentWorkoutType(type: string) {
+  const trimmedType = type.trim();
+  const nextTypes = trimmedType ? normalizeRecentWorkoutTypes([trimmedType, ...loadRecentWorkoutTypes()]) : loadRecentWorkoutTypes();
+  saveRecentWorkoutTypes(nextTypes);
+  return nextTypes;
+}
+
+function saveRecentWorkoutTypes(types: string[]) {
+  try {
+    window.localStorage.setItem(RECENT_WORKOUT_TYPES_STORAGE_KEY, JSON.stringify(normalizeRecentWorkoutTypes(types)));
+  } catch {
+    // Ignore storage failures so workout post registration is not blocked by browser storage settings.
+  }
+}
+
+function normalizeRecentWorkoutTypes(types: unknown[]) {
+  const uniqueTypes: string[] = [];
+
+  types.forEach((type) => {
+    if (typeof type !== "string") {
+      return;
+    }
+
+    const trimmedType = type.trim();
+    if (!trimmedType || uniqueTypes.includes(trimmedType)) {
+      return;
+    }
+
+    uniqueTypes.push(trimmedType);
+  });
+
+  return uniqueTypes.slice(0, MAX_RECENT_WORKOUT_TYPE_COUNT);
 }
 function isPreviewableMediaFile(file: File) {
   return (
