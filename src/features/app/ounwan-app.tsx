@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { type ChangeEvent, useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { createWorkoutPostAction, deleteWorkoutPostAction } from "@/app/actions";
+import { AppDialog } from "@/components/ui/app-dialog";
 import type { CreateWorkoutPostState } from "@/app/actions";
 import type { OunwanAppData } from "@/domain/app-data";
 import type { AccountInfo, BankRecord, Settlement, SettlementRow, User, WorkoutPost } from "@/domain/models";
@@ -659,11 +660,12 @@ function PostCard({
   const canOpenPostMenu = isAdmin || isOwnPost;
   const adminMenuRef = useRef<HTMLDivElement>(null);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const router = useRouter();
 
   const handleDeletePostAction = async (formData: FormData) => {
     await deleteWorkoutPostAction(formData);
-    setAdminMenuOpen(false);
+    setDeleteDialogOpen(false);
     router.refresh();
   };
 
@@ -734,21 +736,16 @@ function PostCard({
                   </button>
                 )}
                 {isOwnPost && (
-                  <form action={handleDeletePostAction}>
-                    <input type="hidden" name="postId" value={post.id} />
-                    <button
-                      type="submit"
-                      className="w-full px-4 py-3 text-left text-sm font-bold text-slate-950"
-                      onClick={(event) => {
-                        if (!window.confirm("게시글을 삭제할까요?")) {
-                          event.preventDefault();
-                          return;
-                        }
-                      }}
-                    >
-                      삭제
-                    </button>
-                  </form>
+                  <button
+                    type="button"
+                    className="w-full px-4 py-3 text-left text-sm font-bold text-slate-950"
+                    onClick={() => {
+                      setAdminMenuOpen(false);
+                      setDeleteDialogOpen(true);
+                    }}
+                  >
+                    삭제
+                  </button>
                 )}
               </div>
             )}
@@ -804,6 +801,30 @@ function PostCard({
           </div>
         </div>
       </div>
+      <AppDialog
+        open={deleteDialogOpen}
+        title="게시글을 삭제할까요?"
+        description="삭제한 게시글은 피드에서 보이지 않습니다."
+        dismissOnBackdrop
+        onClose={() => setDeleteDialogOpen(false)}
+        footer={
+          <>
+            <button
+              type="button"
+              className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-950"
+              onClick={() => setDeleteDialogOpen(false)}
+            >
+              취소
+            </button>
+            <form action={handleDeletePostAction}>
+              <input type="hidden" name="postId" value={post.id} />
+              <button type="submit" className="min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-extrabold text-white">
+                삭제
+              </button>
+            </form>
+          </>
+        }
+      />
     </article>
   );
 }
