@@ -2,12 +2,23 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createWorkoutPost } from "@/db/commands";
+import { createWorkoutPost, deleteWorkoutPost } from "@/db/commands";
 
 export type CreateWorkoutPostState = {
   status: "idle" | "success" | "error";
   message: string;
 };
+
+export async function deleteWorkoutPostAction(formData: FormData) {
+  const postId = String(formData.get("postId") ?? "").trim();
+
+  if (!postId) {
+    throw new Error("postId is required.");
+  }
+
+  await deleteWorkoutPost(postId);
+  revalidatePath("/");
+}
 
 export async function createWorkoutPostAction(
   _previousState: CreateWorkoutPostState,

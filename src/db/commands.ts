@@ -61,6 +61,28 @@ export async function createWorkoutPost(input: CreateWorkoutPostInput) {
   return { id: postId.toString() };
 }
 
+export async function deleteWorkoutPost(postId: string) {
+  const context = await getCurrentSeedContext();
+  const postRows = await db
+    .update(workoutPosts)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(workoutPosts.id, BigInt(postId)),
+        eq(workoutPosts.groupId, BigInt(context.groupId)),
+        eq(workoutPosts.seasonId, BigInt(context.seasonId)),
+        eq(workoutPosts.userId, BigInt(context.userId)),
+        isNull(workoutPosts.deletedAt),
+      ),
+    )
+    .returning({ id: workoutPosts.id });
+
+  if (!postRows[0]) {
+    throw new Error("Workout post not found or not allowed to delete.");
+  }
+
+  return { id: postRows[0].id.toString() };
+}
 async function getCurrentSeedContext() {
   const userRows = await db
     .select({ id: users.id })

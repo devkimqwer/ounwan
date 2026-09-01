@@ -1,8 +1,9 @@
 "use client";
 
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { type ChangeEvent, useActionState, useEffect, useMemo, useRef, useState } from "react";
-import { createWorkoutPostAction } from "@/app/actions";
+import { createWorkoutPostAction, deleteWorkoutPostAction } from "@/app/actions";
 import type { CreateWorkoutPostState } from "@/app/actions";
 import type { OunwanAppData } from "@/domain/app-data";
 import type { AccountInfo, BankRecord, Settlement, SettlementRow, User, WorkoutPost } from "@/domain/models";
@@ -75,6 +76,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
           {activeTab === "home" && (
             <HomeView
               userName={currentUser.name}
+              currentUserId={currentUserId}
               validPostCount={validPostCount}
               targetCount={season.targetWorkoutCountPerWeek}
               onCert={() => setActiveTab("cert")}
@@ -96,7 +98,9 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
             />
           )}
           {activeTab === "cert" && <CertView />}
-          {activeTab === "calendar" && <CalendarView isAdmin={isAdmin} posts={posts} users={users} />}
+          {activeTab === "calendar" && (
+            <CalendarView currentUserId={currentUserId} isAdmin={isAdmin} posts={posts} users={users} />
+          )}
           {activeTab === "more" && (
             <MoreView
               isAdmin={isAdmin}
@@ -199,6 +203,7 @@ function TabIcon({ tabId }: { tabId: TabId }) {
 
 function HomeView({
   userName,
+  currentUserId,
   validPostCount,
   targetCount,
   onCert,
@@ -209,6 +214,7 @@ function HomeView({
   users,
 }: {
   userName: string;
+  currentUserId: string;
   validPostCount: number;
   targetCount: number;
   onCert: () => void;
@@ -301,7 +307,7 @@ function HomeView({
         </div>
         <div className="space-y-3">
           {recentPosts.map((post) => (
-            <PostCard key={post.id} post={post} isAdmin={isAdmin} users={users} />
+            <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} users={users} />
           ))}
         </div>
       </section>
@@ -348,7 +354,7 @@ function FeedView({
         </label>
       </div>
       {visiblePosts.map((post) => (
-        <PostCard key={post.id} post={post} isAdmin={isAdmin} users={users} />
+        <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} users={users} />
       ))}
     </div>
   );
@@ -528,7 +534,17 @@ function isPhoneVideoFile(file: File) {
   return /\.(mov|m4v|mp4)$/i.test(file.name);
 }
 
-function CalendarView({ isAdmin, posts, users }: { isAdmin: boolean; posts: WorkoutPost[]; users: User[] }) {
+function CalendarView({
+  currentUserId,
+  isAdmin,
+  posts,
+  users,
+}: {
+  currentUserId: string;
+  isAdmin: boolean;
+  posts: WorkoutPost[];
+  users: User[];
+}) {
   const days = Array.from({ length: 31 }, (_, index) => index + 1);
   const certifiedDays = new Set([14, 15, 17, 18]);
 
@@ -563,7 +579,7 @@ function CalendarView({ isAdmin, posts, users }: { isAdmin: boolean; posts: Work
           {posts
             .filter((post) => post.workoutDate === "2026-08-18")
             .map((post) => (
-              <PostCard key={post.id} post={post} isAdmin={isAdmin} users={users} />
+              <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} users={users} />
             ))}
         </div>
       </section>
@@ -626,19 +642,30 @@ function MoreView({
 function PostCard({
   post,
   users,
+  currentUserId,
   isAdmin = false,
   compact = false,
 }: {
   post: WorkoutPost;
   users: User[];
+  currentUserId?: string;
   isAdmin?: boolean;
   compact?: boolean;
 }) {
   const user = getUserById(users, post.userId);
   const createdAt = new Date(post.createdAt);
   const createdAtText = formatPostDateTime(createdAt);
+  const isOwnPost = currentUserId === post.userId;
+  const canOpenPostMenu = isAdmin || isOwnPost;
   const adminMenuRef = useRef<HTMLDivElement>(null);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
+  const router = useRouter();
+
+  const handleDeletePostAction = async (formData: FormData) => {
+    await deleteWorkoutPostAction(formData);
+    setAdminMenuOpen(false);
+    router.refresh();
+  };
 
   useEffect(() => {
     if (!adminMenuOpen) {
@@ -671,7 +698,7 @@ function PostCard({
             {createdAtText}
           </p>
         </div>
-        {isAdmin && (
+        {canOpenPostMenu && (
           <div ref={adminMenuRef} className="relative z-30">
             <button
               type="button"
@@ -697,15 +724,34 @@ function PostCard({
             </button>
             {adminMenuOpen && (
               <div className="absolute right-0 top-10 z-40 w-28 overflow-hidden rounded-xl border border-slate-200 bg-white">
-                <button
-                  type="button"
-                  className={`w-full px-3 py-2 text-left text-xs font-bold ${
-                    post.isInvalid ? "text-slate-900" : "text-red-500"
-                  }`}
-                  onClick={() => setAdminMenuOpen(false)}
-                >
-                  {post.isInvalid ? "노인정 취소" : "노인정"}
-                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    className={`w-full px-3 py-2 text-left text-xs font-bold ${
+                      post.isInvalid ? "text-slate-900" : "text-red-500"
+                    }`}
+                    onClick={() => setAdminMenuOpen(false)}
+                  >
+                    {post.isInvalid ? "노인정 취소" : "노인정"}
+                  </button>
+                )}
+                {isOwnPost && (
+                  <form action={handleDeletePostAction}>
+                    <input type="hidden" name="postId" value={post.id} />
+                    <button
+                      type="submit"
+                      className="w-full px-3 py-2 text-left text-xs font-bold text-red-500"
+                      onClick={(event) => {
+                        if (!window.confirm("게시글을 삭제할까요?")) {
+                          event.preventDefault();
+                          return;
+                        }
+                      }}
+                    >
+                      삭제
+                    </button>
+                  </form>
+                )}
               </div>
             )}
           </div>
