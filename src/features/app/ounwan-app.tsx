@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { type ChangeEvent, useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type PointerEvent as ReactPointerEvent, useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { createWorkoutPostAction, deleteWorkoutPostAction } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
 import type { CreateWorkoutPostState } from "@/app/actions";
@@ -29,6 +29,10 @@ const tabs: Array<{ id: TabId; label: string }> = [
 export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const detailHistoryActiveRef = useRef(false);
+  const contentScrollRef = useRef<HTMLDivElement>(null);
+  const listScrollTopRef = useRef(0);
   const [mineOnly, setMineOnly] = useState(false);
   const { accountInfo, bankRecords, currentUserId, membership, posts, season, settlement, settlementRows, users } = appData;
   const currentUser = getUserById(users, currentUserId);
@@ -36,6 +40,59 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const isAdmin = roles.includes("admin");
   const isTreasurer = roles.includes("treasurer");
   const validPostCount = posts.filter((post) => !post.isInvalid).length;
+  const selectedPost = posts.find((post) => post.id === selectedPostId);
+
+  const restoreListScroll = () => {
+    requestAnimationFrame(() => {
+      contentScrollRef.current?.scrollTo({ top: listScrollTopRef.current });
+    });
+  };
+
+  const closePostDetailFromHistory = () => {
+    detailHistoryActiveRef.current = false;
+    setSelectedPostId(null);
+    restoreListScroll();
+  };
+
+  const closePostDetail = () => {
+    if (detailHistoryActiveRef.current) {
+      window.history.back();
+      return;
+    }
+
+    closePostDetailFromHistory();
+  };
+
+  const openPostDetail = (postId: string) => {
+    listScrollTopRef.current = contentScrollRef.current?.scrollTop ?? 0;
+    detailHistoryActiveRef.current = true;
+    window.history.pushState({ ounwanPostDetail: postId }, "");
+    setSelectedPostId(postId);
+    requestAnimationFrame(() => {
+      contentScrollRef.current?.scrollTo({ top: 0 });
+    });
+  };
+
+  const selectTab = (tabId: TabId) => {
+    if (detailHistoryActiveRef.current) {
+      detailHistoryActiveRef.current = false;
+      window.history.back();
+    }
+
+    setActiveTab(tabId);
+    setSelectedPostId(null);
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (detailHistoryActiveRef.current) {
+        closePostDetailFromHistory();
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   return (
     <main className="min-h-dvh bg-slate-50 text-slate-950">
@@ -95,7 +152,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
           isTreasurer={isTreasurer}
           onClose={() => setMenuOpen(false)}
           onSelect={(tabId) => {
-            setActiveTab(tabId);
+            selectTab(tabId);
             setMenuOpen(false);
           }}
         />
@@ -106,44 +163,64 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
           </span>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 pb-4">
-          {activeTab === "home" && (
-            <HomeView
-              userName={currentUser.name}
+        <div ref={contentScrollRef} className="min-h-0 flex-1 overflow-y-auto bg-slate-50 pb-4">
+          {selectedPost ? (
+            <PostDetailView
+              post={selectedPost}
               currentUserId={currentUserId}
-              validPostCount={validPostCount}
-              targetCount={season.targetWorkoutCountPerWeek}
-              onCert={() => setActiveTab("cert")}
-              onFeed={() => setActiveTab("feed")}
               isAdmin={isAdmin}
-              posts={posts}
-              settlement={settlement}
               users={users}
+              onBack={closePostDetail}
             />
-          )}
-          {activeTab === "feed" && (
-            <FeedView
-              mineOnly={mineOnly}
-              onMineOnlyChange={setMineOnly}
-              isAdmin={isAdmin}
-              posts={posts}
-              currentUserId={currentUserId}
-              users={users}
-            />
-          )}
-          {activeTab === "cert" && <CertView />}
-          {activeTab === "calendar" && (
-            <CalendarView currentUserId={currentUserId} isAdmin={isAdmin} posts={posts} users={users} />
-          )}
-          {activeTab === "more" && (
-            <MoreView
-              isAdmin={isAdmin}
-              isTreasurer={isTreasurer}
-              accountInfo={accountInfo}
-              bankRecords={bankRecords}
-              settlement={settlement}
-              settlementRows={settlementRows}
-            />
+          ) : (
+            <>
+              {activeTab === "home" && (
+                <HomeView
+                  userName={currentUser.name}
+                  currentUserId={currentUserId}
+                  validPostCount={validPostCount}
+                  targetCount={season.targetWorkoutCountPerWeek}
+                  onCert={() => selectTab("cert")}
+                  onFeed={() => selectTab("feed")}
+                  onPostOpen={openPostDetail}
+                  isAdmin={isAdmin}
+                  posts={posts}
+                  settlement={settlement}
+                  users={users}
+                />
+              )}
+              {activeTab === "feed" && (
+                <FeedView
+                  mineOnly={mineOnly}
+                  onMineOnlyChange={setMineOnly}
+                  isAdmin={isAdmin}
+                  posts={posts}
+                  currentUserId={currentUserId}
+                  users={users}
+                  onPostOpen={openPostDetail}
+                />
+              )}
+              {activeTab === "cert" && <CertView />}
+              {activeTab === "calendar" && (
+                <CalendarView
+                  currentUserId={currentUserId}
+                  isAdmin={isAdmin}
+                  posts={posts}
+                  users={users}
+                  onPostOpen={openPostDetail}
+                />
+              )}
+              {activeTab === "more" && (
+                <MoreView
+                  isAdmin={isAdmin}
+                  isTreasurer={isTreasurer}
+                  accountInfo={accountInfo}
+                  bankRecords={bankRecords}
+                  settlement={settlement}
+                  settlementRows={settlementRows}
+                />
+              )}
+            </>
           )}
         </div>
 
@@ -157,7 +234,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                 className={`flex min-h-14 flex-col items-center justify-center gap-1 px-1 py-2 font-semibold ${
                   selected ? "text-[#5e4ea5]" : "text-slate-400"
                 }`}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => selectTab(tab.id)}
               >
                 <TabIcon tabId={tab.id} />
                 <span className="text-xs leading-none">{tab.label}</span>
@@ -369,6 +446,7 @@ function HomeView({
   targetCount,
   onCert,
   onFeed,
+  onPostOpen,
   isAdmin,
   posts,
   settlement,
@@ -380,6 +458,7 @@ function HomeView({
   targetCount: number;
   onCert: () => void;
   onFeed: () => void;
+  onPostOpen: (postId: string) => void;
   isAdmin: boolean;
   posts: WorkoutPost[];
   settlement: Settlement;
@@ -468,7 +547,7 @@ function HomeView({
         </div>
         <div className="space-y-3">
           {recentPosts.map((post) => (
-            <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} users={users} />
+            <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} users={users} onOpen={onPostOpen} />
           ))}
         </div>
       </section>
@@ -488,6 +567,7 @@ function FeedView({
   posts,
   currentUserId,
   users,
+  onPostOpen,
 }: {
   mineOnly: boolean;
   onMineOnlyChange: (next: boolean) => void;
@@ -495,6 +575,7 @@ function FeedView({
   posts: WorkoutPost[];
   currentUserId: string;
   users: User[];
+  onPostOpen: (postId: string) => void;
 }) {
   const visiblePosts = useMemo(
     () => posts.filter((post) => !mineOnly || post.userId === currentUserId),
@@ -515,7 +596,7 @@ function FeedView({
         </label>
       </div>
       {visiblePosts.map((post) => (
-        <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} users={users} />
+        <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} users={users} onOpen={onPostOpen} />
       ))}
     </div>
   );
@@ -717,11 +798,13 @@ function CalendarView({
   isAdmin,
   posts,
   users,
+  onPostOpen,
 }: {
   currentUserId: string;
   isAdmin: boolean;
   posts: WorkoutPost[];
   users: User[];
+  onPostOpen: (postId: string) => void;
 }) {
   const days = Array.from({ length: 31 }, (_, index) => index + 1);
   const certifiedDays = new Set([14, 15, 17, 18]);
@@ -757,7 +840,7 @@ function CalendarView({
           {posts
             .filter((post) => post.workoutDate === "2026-08-18")
             .map((post) => (
-              <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} users={users} />
+              <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} users={users} onOpen={onPostOpen} />
             ))}
         </div>
       </section>
@@ -817,18 +900,193 @@ function MoreView({
   );
 }
 
+function PostDetailView({
+  post,
+  users,
+  currentUserId,
+  isAdmin,
+  onBack,
+}: {
+  post: WorkoutPost;
+  users: User[];
+  currentUserId: string;
+  isAdmin: boolean;
+  onBack: () => void;
+}) {
+  return (
+    <div className="space-y-3 p-4">
+      <div className="flex items-center gap-3 px-1">
+        <button
+          type="button"
+          className="grid h-10 w-10 place-items-center rounded-full border border-slate-200 bg-white text-slate-900"
+          aria-label="게시글 목록으로 돌아가기"
+          onClick={onBack}
+        >
+          <svg
+            aria-hidden="true"
+            className="h-5 w-5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="m15 18-6-6 6-6" />
+          </svg>
+        </button>
+        <h2 className="text-[17px] font-extrabold">게시글 상세</h2>
+      </div>
+      <PostCard
+        post={post}
+        currentUserId={currentUserId}
+        isAdmin={isAdmin}
+        users={users}
+        mediaVariant="carousel"
+      />
+      <section className="rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-extrabold text-slate-950">댓글</h3>
+          <span className="text-sm font-bold text-slate-400">{post.commentCount}</span>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function MediaCarousel({
+  media,
+  variant = "preview",
+  onOpen,
+}: {
+  media: WorkoutPost["media"];
+  variant?: "preview" | "carousel";
+  onOpen?: () => void;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [dragStartX, setDragStartX] = useState<number | null>(null);
+  const activeMedia = media[activeIndex] ?? media[0];
+  const hasMultiple = media.length > 1;
+  const hiddenMediaCount = Math.max(media.length - 1, 0);
+  const imageSrc = variant === "carousel" ? activeMedia?.url : activeMedia?.thumbnailUrl ?? activeMedia?.url;
+  const containerClassName = variant === "carousel" ? "mx-4 touch-pan-y" : "mx-4 aspect-[4/3]";
+  const mediaClassName = variant === "carousel" ? "h-auto w-full object-contain" : "h-full w-full object-cover";
+
+  const move = (offset: number) => {
+    setActiveIndex((current) => (current + offset + media.length) % media.length);
+  };
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (hasMultiple && variant === "carousel") {
+      setDragStartX(event.clientX);
+    }
+  };
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragStartX === null) {
+      return;
+    }
+
+    const movedX = event.clientX - dragStartX;
+    setDragStartX(null);
+
+    if (Math.abs(movedX) < 45) {
+      return;
+    }
+
+    move(movedX < 0 ? 1 : -1);
+  };
+
+  return (
+    <div
+      className={`${containerClassName} relative overflow-hidden rounded-2xl bg-slate-100`}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={() => setDragStartX(null)}
+    >
+      {activeMedia?.url && activeMedia.type === "image" && onOpen && (
+        <button
+          type="button"
+          className="block h-full w-full"
+          aria-label="게시글 상세보기"
+          onClick={onOpen}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={imageSrc} alt="운동 인증" className={mediaClassName} />
+        </button>
+      )}
+      {activeMedia?.url && activeMedia.type === "image" && !onOpen && (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={imageSrc} alt="운동 인증" className={mediaClassName} />
+        </>
+      )}
+      {activeMedia?.url && activeMedia.type === "video" && onOpen && (
+        <button
+          type="button"
+          className="relative block h-full w-full"
+          aria-label="게시글 상세보기"
+          onClick={onOpen}
+        >
+          <video src={activeMedia.url} preload="metadata" className="h-full w-full object-cover" />
+          <span className="absolute inset-0 grid place-items-center bg-black/10" aria-hidden="true">
+            <span className="grid h-14 w-14 place-items-center rounded-full bg-white/90 text-slate-950 shadow-sm">
+              <svg
+                className="ml-1 h-6 w-6"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </span>
+          </span>
+        </button>
+      )}
+      {activeMedia?.url && activeMedia.type === "video" && !onOpen && (
+        <video src={activeMedia.url} controls preload="metadata" className={mediaClassName} />
+      )}
+      {!activeMedia?.url && (
+        <div className={`${variant === "carousel" ? "min-h-80" : "h-full"} grid place-items-center text-xs font-bold text-slate-400`}>이미지 없음</div>
+      )}
+
+      {hasMultiple && variant === "preview" && (
+        <span className="absolute bottom-3 right-3 rounded-full bg-black/60 px-2.5 py-1 text-sm font-extrabold leading-none text-white shadow-sm">
+          +{hiddenMediaCount}
+        </span>
+      )}
+
+      {hasMultiple && variant === "carousel" && (
+        <>
+          <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 justify-center gap-1.5 rounded-full bg-black/35 px-2 py-1">
+            {media.map((item, index) => (
+              <span
+                key={item.id}
+                className={`h-1.5 rounded-full transition-all ${index === activeIndex ? "w-4 bg-white" : "w-1.5 bg-white/60"}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 function PostCard({
   post,
   users,
   currentUserId,
   isAdmin = false,
   compact = false,
+  mediaVariant = "preview",
+  onOpen,
 }: {
   post: WorkoutPost;
   users: User[];
   currentUserId?: string;
   isAdmin?: boolean;
   compact?: boolean;
+  mediaVariant?: "preview" | "carousel";
+  onOpen?: (postId: string) => void;
 }) {
   const user = getUserById(users, post.userId);
   const createdAt = new Date(post.createdAt);
@@ -930,18 +1188,7 @@ function PostCard({
         )}
       </div>
       {!compact && (
-        <div className="mx-4 aspect-[4/3] overflow-hidden rounded-2xl bg-slate-100">
-          {post.media[0]?.url && post.media[0].type === "image" && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={post.media[0].thumbnailUrl ?? post.media[0].url} alt="운동 인증" className="h-full w-full object-cover" />
-          )}
-          {post.media[0]?.url && post.media[0].type === "video" && (
-            <video src={post.media[0].url} controls preload="metadata" className="h-full w-full object-cover" />
-          )}
-          {!post.media[0]?.url && (
-            <div className="grid h-full place-items-center text-xs font-bold text-slate-400">이미지 없음</div>
-          )}
-        </div>
+        <MediaCarousel media={post.media} variant={mediaVariant} onOpen={onOpen ? () => onOpen(post.id) : undefined} />
       )}
       <div className="space-y-3 p-4">
         {post.content && <p className="text-sm leading-5 text-slate-700">{post.content}</p>}
