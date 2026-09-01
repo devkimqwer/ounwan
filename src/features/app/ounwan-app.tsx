@@ -723,13 +723,11 @@ function PostCard({
               </svg>
             </button>
             {adminMenuOpen && (
-              <div className="absolute right-0 top-10 z-40 w-28 overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <div className="absolute right-0 top-10 z-40 w-32 overflow-hidden rounded-xl border border-slate-200 bg-white">
                 {isAdmin && (
                   <button
                     type="button"
-                    className={`w-full px-3 py-2 text-left text-xs font-bold ${
-                      post.isInvalid ? "text-slate-900" : "text-red-500"
-                    }`}
+                    className="w-full px-4 py-3 text-left text-sm font-bold text-slate-950"
                     onClick={() => setAdminMenuOpen(false)}
                   >
                     {post.isInvalid ? "노인정 취소" : "노인정"}
@@ -740,7 +738,7 @@ function PostCard({
                     <input type="hidden" name="postId" value={post.id} />
                     <button
                       type="submit"
-                      className="w-full px-3 py-2 text-left text-xs font-bold text-red-500"
+                      className="w-full px-4 py-3 text-left text-sm font-bold text-slate-950"
                       onClick={(event) => {
                         if (!window.confirm("게시글을 삭제할까요?")) {
                           event.preventDefault();
