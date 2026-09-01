@@ -27,6 +27,9 @@ type CertMediaPreview = {
   file: File;
 };
 
+const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
+const MAX_WORKOUT_POST_UPLOAD_BYTES = 5 * 1024 * 1024;
+
 const tabs: Array<{ id: TabId; label: string }> = [
   { id: "home", label: "홈" },
   { id: "feed", label: "피드" },
@@ -640,6 +643,7 @@ function CertView({ onPostCreated }: { onPostCreated: (postId: string) => void }
   const [state, setState] = useState<CreateWorkoutPostState>(initialState);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatusMessage, setSubmitStatusMessage] = useState("");
+  const [mediaLimitDialogOpen, setMediaLimitDialogOpen] = useState(false);
 
   useEffect(() => {
     if (state.message) {
@@ -689,10 +693,22 @@ function CertView({ onPostCreated }: { onPostCreated: (postId: string) => void }
         }
         return !isDuplicate;
       });
-      const nextPreviews = [...previousPreviews, ...appendedPreviews];
+      const mergedPreviews = [...previousPreviews, ...appendedPreviews];
+      const exceededMediaLimit = mergedPreviews.length > MAX_WORKOUT_POST_MEDIA_COUNT;
+      const nextPreviews = mergedPreviews.slice(0, MAX_WORKOUT_POST_MEDIA_COUNT);
+      mergedPreviews.slice(MAX_WORKOUT_POST_MEDIA_COUNT).forEach((preview) => {
+        if (!previousIds.has(preview.id)) {
+          URL.revokeObjectURL(preview.url);
+        }
+      });
+
+      if (exceededMediaLimit) {
+        setMediaLimitDialogOpen(true);
+      }
       syncMediaInputFiles(nextPreviews);
       return nextPreviews;
     });
+    event.target.value = "";
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -712,7 +728,15 @@ function CertView({ onPostCreated }: { onPostCreated: (postId: string) => void }
 
     try {
       const compressionResults = await compressMediaFilesForUpload(mediaPreviews.map((preview) => preview.file));
-      compressionResults.forEach((result) => formData.append("mediaFiles", result.file));
+      const uploadFiles = compressionResults.map((result) => result.file);
+      const uploadTotalBytes = uploadFiles.reduce((total, file) => total + file.size, 0);
+
+      if (uploadTotalBytes > MAX_WORKOUT_POST_UPLOAD_BYTES) {
+        setState({ status: "error", message: "사진 또는 영상은 최대 5개, 총 5MB 이하로 선택해주세요." });
+        return;
+      }
+
+      uploadFiles.forEach((file) => formData.append("mediaFiles", file));
 
       const result = await createWorkoutPostAction(state, formData);
       setState(result);
@@ -833,11 +857,26 @@ function CertView({ onPostCreated }: { onPostCreated: (postId: string) => void }
           <div className="rounded-2xl bg-[#F7F5FC] px-4 py-3 text-sm font-bold text-[#51438f]">{submitStatusMessage}</div>
         )}
         <AppDialog
+          open={mediaLimitDialogOpen}
+          title="확인해주세요"
+          description="최대 5개까지만 선택 가능합니다."
+          role="alertdialog"
+          dismissOnBackdrop
+          onClose={() => setMediaLimitDialogOpen(false)}
+          actions={[
+            {
+              label: "확인",
+              variant: "primary",
+              onClick: () => setMediaLimitDialogOpen(false),
+            },
+          ]}
+        />
+        <AppDialog
           open={certMessageDialogOpen && Boolean(state.message)}
           title={state.status === "success" ? "등록 완료" : "확인해주세요"}
           description={state.message}
           role="alertdialog"
-          dismissOnBackdrop
+          dismissOnBackdrop={state.status !== "success"}
           onClose={handleCloseCertMessageDialog}
           actions={[
             {

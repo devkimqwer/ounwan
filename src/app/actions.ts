@@ -4,6 +4,9 @@ import { revalidatePath } from "next/cache";
 
 import { createWorkoutPost, deleteWorkoutPost } from "@/db/commands";
 
+const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
+const MAX_WORKOUT_POST_UPLOAD_BYTES = 5 * 1024 * 1024;
+
 export type CreateWorkoutPostState = {
   status: "idle" | "success" | "error";
   message: string;
@@ -36,6 +39,14 @@ export async function createWorkoutPostAction(
     return { status: "error", message: "사진 또는 영상을 1개 이상 선택해주세요." };
   }
 
+  if (mediaFiles.length > MAX_WORKOUT_POST_MEDIA_COUNT) {
+    return { status: "error", message: "사진 또는 영상은 최대 5개까지 등록할 수 있습니다." };
+  }
+
+  if (getTotalFileSize(mediaFiles) > MAX_WORKOUT_POST_UPLOAD_BYTES) {
+    return { status: "error", message: "사진 또는 영상은 총 5MB 이하로 선택해주세요." };
+  }
+
   if (mediaFiles.some((file) => !isSupportedMediaFile(file))) {
     return { status: "error", message: "이미지 또는 영상 파일만 업로드할 수 있습니다." };
   }
@@ -52,6 +63,10 @@ export async function createWorkoutPostAction(
   revalidatePath("/");
 
   return { status: "success", message: "운동 인증이 등록됐습니다.", postId: post.id };
+}
+
+function getTotalFileSize(files: File[]) {
+  return files.reduce((total, file) => total + file.size, 0);
 }
 
 function isSupportedMediaFile(file: File) {
