@@ -365,10 +365,17 @@ function CertView() {
   const recentTypes = ["러닝", "헬스", "요가", "자전거", "수영"];
   const [workoutType, setWorkoutType] = useState("");
   const [mediaPreviews, setMediaPreviews] = useState<CertMediaPreview[]>([]);
+  const [certMessageDialogOpen, setCertMessageDialogOpen] = useState(false);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const mediaPreviewsRef = useRef<CertMediaPreview[]>([]);
   const initialState: CreateWorkoutPostState = { status: "idle", message: "" };
   const [state, formAction, isPending] = useActionState(createWorkoutPostAction, initialState);
+
+  useEffect(() => {
+    if (state.message) {
+      setCertMessageDialogOpen(true);
+    }
+  }, [state]);
 
   useEffect(() => {
     mediaPreviewsRef.current = mediaPreviews;
@@ -501,11 +508,21 @@ function CertView() {
           </button>
         ))}
       </div>
-      {state.message && (
-        <p className={`text-xs font-bold ${state.status === "error" ? "text-red-500" : "text-[#5e4ea5]"}`}>
-          {state.message}
-        </p>
-      )}
+      <AppDialog
+        open={certMessageDialogOpen && Boolean(state.message)}
+        title={state.status === "success" ? "등록 완료" : "확인해주세요"}
+        description={state.message}
+        role="alertdialog"
+        dismissOnBackdrop
+        onClose={() => setCertMessageDialogOpen(false)}
+        actions={[
+          {
+            label: "확인",
+            variant: "primary",
+            onClick: () => setCertMessageDialogOpen(false),
+          },
+        ]}
+      />
       <button
         type="submit"
         disabled={isPending}
