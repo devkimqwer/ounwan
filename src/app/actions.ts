@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createPostComment, createWorkoutPost, deleteWorkoutPost } from "@/db/commands";
+import { createPostComment, createWorkoutPost, deleteWorkoutPost, togglePostLike } from "@/db/commands";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
 const MAX_WORKOUT_POST_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -43,6 +43,17 @@ export async function createPostCommentAction(
   revalidatePath("/");
 
   return { status: "success", message: "댓글이 등록됐습니다." };
+}
+
+export async function togglePostLikeAction(formData: FormData) {
+  const postId = String(formData.get("postId") ?? "").trim();
+
+  if (!postId) {
+    throw new Error("postId is required.");
+  }
+
+  await togglePostLike(postId);
+  revalidatePath("/");
 }
 export async function deleteWorkoutPostAction(formData: FormData) {
   const postId = String(formData.get("postId") ?? "").trim();

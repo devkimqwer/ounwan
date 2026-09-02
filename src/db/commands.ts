@@ -5,7 +5,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { deleteLocalMediaFiles, saveWorkoutPostMediaFiles } from "@/storage/local";
 
 import { db } from "./client";
-import { groupMembers, oauthAccounts, postComments, postMedia, seasons, users, workoutPosts } from "./schema";
+import { groupMembers, oauthAccounts, postComments, postLikes, postMedia, seasons, users, workoutPosts } from "./schema";
 
 const seedCurrentKakaoId = "kakao-1";
 
@@ -62,6 +62,38 @@ export async function createWorkoutPost(input: CreateWorkoutPostInput) {
 }
 
 
+
+export async function togglePostLike(postId: string) {
+  const context = await getCurrentSeedContext();
+  const targetPostRows = await db
+    .select({ id: workoutPosts.id })
+    .from(workoutPosts)
+    .where(
+      and(
+        eq(workoutPosts.id, BigInt(postId)),
+        eq(workoutPosts.groupId, BigInt(context.groupId)),
+        eq(workoutPosts.seasonId, BigInt(context.seasonId)),
+        isNull(workoutPosts.deletedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!targetPostRows[0]) {
+    throw new Error("Workout post not found or not allowed to like.");
+  }
+
+  const deletedRows = await db
+    .delete(postLikes)
+    .where(and(eq(postLikes.postId, targetPostRows[0].id), eq(postLikes.userId, BigInt(context.userId))))
+    .returning({ postId: postLikes.postId });
+
+  if (deletedRows[0]) {
+    return { liked: false };
+  }
+
+  await db.insert(postLikes).values({ postId: targetPostRows[0].id, userId: BigInt(context.userId) });
+  return { liked: true };
+}
 export async function createPostComment(postId: string, content: string) {
   const context = await getCurrentSeedContext();
   const targetPostRows = await db

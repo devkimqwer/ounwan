@@ -65,6 +65,7 @@ export interface WorkoutPost {
   invalidatedByUserId?: string;
   invalidatedAt?: string;
   likeCount: number;
+  likedByCurrentUser: boolean;
   commentCount: number;
   comments: PostComment[];
   media: PostMedia[];

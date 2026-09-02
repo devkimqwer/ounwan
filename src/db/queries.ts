@@ -42,7 +42,7 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
   const season = await getActiveSeason(group.id);
   const [appUsers, posts, settlement, bankRecords, accountInfo] = await Promise.all([
     getGroupUsers(group.id),
-    getWorkoutPosts(group.id, season.id),
+    getWorkoutPosts(group.id, season.id, currentUser.id),
     getLatestSettlement(group.id, season.id),
     getBankRecords(group.id),
     getAccountInfo(group.id),
@@ -164,7 +164,7 @@ async function getGroupUsers(groupId: string): Promise<User[]> {
   }));
 }
 
-async function getWorkoutPosts(groupId: string, seasonId: string): Promise<WorkoutPost[]> {
+async function getWorkoutPosts(groupId: string, seasonId: string, currentUserId: string): Promise<WorkoutPost[]> {
   const rows = await db
     .select({
       post: workoutPosts,
@@ -186,6 +186,7 @@ async function getWorkoutPosts(groupId: string, seasonId: string): Promise<Worko
   const mediaByPostId = new Map<string, PostMedia[]>();
   const commentsByPostId = new Map<string, PostComment[]>();
   const commentCounts = new Map<string, number>();
+  const currentUserLikedPostIds = new Set<string>();
 
   if (postIds.length > 0) {
     const mediaRows = await db
@@ -230,6 +231,15 @@ async function getWorkoutPosts(groupId: string, seasonId: string): Promise<Worko
     for (const [postId, comments] of commentsByPostId) {
       commentCounts.set(postId, comments.length);
     }
+
+    const currentUserLikeRows = await db
+      .select({ postId: postLikes.postId })
+      .from(postLikes)
+      .where(and(inArray(postLikes.postId, postIds), eq(postLikes.userId, BigInt(currentUserId))));
+
+    for (const row of currentUserLikeRows) {
+      currentUserLikedPostIds.add(row.postId.toString());
+    }
   }
 
   return rows.map(({ post, likeCount }) => {
@@ -247,6 +257,7 @@ async function getWorkoutPosts(groupId: string, seasonId: string): Promise<Worko
       invalidatedByUserId: post.invalidatedByUserId?.toString(),
       invalidatedAt: post.invalidatedAt?.toISOString(),
       likeCount,
+      likedByCurrentUser: currentUserLikedPostIds.has(postId),
       commentCount: commentCounts.get(postId) ?? 0,
       comments: commentsByPostId.get(postId) ?? [],
       media: mediaByPostId.get(postId) ?? [],
