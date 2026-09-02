@@ -11,7 +11,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPostCommentAction, createWorkoutPostAction, deleteWorkoutPostAction, togglePostLikeAction } from "@/app/actions";
+import { createPostCommentAction, createWorkoutPostAction, deleteWorkoutPostAction, togglePostLikeAction, toggleWorkoutPostInvalidAction } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
 import type { CreatePostCommentState, CreateWorkoutPostState } from "@/app/actions";
 import type { OunwanAppData } from "@/domain/app-data";
@@ -1422,6 +1422,12 @@ function PostCard({
     }
   };
 
+  const handleToggleInvalidPostAction = async (formData: FormData) => {
+    await toggleWorkoutPostInvalidAction(formData);
+    setAdminMenuOpen(false);
+    router.refresh();
+  };
+
   const handleDeletePostAction = async (formData: FormData) => {
     await deleteWorkoutPostAction(formData);
     setDeleteDialogOpen(false);
@@ -1483,13 +1489,12 @@ function PostCard({
             {adminMenuOpen && (
               <div className="absolute right-0 top-10 z-40 w-32 overflow-hidden rounded-xl border border-slate-200 bg-white">
                 {isAdmin && (
-                  <button
-                    type="button"
-                    className="w-full px-4 py-3 text-left text-sm font-bold text-slate-950"
-                    onClick={() => setAdminMenuOpen(false)}
-                  >
-                    {post.isInvalid ? "노인정 취소" : "노인정"}
-                  </button>
+                  <form action={handleToggleInvalidPostAction}>
+                    <input type="hidden" name="postId" value={post.id} />
+                    <button type="submit" className="w-full px-4 py-3 text-left text-sm font-bold text-slate-950">
+                      {post.isInvalid ? "노인정 취소" : "노인정"}
+                    </button>
+                  </form>
                 )}
                 {isOwnPost && (
                   <button

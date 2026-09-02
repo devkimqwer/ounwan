@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createPostComment, createWorkoutPost, deleteWorkoutPost, togglePostLike } from "@/db/commands";
+import { createPostComment, createWorkoutPost, deleteWorkoutPost, togglePostLike, toggleWorkoutPostInvalid } from "@/db/commands";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
 const MAX_WORKOUT_POST_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -55,6 +55,18 @@ export async function togglePostLikeAction(formData: FormData) {
   await togglePostLike(postId);
   revalidatePath("/");
 }
+
+export async function toggleWorkoutPostInvalidAction(formData: FormData) {
+  const postId = String(formData.get("postId") ?? "").trim();
+
+  if (!postId) {
+    throw new Error("postId is required.");
+  }
+
+  await toggleWorkoutPostInvalid(postId);
+  revalidatePath("/");
+}
+
 export async function deleteWorkoutPostAction(formData: FormData) {
   const postId = String(formData.get("postId") ?? "").trim();
 

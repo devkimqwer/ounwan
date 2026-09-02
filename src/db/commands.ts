@@ -94,6 +94,7 @@ export async function togglePostLike(postId: string) {
   await db.insert(postLikes).values({ postId: targetPostRows[0].id, userId: BigInt(context.userId) });
   return { liked: true };
 }
+
 export async function createPostComment(postId: string, content: string) {
   const context = await getCurrentSeedContext();
   const targetPostRows = await db
@@ -124,6 +125,46 @@ export async function createPostComment(postId: string, content: string) {
 
   return { id: commentRows[0].id.toString() };
 }
+
+export async function toggleWorkoutPostInvalid(postId: string) {
+  const context = await getCurrentSeedContext();
+
+  if (!context.roles.includes("admin")) {
+    throw new Error("Only admins can invalidate workout posts.");
+  }
+
+  const targetPostRows = await db
+    .select({ id: workoutPosts.id, isInvalid: workoutPosts.isInvalid })
+    .from(workoutPosts)
+    .where(
+      and(
+        eq(workoutPosts.id, BigInt(postId)),
+        eq(workoutPosts.groupId, BigInt(context.groupId)),
+        eq(workoutPosts.seasonId, BigInt(context.seasonId)),
+        isNull(workoutPosts.deletedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!targetPostRows[0]) {
+    throw new Error("Workout post not found or not allowed to invalidate.");
+  }
+
+  const nextIsInvalid = !targetPostRows[0].isInvalid;
+  const postRows = await db
+    .update(workoutPosts)
+    .set({
+      isInvalid: nextIsInvalid,
+      invalidatedByUserId: nextIsInvalid ? BigInt(context.userId) : null,
+      invalidatedAt: nextIsInvalid ? new Date() : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(workoutPosts.id, targetPostRows[0].id))
+    .returning({ id: workoutPosts.id, isInvalid: workoutPosts.isInvalid });
+
+  return { id: postRows[0].id.toString(), isInvalid: postRows[0].isInvalid };
+}
+
 export async function deleteWorkoutPost(postId: string) {
   const context = await getCurrentSeedContext();
   const postRows = await db
@@ -159,7 +200,7 @@ async function getCurrentSeedContext() {
   }
 
   const membershipRows = await db
-    .select({ groupId: groupMembers.groupId, userId: groupMembers.userId })
+    .select({ groupId: groupMembers.groupId, userId: groupMembers.userId, roles: groupMembers.roles })
     .from(groupMembers)
     .where(and(eq(groupMembers.userId, userRows[0].id), isNull(groupMembers.leftAt)))
     .limit(1);
@@ -182,6 +223,7 @@ async function getCurrentSeedContext() {
     userId: membershipRows[0].userId.toString(),
     groupId: membershipRows[0].groupId.toString(),
     seasonId: seasonRows[0].id.toString(),
+    roles: membershipRows[0].roles,
   };
 }
 
