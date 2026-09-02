@@ -66,6 +66,7 @@ export interface WorkoutPost {
   invalidatedAt?: string;
   likeCount: number;
   likedByCurrentUser: boolean;
+  likeUserIds: string[];
   commentCount: number;
   comments: PostComment[];
   media: PostMedia[];
@@ -106,4 +107,3 @@ export interface AccountInfo {
   accountNumber: string;
   holderName: string;
 }
-

@@ -66,6 +66,7 @@ export const posts: WorkoutPost[] = [
     isInvalid: false,
     likeCount: 4,
     likedByCurrentUser: false,
+    likeUserIds: ["user-2", "user-3", "user-4", "user-5"],
     commentCount: 2,
     comments: [
       { id: "comment-1", postId: "post-1", userId: "user-2", content: "오오 5km 대단하다!", createdAt: "2026-08-18T08:10:00+09:00" },
@@ -93,6 +94,7 @@ export const posts: WorkoutPost[] = [
     isInvalid: false,
     likeCount: 6,
     likedByCurrentUser: true,
+    likeUserIds: ["user-1", "user-3", "user-4", "user-5", "user-6", "user-7"],
     commentCount: 3,
     comments: [
       { id: "comment-3", postId: "post-2", userId: "user-1", content: "개인 최고 기록 축하!", createdAt: "2026-08-18T19:03:00+09:00" },
@@ -123,6 +125,7 @@ export const posts: WorkoutPost[] = [
     invalidatedAt: "2026-08-15T13:20:00+09:00",
     likeCount: 2,
     likedByCurrentUser: true,
+    likeUserIds: ["user-1", "user-2"],
     commentCount: 0,
     comments: [],
     media: [
@@ -181,4 +184,3 @@ export function getCurrentMembership() {
       membership.groupId === CURRENT_GROUP_ID && membership.userId === CURRENT_USER_ID,
   );
 }
-

@@ -1389,9 +1389,13 @@ function PostCard({
   const adminMenuRef = useRef<HTMLDivElement>(null);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [likeUsersDialogOpen, setLikeUsersDialogOpen] = useState(false);
   const [isLikeSubmitting, setIsLikeSubmitting] = useState(false);
   const router = useRouter();
   const openPost = onOpen ? () => onOpen(post.id) : undefined;
+  const likedUsers = post.likeUserIds
+    .map((userId) => users.find((candidate) => candidate.id === userId))
+    .filter((candidate): candidate is User => Boolean(candidate));
 
   const handleToggleLike = async () => {
     if (isLikeSubmitting) {
@@ -1510,34 +1514,44 @@ function PostCard({
         <div>
           {post.workoutType && <Badge tone="green">{post.workoutType}</Badge>}
           <div className="mt-3 flex items-center gap-2">
-            <button
-              type="button"
-              className={`inline-flex min-h-9 items-center gap-1.5 rounded-full px-2.5 text-sm font-bold ${
-                post.likedByCurrentUser ? "text-[#F4B000]" : "text-slate-700"
-              }`}
-              aria-label={post.likedByCurrentUser ? `따봉 취소 ${post.likeCount}개` : `따봉 ${post.likeCount}개`}
-              aria-pressed={post.likedByCurrentUser}
-              disabled={isLikeSubmitting}
-              onClick={(event) => {
-                event.stopPropagation();
-                handleToggleLike();
-              }}
-            >
-              <svg
-                aria-hidden="true"
-                className={`h-5 w-5 ${post.likedByCurrentUser ? "fill-current stroke-current" : "text-slate-500"}`}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            <div className={`inline-flex min-h-9 items-center rounded-full text-sm font-bold ${post.likedByCurrentUser ? "text-[#F4B000]" : "text-slate-700"}`}>
+              <button
+                type="button"
+                className="grid h-9 w-8 place-items-center rounded-full disabled:opacity-50"
+                aria-label={post.likedByCurrentUser ? "따봉 취소" : "따봉"}
+                aria-pressed={post.likedByCurrentUser}
+                disabled={isLikeSubmitting}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleToggleLike();
+                }}
               >
-                <path d="M7 10v11" />
-                <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z" />
-              </svg>
-              <span>{post.likeCount}</span>
-            </button>
+                <svg
+                  aria-hidden="true"
+                  className={`h-5 w-5 ${post.likedByCurrentUser ? "fill-current stroke-current" : "text-slate-500"}`}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M7 10v11" />
+                  <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="min-h-9 rounded-full px-1.5 text-sm font-bold"
+                aria-label={`따봉한 사람 ${post.likeCount}명 보기`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setLikeUsersDialogOpen(true);
+                }}
+              >
+                {post.likeCount}
+              </button>
+            </div>
             <button
               type="button"
               className="inline-flex min-h-9 items-center gap-1.5 rounded-full px-2.5 text-sm font-bold text-slate-700"
@@ -1561,6 +1575,32 @@ function PostCard({
           </div>
         </div>
       </div>
+      <AppDialog
+        open={likeUsersDialogOpen}
+        title="따봉한 사람"
+        dismissOnBackdrop
+        onClose={() => setLikeUsersDialogOpen(false)}
+        actions={[
+          {
+            label: "닫기",
+            variant: "primary",
+            onClick: () => setLikeUsersDialogOpen(false),
+          },
+        ]}
+      >
+        {likedUsers.length > 0 ? (
+          <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+            {likedUsers.map((likedUser) => (
+              <div key={likedUser.id} className="flex items-center gap-3">
+                <Avatar name={likedUser.name} color={likedUser.avatarColor} />
+                <span className="text-sm font-bold text-slate-950">{likedUser.name}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm font-semibold text-slate-500">아직 따봉을 누른 사람이 없습니다.</p>
+        )}
+      </AppDialog>
       <AppDialog
         open={deleteDialogOpen}
         title="게시글을 삭제할까요?"

@@ -187,6 +187,7 @@ async function getWorkoutPosts(groupId: string, seasonId: string, currentUserId:
   const commentsByPostId = new Map<string, PostComment[]>();
   const commentCounts = new Map<string, number>();
   const currentUserLikedPostIds = new Set<string>();
+  const likeUserIdsByPostId = new Map<string, string[]>();
 
   if (postIds.length > 0) {
     const mediaRows = await db
@@ -240,6 +241,19 @@ async function getWorkoutPosts(groupId: string, seasonId: string, currentUserId:
     for (const row of currentUserLikeRows) {
       currentUserLikedPostIds.add(row.postId.toString());
     }
+
+    const likeRows = await db
+      .select({ postId: postLikes.postId, userId: postLikes.userId })
+      .from(postLikes)
+      .where(inArray(postLikes.postId, postIds))
+      .orderBy(postLikes.postId, desc(postLikes.createdAt));
+
+    for (const like of likeRows) {
+      const postId = like.postId.toString();
+      const list = likeUserIdsByPostId.get(postId) ?? [];
+      list.push(like.userId.toString());
+      likeUserIdsByPostId.set(postId, list);
+    }
   }
 
   return rows.map(({ post, likeCount }) => {
@@ -258,6 +272,7 @@ async function getWorkoutPosts(groupId: string, seasonId: string, currentUserId:
       invalidatedAt: post.invalidatedAt?.toISOString(),
       likeCount,
       likedByCurrentUser: currentUserLikedPostIds.has(postId),
+      likeUserIds: likeUserIdsByPostId.get(postId) ?? [],
       commentCount: commentCounts.get(postId) ?? 0,
       comments: commentsByPostId.get(postId) ?? [],
       media: mediaByPostId.get(postId) ?? [],
