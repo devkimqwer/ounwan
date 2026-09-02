@@ -792,9 +792,10 @@ function CertView({ onPostCreated }: { onPostCreated: (postId: string) => void }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="p-4">
-      <h2 className="text-base font-extrabold">운동 인증 등록</h2>
-      <div className="mt-4 space-y-4">
+    <form onSubmit={handleSubmit} className="pb-24">
+      <div className="p-4">
+        <h2 className="text-base font-extrabold">운동 인증 등록</h2>
+        <div className="mt-4 space-y-4">
         <div>
           <label className="block cursor-pointer rounded-2xl border border-dashed border-[#CDC6E8] bg-[#F7F5FC] p-6 text-center">
             <span className="block text-sm font-extrabold text-[#51438f]">사진 또는 영상 업로드</span>
@@ -915,10 +916,13 @@ function CertView({ onPostCreated }: { onPostCreated: (postId: string) => void }
             },
           ]}
         />
+        </div>
+      </div>
+      <div className="sticky bottom-0 z-30 px-4">
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full rounded-2xl bg-slate-950 py-3.5 text-sm font-extrabold text-white disabled:bg-slate-300"
+          className="w-full rounded-2xl bg-slate-950 py-3.5 text-base font-extrabold text-white shadow-sm disabled:bg-slate-300"
         >
           {isSubmitting ? (submitStatusMessage || "등록 중") : "인증 등록"}
         </button>
