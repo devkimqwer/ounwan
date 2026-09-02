@@ -44,6 +44,14 @@ export interface PostMedia {
   sortOrder: number;
 }
 
+export interface PostComment {
+  id: string;
+  postId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+}
+
 export interface WorkoutPost {
   id: string;
   groupId: string;
@@ -58,6 +66,7 @@ export interface WorkoutPost {
   invalidatedAt?: string;
   likeCount: number;
   commentCount: number;
+  comments: PostComment[];
   media: PostMedia[];
 }
 

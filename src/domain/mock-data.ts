@@ -66,6 +66,10 @@ export const posts: WorkoutPost[] = [
     isInvalid: false,
     likeCount: 4,
     commentCount: 2,
+    comments: [
+      { id: "comment-1", postId: "post-1", userId: "user-2", content: "오오 5km 대단하다!", createdAt: "2026-08-18T08:10:00+09:00" },
+      { id: "comment-2", postId: "post-1", userId: "user-3", content: "나도 오늘 달려야겠다", createdAt: "2026-08-18T09:22:00+09:00" },
+    ],
     media: [
       {
         id: "media-1",
@@ -88,6 +92,11 @@ export const posts: WorkoutPost[] = [
     isInvalid: false,
     likeCount: 6,
     commentCount: 3,
+    comments: [
+      { id: "comment-3", postId: "post-2", userId: "user-1", content: "개인 최고 기록 축하!", createdAt: "2026-08-18T19:03:00+09:00" },
+      { id: "comment-4", postId: "post-2", userId: "user-3", content: "상체 운동 멋지다", createdAt: "2026-08-18T19:15:00+09:00" },
+      { id: "comment-5", postId: "post-2", userId: "user-4", content: "나도 다음엔 벤치 도전", createdAt: "2026-08-18T19:40:00+09:00" },
+    ],
     media: [
       {
         id: "media-2",
@@ -112,6 +121,7 @@ export const posts: WorkoutPost[] = [
     invalidatedAt: "2026-08-15T13:20:00+09:00",
     likeCount: 2,
     commentCount: 0,
+    comments: [],
     media: [
       {
         id: "media-3",

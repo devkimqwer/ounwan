@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createWorkoutPost, deleteWorkoutPost } from "@/db/commands";
+import { createPostComment, createWorkoutPost, deleteWorkoutPost } from "@/db/commands";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
 const MAX_WORKOUT_POST_UPLOAD_BYTES = 5 * 1024 * 1024;
+const MAX_POST_COMMENT_LENGTH = 500;
 
 export type CreateWorkoutPostState = {
   status: "idle" | "success" | "error";
@@ -13,6 +14,36 @@ export type CreateWorkoutPostState = {
   postId?: string;
 };
 
+
+export type CreatePostCommentState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
+export async function createPostCommentAction(
+  _previousState: CreatePostCommentState,
+  formData: FormData,
+): Promise<CreatePostCommentState> {
+  const postId = String(formData.get("postId") ?? "").trim();
+  const content = String(formData.get("content") ?? "").trim();
+
+  if (!postId) {
+    return { status: "error", message: "게시글 정보를 확인할 수 없습니다." };
+  }
+
+  if (!content) {
+    return { status: "error", message: "댓글을 입력해주세요." };
+  }
+
+  if (content.length > MAX_POST_COMMENT_LENGTH) {
+    return { status: "error", message: `댓글은 ${MAX_POST_COMMENT_LENGTH}자 이내로 입력해주세요.` };
+  }
+
+  await createPostComment(postId, content);
+  revalidatePath("/");
+
+  return { status: "success", message: "댓글이 등록됐습니다." };
+}
 export async function deleteWorkoutPostAction(formData: FormData) {
   const postId = String(formData.get("postId") ?? "").trim();
 

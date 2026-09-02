@@ -8,6 +8,7 @@ import type {
   Group,
   GroupMembership,
   PostMedia,
+  PostComment,
   Season,
   Settlement,
   SettlementRow,
@@ -183,6 +184,7 @@ async function getWorkoutPosts(groupId: string, seasonId: string): Promise<Worko
 
   const postIds = rows.map((row) => row.post.id);
   const mediaByPostId = new Map<string, PostMedia[]>();
+  const commentsByPostId = new Map<string, PostComment[]>();
   const commentCounts = new Map<string, number>();
 
   if (postIds.length > 0) {
@@ -207,13 +209,26 @@ async function getWorkoutPosts(groupId: string, seasonId: string): Promise<Worko
     }
 
     const commentRows = await db
-      .select({ postId: postComments.postId, value: count(postComments.id) })
+      .select()
       .from(postComments)
       .where(and(inArray(postComments.postId, postIds), isNull(postComments.deletedAt)))
-      .groupBy(postComments.postId);
+      .orderBy(postComments.postId, postComments.createdAt);
 
-    for (const row of commentRows) {
-      commentCounts.set(row.postId.toString(), row.value);
+    for (const comment of commentRows) {
+      const postId = comment.postId.toString();
+      const list = commentsByPostId.get(postId) ?? [];
+      list.push({
+        id: comment.id.toString(),
+        postId,
+        userId: comment.userId.toString(),
+        content: comment.content,
+        createdAt: comment.createdAt.toISOString(),
+      });
+      commentsByPostId.set(postId, list);
+    }
+
+    for (const [postId, comments] of commentsByPostId) {
+      commentCounts.set(postId, comments.length);
     }
   }
 
@@ -233,6 +248,7 @@ async function getWorkoutPosts(groupId: string, seasonId: string): Promise<Worko
       invalidatedAt: post.invalidatedAt?.toISOString(),
       likeCount,
       commentCount: commentCounts.get(postId) ?? 0,
+      comments: commentsByPostId.get(postId) ?? [],
       media: mediaByPostId.get(postId) ?? [],
     };
   });

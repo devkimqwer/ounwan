@@ -5,7 +5,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { deleteLocalMediaFiles, saveWorkoutPostMediaFiles } from "@/storage/local";
 
 import { db } from "./client";
-import { groupMembers, oauthAccounts, postMedia, seasons, users, workoutPosts } from "./schema";
+import { groupMembers, oauthAccounts, postComments, postMedia, seasons, users, workoutPosts } from "./schema";
 
 const seedCurrentKakaoId = "kakao-1";
 
@@ -61,6 +61,37 @@ export async function createWorkoutPost(input: CreateWorkoutPostInput) {
   return { id: postId.toString() };
 }
 
+
+export async function createPostComment(postId: string, content: string) {
+  const context = await getCurrentSeedContext();
+  const targetPostRows = await db
+    .select({ id: workoutPosts.id })
+    .from(workoutPosts)
+    .where(
+      and(
+        eq(workoutPosts.id, BigInt(postId)),
+        eq(workoutPosts.groupId, BigInt(context.groupId)),
+        eq(workoutPosts.seasonId, BigInt(context.seasonId)),
+        isNull(workoutPosts.deletedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!targetPostRows[0]) {
+    throw new Error("Workout post not found or not allowed to comment.");
+  }
+
+  const commentRows = await db
+    .insert(postComments)
+    .values({
+      postId: targetPostRows[0].id,
+      userId: BigInt(context.userId),
+      content,
+    })
+    .returning({ id: postComments.id });
+
+  return { id: commentRows[0].id.toString() };
+}
 export async function deleteWorkoutPost(postId: string) {
   const context = await getCurrentSeedContext();
   const postRows = await db
