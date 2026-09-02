@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import type { PointerEvent, ReactNode } from "react";
+import type { MouseEvent, PointerEvent, ReactNode } from "react";
 
 type AppDialogAction = {
   label: string;
@@ -48,6 +48,12 @@ export function AppDialog({
   }
 
   const handleBackdropPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+  };
+
+  const handleBackdropClick = (event: MouseEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+
     if (!dismissOnBackdrop || event.target !== event.currentTarget) {
       return;
     }
@@ -60,6 +66,7 @@ export function AppDialog({
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 px-5"
       role="presentation"
       onPointerDown={handleBackdropPointerDown}
+      onClick={handleBackdropClick}
     >
       <section
         role={role}
@@ -67,6 +74,8 @@ export function AppDialog({
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         className="w-full max-w-[320px] rounded-2xl bg-white p-5 shadow-xl"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         <h2 id={titleId} className="text-base font-extrabold leading-6 text-slate-950">
           {title}
