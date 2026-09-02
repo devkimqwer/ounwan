@@ -1345,7 +1345,7 @@ function MediaCarousel({
         <div className={`${variant === "carousel" ? "min-h-80" : "h-full"} grid place-items-center text-xs font-bold text-slate-400`}>이미지 없음</div>
       )}
 
-      {isInvalid && (
+      {isInvalid && variant === "preview" && (
         <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-white/45 backdrop-blur-[2px]" aria-hidden="true">
           <span className="rounded-full bg-slate-950/65 px-4 py-2 text-sm font-extrabold text-white shadow-sm">무효 처리됨</span>
         </div>
