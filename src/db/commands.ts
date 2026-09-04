@@ -186,6 +186,41 @@ export async function createPostComment(postId: string, content: string) {
   return { id: commentRows[0].id.toString() };
 }
 
+
+export async function deletePostComment(commentId: string) {
+  const context = await getCurrentSeedContext();
+  if (!/^\d+$/.test(commentId)) {
+    throw new Error("Invalid comment id.");
+  }
+
+  const targetRows = await db
+    .select({ id: postComments.id })
+    .from(postComments)
+    .innerJoin(workoutPosts, eq(postComments.postId, workoutPosts.id))
+    .where(
+      and(
+        eq(postComments.id, BigInt(commentId)),
+        eq(postComments.userId, BigInt(context.userId)),
+        isNull(postComments.deletedAt),
+        eq(workoutPosts.groupId, BigInt(context.groupId)),
+        eq(workoutPosts.seasonId, BigInt(context.seasonId)),
+        isNull(workoutPosts.deletedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!targetRows[0]) {
+    throw new Error("Comment not found or not allowed to delete.");
+  }
+
+  const rows = await db
+    .update(postComments)
+    .set({ deletedAt: new Date() })
+    .where(eq(postComments.id, targetRows[0].id))
+    .returning({ id: postComments.id });
+
+  return { id: rows[0].id.toString() };
+}
 export async function toggleWorkoutPostInvalid(postId: string) {
   const context = await getCurrentSeedContext();
 

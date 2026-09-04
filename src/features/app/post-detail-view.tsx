@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { createPostCommentAction } from "@/app/actions";
+import { createPostCommentAction, deletePostCommentAction } from "@/app/actions";
 import type { CreatePostCommentState } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
 import type { User, WorkoutPost } from "@/domain/models";
@@ -27,6 +27,8 @@ export function PostDetailView({
   const [commentDialogOpen, setCommentDialogOpen] = useState(false);
   const [commentContent, setCommentContent] = useState("");
   const [isCommentSubmitting, setIsCommentSubmitting] = useState(false);
+  const [deleteCommentId, setDeleteCommentId] = useState<string | null>(null);
+  const [isCommentDeleting, setIsCommentDeleting] = useState(false);
 
   useEffect(() => {
     if (commentState.message) {
@@ -60,6 +62,24 @@ export function PostDetailView({
       setCommentState({ status: "error", message: "댓글 등록 중 문제가 발생했습니다." });
     } finally {
       setIsCommentSubmitting(false);
+    }
+  };
+
+  const handleDeleteComment = async () => {
+    if (!deleteCommentId || isCommentDeleting) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.set("commentId", deleteCommentId);
+    setIsCommentDeleting(true);
+
+    try {
+      await deletePostCommentAction(formData);
+      setDeleteCommentId(null);
+      router.refresh();
+    } finally {
+      setIsCommentDeleting(false);
     }
   };
 
@@ -107,11 +127,24 @@ export function PostDetailView({
                 <div key={comment.id} className="flex gap-3">
                   <Avatar name={user.name} imageUrl={user.avatarUrl} size="sm" />
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
-                      <p className="text-sm font-extrabold text-slate-950">{user.name}</p>
-                      <p className="text-xs font-semibold text-slate-400">{formatPostDateTime(new Date(comment.createdAt))}</p>
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-sm font-extrabold text-slate-950">{user.name}</p>
+                          <p className="text-xs font-semibold text-slate-400">{formatPostDateTime(new Date(comment.createdAt))}</p>
+                        </div>
+                        <p className="mt-1 whitespace-pre-wrap break-words text-sm font-medium leading-5 text-slate-700">{comment.content}</p>
+                      </div>
+                      {comment.userId === currentUserId && (
+                        <button
+                          type="button"
+                          className="shrink-0 rounded-lg px-2 py-1 text-xs font-bold text-slate-400 underline underline-offset-2 active:text-slate-600"
+                          onClick={() => setDeleteCommentId(comment.id)}
+                        >
+                          삭제
+                        </button>
+                      )}
                     </div>
-                    <p className="mt-1 whitespace-pre-wrap break-words text-sm font-medium leading-5 text-slate-700">{comment.content}</p>
                   </div>
                 </div>
               );
@@ -139,6 +172,32 @@ export function PostDetailView({
           </button>
         </form>
       </section>
+      <AppDialog
+        open={Boolean(deleteCommentId)}
+        title="댓글 삭제"
+        description="댓글을 삭제하시겠습니까?"
+        role="alertdialog"
+        dismissOnBackdrop={!isCommentDeleting}
+        onClose={() => {
+          if (!isCommentDeleting) {
+            setDeleteCommentId(null);
+          }
+        }}
+        actions={[
+          {
+            label: "취소",
+            disabled: isCommentDeleting,
+            onClick: () => setDeleteCommentId(null),
+          },
+          {
+            label: "삭제",
+            variant: "primary",
+            autoFocus: true,
+            disabled: isCommentDeleting,
+            onClick: handleDeleteComment,
+          },
+        ]}
+      />
       <AppDialog
         open={commentDialogOpen && commentState.status === "error"}
         title="확인해주세요"
