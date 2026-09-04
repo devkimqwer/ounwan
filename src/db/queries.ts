@@ -15,8 +15,10 @@ import type {
   User,
   WorkoutPost,
 } from "@/domain/models";
+import { requireCurrentUserId } from "@/auth/session";
 import type { OunwanAppData } from "@/domain/app-data";
 import { db } from "./client";
+import { CurrentUserMembershipNotFoundError } from "./errors";
 import {
   bankAccounts,
   bankBalanceRecords,
@@ -33,10 +35,9 @@ import {
   workoutPosts,
 } from "./schema";
 
-const seedCurrentKakaoId = "kakao-1";
 
 export async function getOunwanAppData(): Promise<OunwanAppData> {
-  const currentUser = await getCurrentSeedUser();
+  const currentUser = await getCurrentUser();
   const membership = await getCurrentMembership(currentUser.id);
   const group = await getGroup(membership.groupId);
   const season = await getActiveSeason(group.id);
@@ -69,16 +70,16 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
   };
 }
 
-async function getCurrentSeedUser() {
+async function getCurrentUser() {
+  const currentUserId = await requireCurrentUserId();
   const rows = await db
     .select({ id: users.id })
-    .from(oauthAccounts)
-    .innerJoin(users, eq(oauthAccounts.userId, users.id))
-    .where(and(eq(oauthAccounts.provider, "kakao"), eq(oauthAccounts.providerUserId, seedCurrentKakaoId)))
+    .from(users)
+    .where(and(eq(users.id, BigInt(currentUserId)), eq(users.status, "active"), isNull(users.deletedAt)))
     .limit(1);
 
   if (!rows[0]) {
-    throw new Error("Seed current user not found. Run npm run db:seed:local first.");
+    throw new Error("Current user not found.");
   }
 
   return { id: rows[0].id.toString() };
@@ -92,7 +93,7 @@ async function getCurrentMembership(currentUserId: string): Promise<GroupMembers
     .limit(1);
 
   if (!rows[0]) {
-    throw new Error("Current user membership not found. Run npm run db:seed:local first.");
+    throw new CurrentUserMembershipNotFoundError();
   }
 
   return {
@@ -149,6 +150,7 @@ async function getGroupUsers(groupId: string): Promise<User[]> {
       kakaoId: oauthAccounts.providerUserId,
       displayName: users.displayName,
       avatarColor: users.avatarColor,
+      avatarStorageKey: users.avatarStorageKey,
     })
     .from(groupMembers)
     .innerJoin(users, eq(groupMembers.userId, users.id))
@@ -161,6 +163,7 @@ async function getGroupUsers(groupId: string): Promise<User[]> {
     kakaoId: row.kakaoId,
     name: row.displayName,
     avatarColor: row.avatarColor ?? "#5e4ea5",
+    avatarUrl: row.avatarStorageKey ? `/uploads/${row.avatarStorageKey}` : undefined,
   }));
 }
 

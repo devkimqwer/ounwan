@@ -5,7 +5,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 
-import { buildWorkoutPostMediaStorageKey, buildWorkoutPostThumbnailStorageKey } from "./paths";
+import { buildUserAvatarStorageKey, buildWorkoutPostMediaStorageKey, buildWorkoutPostThumbnailStorageKey } from "./paths";
 import { getLocalUploadRoot } from "./settings";
 
 export type StoredMediaFile = {
@@ -88,6 +88,29 @@ export async function saveWorkoutPostMediaFiles(input: {
 }
 
 
+export async function saveUserAvatarSvg(userId: string) {
+  const avatarApiUrl = process.env.OUNWAN_AVATAR_API_URL;
+  if (!avatarApiUrl) {
+    throw new Error("OUNWAN_AVATAR_API_URL is required.");
+  }
+
+  const response = await fetch(avatarApiUrl, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Avatar API request failed: ${response.status}`);
+  }
+
+  const svg = await response.text();
+  if (!svg.includes("<svg")) {
+    throw new Error("Avatar API response must be SVG.");
+  }
+
+  const root = await getLocalUploadRoot();
+  const storageKey = buildUserAvatarStorageKey(userId);
+  const absolutePath = resolveLocalStoragePath(root, storageKey);
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, svg, "utf8");
+  return storageKey;
+}
 export async function deleteLocalMediaFiles(storageKeys: Array<string | undefined>) {
   const root = await getLocalUploadRoot();
   await Promise.allSettled(

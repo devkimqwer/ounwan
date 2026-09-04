@@ -1198,7 +1198,7 @@ function PostDetailView({
               const user = getUserById(users, comment.userId);
               return (
                 <div key={comment.id} className="flex gap-3">
-                  <Avatar name={user.name} color={user.avatarColor} size="sm" />
+                  <Avatar name={user.name} color={user.avatarColor} imageUrl={user.avatarUrl} size="sm" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2">
                       <p className="text-sm font-extrabold text-slate-950">{user.name}</p>
@@ -1456,7 +1456,7 @@ function PostCard({
   return (
     <article className="relative rounded-2xl border border-slate-200 bg-white">
       <div className="flex items-center gap-3 p-4 pb-3">
-        <Avatar name={user.name} color={user.avatarColor} />
+        <Avatar name={user.name} color={user.avatarColor} imageUrl={user.avatarUrl} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="truncate text-sm font-bold">{user.name}</p>
@@ -1606,7 +1606,7 @@ function PostCard({
           <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
             {likedUsers.map((likedUser) => (
               <div key={likedUser.id} className="flex items-center gap-3">
-                <Avatar name={likedUser.name} color={likedUser.avatarColor} />
+                <Avatar name={likedUser.name} color={likedUser.avatarColor} imageUrl={likedUser.avatarUrl} />
                 <span className="text-sm font-bold text-slate-950">{likedUser.name}</span>
               </div>
             ))}
@@ -1656,15 +1656,30 @@ function formatPostDateTime(date: Date) {
   return `${year}/${month}/${day} ${hours}:${minutes}`;
 }
 
-function Avatar({ name, color, size = "md" }: { name: string; color: string; size?: "sm" | "md" }) {
+function Avatar({
+  name,
+  color,
+  imageUrl,
+  size = "md",
+}: {
+  name: string;
+  color: string;
+  imageUrl?: string;
+  size?: "sm" | "md";
+}) {
   const sizeClassName = size === "sm" ? "h-8 w-8 text-xs" : "h-10 w-10 text-sm";
 
   return (
     <span
-      className={`grid ${sizeClassName} shrink-0 place-items-center rounded-full font-extrabold text-white`}
+      className={`grid ${sizeClassName} shrink-0 place-items-center overflow-hidden rounded-full font-extrabold text-white`}
       style={{ backgroundColor: color }}
     >
-      {name[0]}
+      {imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={imageUrl} alt="" className="h-full w-full object-cover" />
+      ) : (
+        name[0]
+      )}
     </span>
   );
 }

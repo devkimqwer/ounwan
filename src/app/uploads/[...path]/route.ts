@@ -2,7 +2,7 @@ import { eq, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/db/client";
-import { postMedia } from "@/db/schema";
+import { postMedia, users } from "@/db/schema";
 import { readLocalMediaFile } from "@/storage/local";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ path: string[] }> }) {
@@ -14,7 +14,25 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pat
     .where(or(eq(postMedia.storageKey, storageKey), eq(postMedia.thumbnailUrl, `/uploads/${storageKey}`)))
     .limit(1);
 
-  if (!rows[0]) {
+  let contentType = rows[0]
+    ? rows[0].thumbnailUrl === `/uploads/${storageKey}`
+      ? "image/webp"
+      : rows[0].contentType ?? "application/octet-stream"
+    : undefined;
+
+  if (!contentType) {
+    const userRows = await db
+      .select({ avatarStorageKey: users.avatarStorageKey })
+      .from(users)
+      .where(eq(users.avatarStorageKey, storageKey))
+      .limit(1);
+
+    if (userRows[0]) {
+      contentType = "image/svg+xml; charset=utf-8";
+    }
+  }
+
+  if (!contentType) {
     return NextResponse.json({ message: "Not found" }, { status: 404 });
   }
 
@@ -22,10 +40,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pat
     const file = await readLocalMediaFile(storageKey);
     return new Response(file, {
       headers: {
-        "Content-Type":
-          rows[0].thumbnailUrl === `/uploads/${storageKey}`
-            ? "image/webp"
-            : rows[0].contentType ?? "application/octet-stream",
+        "Content-Type": contentType,
         "Cache-Control": "private, max-age=3600",
       },
     });

@@ -1,0 +1,152 @@
+import "server-only";
+
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { cookies } from "next/headers";
+
+const sessionCookieName = "ounwan_session";
+const pendingKakaoCookieName = "ounwan_pending_kakao";
+const oauthStateCookieName = "ounwan_oauth_state";
+const sessionMaxAgeSeconds = 60 * 60 * 24 * 30;
+const pendingMaxAgeSeconds = 60 * 15;
+const stateMaxAgeSeconds = 60 * 10;
+
+type SessionPayload = {
+  userId: string;
+  expiresAt: number;
+};
+
+type PendingKakaoPayload = {
+  kakaoId: string;
+  expiresAt: number;
+};
+
+export async function getCurrentUserId() {
+  const payload = await readSignedCookie<SessionPayload>(sessionCookieName);
+  if (!payload || payload.expiresAt < Date.now()) {
+    return undefined;
+  }
+
+  return payload.userId;
+}
+
+export async function requireCurrentUserId() {
+  const userId = await getCurrentUserId();
+  if (!userId) {
+    throw new Error("Login is required.");
+  }
+
+  return userId;
+}
+
+export async function setSessionUserId(userId: string) {
+  await writeSignedCookie(sessionCookieName, { userId, expiresAt: Date.now() + sessionMaxAgeSeconds * 1000 }, sessionMaxAgeSeconds);
+}
+
+export async function clearSession() {
+  const cookieStore = await cookies();
+  cookieStore.delete(sessionCookieName);
+}
+
+export async function createOAuthState() {
+  const state = randomBytes(24).toString("base64url");
+  const cookieStore = await cookies();
+  cookieStore.set(oauthStateCookieName, state, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: stateMaxAgeSeconds,
+  });
+  return state;
+}
+
+export async function verifyOAuthState(state: string | null) {
+  const cookieStore = await cookies();
+  const storedState = cookieStore.get(oauthStateCookieName)?.value;
+  cookieStore.delete(oauthStateCookieName);
+
+  return Boolean(state && storedState && timingSafeEqualText(state, storedState));
+}
+
+export async function setPendingKakaoId(kakaoId: string) {
+  await writeSignedCookie(
+    pendingKakaoCookieName,
+    { kakaoId, expiresAt: Date.now() + pendingMaxAgeSeconds * 1000 },
+    pendingMaxAgeSeconds,
+  );
+}
+
+export async function getPendingKakaoId() {
+  const payload = await readSignedCookie<PendingKakaoPayload>(pendingKakaoCookieName);
+  if (!payload || payload.expiresAt < Date.now()) {
+    return undefined;
+  }
+
+  return payload.kakaoId;
+}
+
+export async function clearPendingKakaoId() {
+  const cookieStore = await cookies();
+  cookieStore.delete(pendingKakaoCookieName);
+}
+
+async function readSignedCookie<T>(name: string) {
+  const cookieStore = await cookies();
+  const value = cookieStore.get(name)?.value;
+  if (!value) {
+    return undefined;
+  }
+
+  return verifySignedValue<T>(value);
+}
+
+async function writeSignedCookie(name: string, payload: unknown, maxAge: number) {
+  const cookieStore = await cookies();
+  cookieStore.set(name, signPayload(payload), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge,
+  });
+}
+
+function signPayload(payload: unknown) {
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = createHmac("sha256", getSessionSecret()).update(encodedPayload).digest("base64url");
+  return `${encodedPayload}.${signature}`;
+}
+
+function verifySignedValue<T>(value: string) {
+  const [encodedPayload, signature] = value.split(".");
+  if (!encodedPayload || !signature) {
+    return undefined;
+  }
+
+  const expectedSignature = createHmac("sha256", getSessionSecret()).update(encodedPayload).digest("base64url");
+  if (!timingSafeEqualText(signature, expectedSignature)) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8")) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+function getSessionSecret() {
+  const secret = process.env.OUNWAN_SESSION_SECRET ?? process.env.KAKAO_CLIENT_SECRET ?? process.env.KAKAO_REST_API_KEY;
+  if (!secret) {
+    throw new Error("OUNWAN_SESSION_SECRET or Kakao client secret is required.");
+  }
+
+  return secret;
+}
+
+function timingSafeEqualText(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}

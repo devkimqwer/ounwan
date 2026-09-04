@@ -7,6 +7,7 @@ export interface User {
   kakaoId: string;
   name: string;
   avatarColor: string;
+  avatarUrl?: string;
 }
 
 export interface Group {

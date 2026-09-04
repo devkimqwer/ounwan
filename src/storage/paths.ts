@@ -39,6 +39,9 @@ export function buildWorkoutPostThumbnailStorageKey(input: {
   );
 }
 
+export function buildUserAvatarStorageKey(userId: string) {
+  return path.posix.join("user-avatars", userId, "avatar.svg");
+}
 function getSafeExtension(fileName: string) {
   const extension = path.extname(fileName).toLowerCase().replace(/[^a-z0-9.]/g, "");
   return extension.length > 0 && extension.length <= 12 ? extension : "";

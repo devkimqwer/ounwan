@@ -2,12 +2,12 @@ import "server-only";
 
 import { and, eq, isNull } from "drizzle-orm";
 
+import { requireCurrentUserId } from "@/auth/session";
 import { deleteLocalMediaFiles, saveWorkoutPostMediaFiles } from "@/storage/local";
 
 import { db } from "./client";
-import { groupMembers, oauthAccounts, postComments, postLikes, postMedia, seasons, users, workoutPosts } from "./schema";
-
-const seedCurrentKakaoId = "kakao-1";
+import { CurrentUserMembershipNotFoundError } from "./errors";
+import { groupMembers, postComments, postLikes, postMedia, seasons, workoutPosts } from "./schema";
 
 type CreateWorkoutPostInput = {
   workoutType?: string;
@@ -188,25 +188,15 @@ export async function deleteWorkoutPost(postId: string) {
   return { id: postRows[0].id.toString() };
 }
 async function getCurrentSeedContext() {
-  const userRows = await db
-    .select({ id: users.id })
-    .from(oauthAccounts)
-    .innerJoin(users, eq(oauthAccounts.userId, users.id))
-    .where(and(eq(oauthAccounts.provider, "kakao"), eq(oauthAccounts.providerUserId, seedCurrentKakaoId)))
-    .limit(1);
-
-  if (!userRows[0]) {
-    throw new Error("Seed current user not found. Run npm run db:seed:local first.");
-  }
-
+  const userId = await requireCurrentUserId();
   const membershipRows = await db
     .select({ groupId: groupMembers.groupId, userId: groupMembers.userId, roles: groupMembers.roles })
     .from(groupMembers)
-    .where(and(eq(groupMembers.userId, userRows[0].id), isNull(groupMembers.leftAt)))
+    .where(and(eq(groupMembers.userId, BigInt(userId)), isNull(groupMembers.leftAt)))
     .limit(1);
 
   if (!membershipRows[0]) {
-    throw new Error("Current user membership not found. Run npm run db:seed:local first.");
+    throw new CurrentUserMembershipNotFoundError();
   }
 
   const seasonRows = await db
