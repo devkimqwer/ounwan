@@ -14,6 +14,7 @@ import { MainMenuPanel } from "./main-menu-panel";
 import { MoreView } from "./more-view";
 import { PostDetailView } from "./post-detail-view";
 import { TabIcon } from "./tab-icon";
+import { PageNotReadyView } from "./page-not-ready-view";
 
 const tabs: Array<{ id: TabId; label: string }> = [
   { id: "home", label: "홈" },
@@ -29,6 +30,13 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [pendingCreatedPostId, setPendingCreatedPostId] = useState<string | null>(null);
   const detailHistoryActiveRef = useRef(false);
+  const menuHistoryActiveRef = useRef(false);
+  const tabHistoryActiveRef = useRef(false);
+  const suppressNextPopRef = useRef(false);
+  const pendingMenuSelectionRef = useRef<TabId | null>(null);
+  const activeTabRef = useRef(activeTab);
+  const menuOpenRef = useRef(menuOpen);
+  const selectedPostIdRef = useRef(selectedPostId);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTopRef = useRef(0);
   const { accountInfo, approvedGroups, bankRecords, currentUser, currentUserId, group, membership, posts, season, settlement, settlementRows, users } = appData;
@@ -46,12 +54,14 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
   const closePostDetailFromHistory = () => {
     detailHistoryActiveRef.current = false;
+    selectedPostIdRef.current = null;
     setSelectedPostId(null);
     restoreListScroll();
   };
 
   const closePostDetail = () => {
     if (detailHistoryActiveRef.current) {
+      detailHistoryActiveRef.current = false;
       window.history.back();
       return;
     }
@@ -63,33 +73,152 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     listScrollTopRef.current = contentScrollRef.current?.scrollTop ?? 0;
     detailHistoryActiveRef.current = true;
     window.history.pushState({ ounwanPostDetail: postId }, "");
+    selectedPostIdRef.current = postId;
     setSelectedPostId(postId);
     requestAnimationFrame(() => {
       contentScrollRef.current?.scrollTo({ top: 0 });
     });
   };
 
+  const openMenu = () => {
+    if (menuOpenRef.current) {
+      return;
+    }
+
+    menuHistoryActiveRef.current = true;
+    window.history.pushState({ ounwanMenu: true }, "");
+    menuOpenRef.current = true;
+    setMenuOpen(true);
+  };
+
+  const closeMenuFromHistory = () => {
+    menuHistoryActiveRef.current = false;
+    menuOpenRef.current = false;
+    setMenuOpen(false);
+  };
+
+  const closeMenu = () => {
+    if (menuHistoryActiveRef.current) {
+      menuHistoryActiveRef.current = false;
+      suppressNextPopRef.current = true;
+      window.history.back();
+    }
+
+    menuOpenRef.current = false;
+    setMenuOpen(false);
+  };
+
+  const moveToTab = (tabId: TabId) => {
+    selectedPostIdRef.current = null;
+    setSelectedPostId(null);
+
+    if (tabId === "home") {
+      if (tabHistoryActiveRef.current) {
+        tabHistoryActiveRef.current = false;
+        suppressNextPopRef.current = true;
+        window.history.back();
+      }
+
+      activeTabRef.current = "home";
+      setActiveTab("home");
+      requestAnimationFrame(() => {
+        contentScrollRef.current?.scrollTo({ top: 0 });
+      });
+      return;
+    }
+
+    if (activeTabRef.current === "home" && !tabHistoryActiveRef.current) {
+      tabHistoryActiveRef.current = true;
+      window.history.pushState({ ounwanTab: tabId }, "");
+    } else if (tabHistoryActiveRef.current) {
+      window.history.replaceState({ ounwanTab: tabId }, "");
+    }
+
+    activeTabRef.current = tabId;
+    setActiveTab(tabId);
+  };
+
   const handlePostCreated = (postId: string) => {
+    if (!tabHistoryActiveRef.current) {
+      tabHistoryActiveRef.current = true;
+      window.history.pushState({ ounwanTab: "feed" }, "");
+    } else {
+      window.history.replaceState({ ounwanTab: "feed" }, "");
+    }
+
+    activeTabRef.current = "feed";
     setActiveTab("feed");
+    selectedPostIdRef.current = null;
     setSelectedPostId(null);
     setPendingCreatedPostId(postId);
     router.refresh();
   };
 
   const selectTab = (tabId: TabId) => {
+    if (menuHistoryActiveRef.current) {
+      pendingMenuSelectionRef.current = tabId;
+      menuHistoryActiveRef.current = false;
+      window.history.back();
+      menuOpenRef.current = false;
+      setMenuOpen(false);
+      return;
+    }
+
     if (detailHistoryActiveRef.current) {
       detailHistoryActiveRef.current = false;
+      suppressNextPopRef.current = true;
       window.history.back();
     }
 
-    setActiveTab(tabId);
-    setSelectedPostId(null);
+    moveToTab(tabId);
   };
 
   useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  useEffect(() => {
+    menuOpenRef.current = menuOpen;
+  }, [menuOpen]);
+
+  useEffect(() => {
+    selectedPostIdRef.current = selectedPostId;
+  }, [selectedPostId]);
+
+  useEffect(() => {
     const handlePopState = () => {
-      if (detailHistoryActiveRef.current) {
+      const pendingMenuSelection = pendingMenuSelectionRef.current;
+      if (pendingMenuSelection) {
+        pendingMenuSelectionRef.current = null;
+        closeMenuFromHistory();
+        moveToTab(pendingMenuSelection);
+        return;
+      }
+
+      if (suppressNextPopRef.current) {
+        suppressNextPopRef.current = false;
+        return;
+      }
+
+      if (detailHistoryActiveRef.current || selectedPostIdRef.current) {
         closePostDetailFromHistory();
+        return;
+      }
+
+      if (menuHistoryActiveRef.current || menuOpenRef.current) {
+        closeMenuFromHistory();
+        return;
+      }
+
+      if (tabHistoryActiveRef.current || activeTabRef.current !== "home") {
+        tabHistoryActiveRef.current = false;
+        selectedPostIdRef.current = null;
+        activeTabRef.current = "home";
+        setSelectedPostId(null);
+        setActiveTab("home");
+        requestAnimationFrame(() => {
+          contentScrollRef.current?.scrollTo({ top: 0 });
+        });
       }
     };
 
@@ -115,7 +244,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
             className="grid h-10 w-10 place-items-center rounded-full text-slate-900 transition-colors hover:bg-slate-100 active:bg-slate-200"
             aria-label="전체 메뉴 열기"
             aria-expanded={menuOpen}
-            onClick={() => setMenuOpen(true)}
+            onClick={openMenu}
           >
             <svg
               aria-hidden="true"
@@ -162,10 +291,9 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
           userName={currentUser.name}
           isAdmin={isAdmin}
           isTreasurer={isTreasurer}
-          onClose={() => setMenuOpen(false)}
+          onClose={closeMenu}
           onSelect={(tabId) => {
             selectTab(tabId);
-            setMenuOpen(false);
           }}
         />
 
@@ -212,13 +340,14 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
               )}
               {activeTab === "cert" && <CertView onPostCreated={handlePostCreated} />}
               {activeTab === "calendar" && (
-                <CalendarView
-                  currentUserId={currentUserId}
-                  isAdmin={isAdmin}
-                  posts={posts}
-                  users={users}
-                  onPostOpen={openPostDetail}
-                />
+                <PageNotReadyView />
+                // <CalendarView
+                //   currentUserId={currentUserId}
+                //   isAdmin={isAdmin}
+                //   posts={posts}
+                //   users={users}
+                //   onPostOpen={openPostDetail}
+                // />
               )}
               {activeTab === "more" && (
                 <MoreView
