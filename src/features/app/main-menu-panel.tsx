@@ -1,6 +1,7 @@
 import Image from "next/image";
 
 import type { TabId } from "./app-types";
+import { MenuLogoutButton } from "@/features/auth/logout-controls";
 
 export function MainMenuPanel({
   open,
@@ -92,6 +93,9 @@ export function MainMenuPanel({
               ]}
             />
           )}
+        </div>
+        <div className="shrink-0 border-t border-slate-100 bg-white">
+          <MenuLogoutButton />
         </div>
       </div>
     </aside>
