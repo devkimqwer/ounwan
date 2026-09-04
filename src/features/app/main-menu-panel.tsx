@@ -7,14 +7,12 @@ export function MainMenuPanel({
   open,
   userName,
   isAdmin,
-  isTreasurer,
   onClose,
   onSelect,
 }: {
   open: boolean;
   userName: string;
   isAdmin: boolean;
-  isTreasurer: boolean;
   onClose: () => void;
   onSelect: (tabId: TabId) => void;
 }) {
@@ -59,11 +57,6 @@ export function MainMenuPanel({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-          <div className="mb-7">
-            <p className="text-xl font-extrabold tracking-normal">오운완</p>
-            <p className="mt-2 text-sm font-semibold text-slate-500">{userName}님</p>
-          </div>
-
           <MainMenuSection
             title="메뉴"
             rows={[
@@ -71,15 +64,16 @@ export function MainMenuPanel({
               { label: "피드", onClick: () => onSelect("feed") },
               { label: "인증", onClick: () => onSelect("cert") },
               { label: "캘린더", onClick: () => onSelect("calendar") },
+              { label: "결산 내역", onClick: () => onSelect("more") },
+              { label: "잔고 현황", onClick: () => onSelect("more") },
             ]}
           />
 
           <MainMenuSection
             title="총무"
             rows={[
-              { label: "계좌 정보 수정", onClick: () => onSelect("more") },
-              { label: "통장 잔고 등록", onClick: () => onSelect("more") },
-              { label: isTreasurer ? "정산 관리" : "정산 보기", onClick: () => onSelect("more") },
+              { label: "계좌 정보 관리", onClick: () => onSelect("more") },
+              { label: "잔고 등록", onClick: () => onSelect("more") },
             ]}
           />
 
@@ -88,8 +82,8 @@ export function MainMenuPanel({
               title="관리자"
               rows={[
                 { label: "시즌 관리", onClick: () => onSelect("more") },
-                { label: "주간 결산 관리", onClick: () => onSelect("more") },
-                { label: "멤버 승인 관리", onClick: () => onSelect("more") },
+                { label: "결산 관리", onClick: () => onSelect("more") },
+                { label: "그룹 멤버 관리", onClick: () => onSelect("more") },
               ]}
             />
           )}

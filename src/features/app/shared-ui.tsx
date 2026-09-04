@@ -74,12 +74,12 @@ export function Badge({ children, tone }: { children: ReactNode; tone: "green" |
   );
 }
 
-export function MenuBlock({ title, rows }: { title: string; rows: string[] }) {
+export function MenuBlock({ title, rows }: { title?: string; rows: ReactNode[] }) {
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-      <h2 className="border-b border-slate-200 px-4 py-3 text-sm font-extrabold">{title}</h2>
-      {rows.map((row) => (
-        <div key={row} className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 last:border-b-0">
+      {title && <h2 className="border-b border-slate-200 px-4 py-3 text-sm font-extrabold">{title}</h2>}
+      {rows.map((row, idx) => (
+        <div key={idx} className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 last:border-b-0">
           {row}
         </div>
       ))}

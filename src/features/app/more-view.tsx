@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { refreshCurrentUserAvatarAction, switchCurrentGroupAction, updateCurrentUserProfileAction } from "@/app/actions";
 import type { RefreshCurrentUserAvatarState, UpdateCurrentUserProfileState } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
-import type { AccountInfo, BankRecord, Group, Settlement, SettlementRow, User, UserGroupMembership } from "@/domain/models";
+import type { AccountInfo, Group, User, UserGroupMembership } from "@/domain/models";
 import { TextLogoutButton } from "@/features/auth/logout-controls";
 import { Avatar, Badge, getDisplayRoles, getRoleBadgeTone, getRoleLabel, MenuBlock } from "./shared-ui";
 
@@ -15,9 +15,6 @@ export function MoreView({
   currentGroup,
   approvedGroups,
   accountInfo,
-  bankRecords,
-  settlement,
-  settlementRows,
 }: {
   isAdmin: boolean;
   isTreasurer: boolean;
@@ -25,12 +22,8 @@ export function MoreView({
   currentGroup: Group;
   approvedGroups: UserGroupMembership[];
   accountInfo: AccountInfo;
-  bankRecords: BankRecord[];
-  settlement: Settlement;
-  settlementRows: SettlementRow[];
 }) {
   const router = useRouter();
-  const finalFineTotal = settlementRows.reduce((sum, row) => sum + row.finalFineAmount, 0);
   const profileInitialState: UpdateCurrentUserProfileState = { status: "idle", message: "" };
   const avatarInitialState: RefreshCurrentUserAvatarState = { status: "idle", message: "" };
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
@@ -41,6 +34,7 @@ export function MoreView({
   const [isProfileSubmitting, setIsProfileSubmitting] = useState(false);
   const [isAvatarRefreshing, setIsAvatarRefreshing] = useState(false);
   const [switchingGroupId, setSwitchingGroupId] = useState<string | null>(null);
+  const [notReadyTitle, setNotReadyTitle] = useState<string | null>(null);
 
   useEffect(() => {
     setProfileName(currentUser.name);
@@ -110,6 +104,10 @@ export function MoreView({
     }
   };
 
+  const openNotReadyDialog = (title: string) => {
+    setNotReadyTitle(title);
+  };
+
   return (
     <div className="space-y-4 p-4">
       <section className="relative rounded-2xl border border-slate-200 bg-white p-5">
@@ -161,31 +159,51 @@ export function MoreView({
       </section>
 
       <MenuBlock
-        title="결산"
+        title="벌금 입금 계좌"
         rows={[
-          `이번 주 결산: ${settlement.status === "draft" ? "미확정" : "확정"}`,
-          `최종 벌금 합계: ${finalFineTotal.toLocaleString()}원`,
-          `입금 계좌: ${accountInfo.bankName} ${accountInfo.accountNumber}`,
+          <MoreInfoRow key="bank-name" label="은행" value={accountInfo.bankName} />,
+          <MoreInfoRow key="holder-name" label="예금주" value={accountInfo.holderName} />,
+          <MoreInfoRow key="account-number" label="계좌번호" value={accountInfo.accountNumber} />,
         ]}
       />
+
       <MenuBlock
-        title="통장"
         rows={[
-          `최근 잔고 등록 ${bankRecords.length}건`,
-          isTreasurer ? "통장 잔고 등록/관리 가능" : "통장 잔고 조회만 가능",
+          <MoreMenuRow key="settlement-history" label="결산 내역" onClick={() => openNotReadyDialog("결산 내역")} />,
+          <MoreMenuRow key="balance-status" label="잔고 현황" onClick={() => openNotReadyDialog("잔고 현황")} />,
         ]}
       />
+
+      <MenuBlock
+        title="총무"
+        rows={[
+          <MoreMenuRow key="account-management" label="계좌 정보 관리" onClick={() => openNotReadyDialog("계좌 정보 관리")} />,
+          <MoreMenuRow key="balance-registration" label="잔고 등록" onClick={() => openNotReadyDialog("잔고 등록")} />,
+        ]}
+      />
+
       {isAdmin && (
         <MenuBlock
-          title="관리"
-          rows={["시즌 관리", "주간 결산 관리", "계좌 정보 수정"]}
+          title="관리자"
+          rows={[
+            <MoreMenuRow key="season-management" label="시즌 관리" onClick={() => openNotReadyDialog("시즌 관리")} />,
+            <MoreMenuRow key="settlement-management" label="결산 관리" onClick={() => openNotReadyDialog("결산 관리")} />,
+            <MoreMenuRow key="member-management" label="그룹 멤버 관리" onClick={() => openNotReadyDialog("그룹 멤버 관리")} />,
+          ]}
         />
       )}
-
       <div className="flex justify-center bg-slate-50 px-4 py-3">
         <TextLogoutButton />
       </div>
 
+      <AppDialog
+        open={Boolean(notReadyTitle)}
+        title={notReadyTitle ?? "서비스 준비중"}
+        description="서비스 준비중입니다."
+        onClose={() => setNotReadyTitle(null)}
+        dismissOnBackdrop
+        actions={[{ label: "확인", onClick: () => setNotReadyTitle(null) }]}
+      />
       <AppDialog
         open={groupDialogOpen}
         title="그룹 전환"
@@ -267,5 +285,33 @@ export function MoreView({
         </div>
       </AppDialog>
     </div>
+  );
+}
+function MoreInfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="shrink-0 font-extrabold text-slate-900">{label}</span>
+      <span className="min-w-0 truncate text-right text-slate-700">{value}</span>
+    </div>
+  );
+}
+
+function MoreMenuRow({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button type="button" className="flex min-h-6 w-full items-center justify-between gap-4 text-left" onClick={onClick}>
+      <span className="min-w-0 truncate">{label}</span>
+      <svg
+        aria-hidden="true"
+        className="h-5 w-5 shrink-0 text-slate-300"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="m9 18 6-6-6-6" />
+      </svg>
+    </button>
   );
 }

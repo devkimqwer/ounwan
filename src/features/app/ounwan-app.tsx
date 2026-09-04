@@ -6,7 +6,6 @@ import { useEffect, useRef, useState } from "react";
 
 import type { OunwanAppData } from "@/domain/app-data";
 import type { TabId } from "./app-types";
-import { CalendarView } from "./calendar-view";
 import { CertView } from "./cert-view";
 import { FeedView } from "./feed-view";
 import { HomeView } from "./home-view";
@@ -39,7 +38,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const selectedPostIdRef = useRef(selectedPostId);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTopRef = useRef(0);
-  const { accountInfo, approvedGroups, bankRecords, currentUser, currentUserId, group, membership, posts, season, settlement, settlementRows, users } = appData;
+  const { accountInfo, approvedGroups, currentUser, currentUserId, group, membership, posts, season, settlement, users } = appData;
   const roles = membership.roles;
   const isAdmin = roles.includes("admin");
   const isTreasurer = roles.includes("treasurer");
@@ -290,7 +289,6 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
           open={menuOpen}
           userName={currentUser.name}
           isAdmin={isAdmin}
-          isTreasurer={isTreasurer}
           onClose={closeMenu}
           onSelect={(tabId) => {
             selectTab(tabId);
@@ -341,13 +339,6 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
               {activeTab === "cert" && <CertView onPostCreated={handlePostCreated} />}
               {activeTab === "calendar" && (
                 <PageNotReadyView />
-                // <CalendarView
-                //   currentUserId={currentUserId}
-                //   isAdmin={isAdmin}
-                //   posts={posts}
-                //   users={users}
-                //   onPostOpen={openPostDetail}
-                // />
               )}
               {activeTab === "more" && (
                 <MoreView
@@ -357,9 +348,6 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                   currentGroup={group}
                   approvedGroups={approvedGroups}
                   accountInfo={accountInfo}
-                  bankRecords={bankRecords}
-                  settlement={settlement}
-                  settlementRows={settlementRows}
                 />
               )}
             </>
