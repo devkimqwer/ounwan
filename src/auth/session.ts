@@ -4,6 +4,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 
 const sessionCookieName = "ounwan_session";
+const currentGroupCookieName = "ounwan_current_group";
 const pendingKakaoCookieName = "ounwan_pending_kakao";
 const oauthStateCookieName = "ounwan_oauth_state";
 const sessionMaxAgeSeconds = 60 * 60 * 24 * 30;
@@ -12,6 +13,12 @@ const stateMaxAgeSeconds = 60 * 10;
 
 type SessionPayload = {
   userId: string;
+  expiresAt: number;
+};
+
+type CurrentGroupPayload = {
+  userId: string;
+  groupId: string;
   expiresAt: number;
 };
 
@@ -45,6 +52,24 @@ export async function setSessionUserId(userId: string) {
 export async function clearSession() {
   const cookieStore = await cookies();
   cookieStore.delete(sessionCookieName);
+  cookieStore.delete(currentGroupCookieName);
+}
+
+export async function getCurrentGroupIdForUser(userId: string) {
+  const payload = await readSignedCookie<CurrentGroupPayload>(currentGroupCookieName);
+  if (!payload || payload.expiresAt < Date.now() || payload.userId !== userId) {
+    return undefined;
+  }
+
+  return payload.groupId;
+}
+
+export async function setCurrentGroupIdForUser(userId: string, groupId: string) {
+  await writeSignedCookie(
+    currentGroupCookieName,
+    { userId, groupId, expiresAt: Date.now() + sessionMaxAgeSeconds * 1000 },
+    sessionMaxAgeSeconds,
+  );
 }
 
 export async function createOAuthState() {

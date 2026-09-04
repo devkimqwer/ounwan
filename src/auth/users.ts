@@ -5,7 +5,6 @@ import { oauthAccounts, users } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { saveUserAvatarSvg } from "@/storage/local";
 
-const defaultAvatarColor = "#5e4ea5";
 
 export async function findUserIdByKakaoId(kakaoId: string) {
   const rows = await db
@@ -25,7 +24,7 @@ export async function registerKakaoUser(input: { kakaoId: string; displayName: s
 
   const userRows = await db
     .insert(users)
-    .values({ displayName: input.displayName, avatarColor: defaultAvatarColor })
+    .values({ displayName: input.displayName })
     .returning({ id: users.id });
   const userId = userRows[0].id;
 

@@ -6,7 +6,6 @@ export interface User {
   id: string;
   kakaoId: string;
   name: string;
-  avatarColor: string;
   avatarUrl?: string;
 }
 
@@ -23,6 +22,11 @@ export interface GroupMembership {
   roles: Role[];
   joinedAt: string;
   leftAt?: string;
+}
+
+export interface UserGroupMembership {
+  group: Group;
+  membership: GroupMembership;
 }
 
 export interface Season {

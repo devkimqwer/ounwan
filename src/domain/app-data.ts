@@ -3,6 +3,7 @@ import type {
   BankRecord,
   Group,
   GroupMembership,
+  UserGroupMembership,
   Season,
   Settlement,
   SettlementRow,
@@ -14,6 +15,8 @@ export interface OunwanAppData {
   currentUserId: string;
   currentGroupId: string;
   currentSeasonId: string;
+  currentUser: User;
+  approvedGroups: UserGroupMembership[];
   users: User[];
   group: Group;
   membership: GroupMembership;

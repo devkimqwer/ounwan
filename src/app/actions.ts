@@ -2,11 +2,22 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createPostComment, createWorkoutPost, deleteWorkoutPost, togglePostLike, toggleWorkoutPostInvalid } from "@/db/commands";
+import { createPostComment, createWorkoutPost, deleteWorkoutPost, refreshCurrentUserAvatar, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
 const MAX_WORKOUT_POST_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_POST_COMMENT_LENGTH = 500;
+const MAX_DISPLAY_NAME_LENGTH = 20;
+
+export type UpdateCurrentUserProfileState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
+export type RefreshCurrentUserAvatarState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
 
 export type CreateWorkoutPostState = {
   status: "idle" | "success" | "error";
@@ -20,6 +31,49 @@ export type CreatePostCommentState = {
   message: string;
 };
 
+
+export async function updateCurrentUserProfileAction(
+  _previousState: UpdateCurrentUserProfileState,
+  formData: FormData,
+): Promise<UpdateCurrentUserProfileState> {
+  const displayName = String(formData.get("displayName") ?? "").trim();
+
+  if (!displayName) {
+    return { status: "error", message: "이름을 입력해주세요." };
+  }
+
+  if (displayName.length > MAX_DISPLAY_NAME_LENGTH) {
+    return { status: "error", message: `이름은 ${MAX_DISPLAY_NAME_LENGTH}자 이내로 입력해주세요.` };
+  }
+
+  await updateCurrentUserProfile(displayName);
+  revalidatePath("/");
+
+  return { status: "success", message: "이름이 변경됐습니다." };
+}
+
+export async function refreshCurrentUserAvatarAction(
+  _previousState: RefreshCurrentUserAvatarState,
+): Promise<RefreshCurrentUserAvatarState> {
+  try {
+    await refreshCurrentUserAvatar();
+    revalidatePath("/");
+    return { status: "success", message: "아바타가 새로고침됐습니다." };
+  } catch {
+    return { status: "error", message: "아바타 새로고침 중 문제가 발생했습니다." };
+  }
+}
+
+export async function switchCurrentGroupAction(formData: FormData) {
+  const groupId = String(formData.get("groupId") ?? "").trim();
+
+  if (!groupId) {
+    throw new Error("groupId is required.");
+  }
+
+  await switchCurrentGroup(groupId);
+  revalidatePath("/");
+}
 export async function createPostCommentAction(
   _previousState: CreatePostCommentState,
   formData: FormData,

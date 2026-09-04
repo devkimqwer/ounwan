@@ -41,7 +41,6 @@ const timestamps = {
 export const users = pgTable("users", {
   id: bigserial("id", { mode: "bigint" }).primaryKey(),
   displayName: varchar("display_name", { length: 100 }).notNull(),
-  avatarColor: varchar("avatar_color", { length: 20 }),
   avatarStorageKey: text("avatar_storage_key"),
   status: userStatusEnum("status").notNull().default("active"),
   ...timestamps,

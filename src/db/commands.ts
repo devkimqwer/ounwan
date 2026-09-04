@@ -1,19 +1,79 @@
 import "server-only";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
-import { requireCurrentUserId } from "@/auth/session";
-import { deleteLocalMediaFiles, saveWorkoutPostMediaFiles } from "@/storage/local";
+import { getCurrentGroupIdForUser, requireCurrentUserId, setCurrentGroupIdForUser } from "@/auth/session";
+import { deleteLocalMediaFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/local";
 
 import { db } from "./client";
 import { CurrentUserMembershipNotFoundError } from "./errors";
-import { groupMembers, postComments, postLikes, postMedia, seasons, workoutPosts } from "./schema";
+import { groupMembers, groups, postComments, postLikes, postMedia, seasons, users, workoutPosts } from "./schema";
 
 type CreateWorkoutPostInput = {
   workoutType?: string;
   content?: string;
   mediaFiles: File[];
 };
+
+
+export async function updateCurrentUserProfile(displayName: string) {
+  const userId = await requireCurrentUserId();
+  const rows = await db
+    .update(users)
+    .set({ displayName, updatedAt: new Date() })
+    .where(and(eq(users.id, BigInt(userId)), eq(users.status, "active"), isNull(users.deletedAt)))
+    .returning({ id: users.id });
+
+  if (!rows[0]) {
+    throw new Error("Current user not found.");
+  }
+
+  return { id: rows[0].id.toString() };
+}
+
+export async function refreshCurrentUserAvatar() {
+  const userId = await requireCurrentUserId();
+  const avatarStorageKey = await saveUserAvatarSvg(userId);
+  const rows = await db
+    .update(users)
+    .set({ avatarStorageKey, updatedAt: new Date() })
+    .where(and(eq(users.id, BigInt(userId)), eq(users.status, "active"), isNull(users.deletedAt)))
+    .returning({ id: users.id });
+
+  if (!rows[0]) {
+    throw new Error("Current user not found.");
+  }
+
+  return { id: rows[0].id.toString() };
+}
+
+export async function switchCurrentGroup(groupId: string) {
+  const userId = await requireCurrentUserId();
+  if (!/^\d+$/.test(groupId)) {
+    throw new Error("Invalid group id.");
+  }
+
+  const rows = await db
+    .select({ groupId: groupMembers.groupId })
+    .from(groupMembers)
+    .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+    .where(
+      and(
+        eq(groupMembers.userId, BigInt(userId)),
+        eq(groupMembers.groupId, BigInt(groupId)),
+        isNull(groupMembers.leftAt),
+        isNull(groups.deletedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!rows[0]) {
+    throw new Error("Group membership not found.");
+  }
+
+  await setCurrentGroupIdForUser(userId, rows[0].groupId.toString());
+  return { groupId: rows[0].groupId.toString() };
+}
 
 export async function createWorkoutPost(input: CreateWorkoutPostInput) {
   const context = await getCurrentSeedContext();
@@ -189,20 +249,23 @@ export async function deleteWorkoutPost(postId: string) {
 }
 async function getCurrentSeedContext() {
   const userId = await requireCurrentUserId();
+  const selectedGroupId = await getCurrentGroupIdForUser(userId);
   const membershipRows = await db
     .select({ groupId: groupMembers.groupId, userId: groupMembers.userId, roles: groupMembers.roles })
     .from(groupMembers)
-    .where(and(eq(groupMembers.userId, BigInt(userId)), isNull(groupMembers.leftAt)))
-    .limit(1);
+    .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+    .where(and(eq(groupMembers.userId, BigInt(userId)), isNull(groupMembers.leftAt), isNull(groups.deletedAt)))
+    .orderBy(desc(groupMembers.updatedAt), desc(groups.id));
+  const membership = membershipRows.find((row) => row.groupId.toString() === selectedGroupId) ?? membershipRows[0];
 
-  if (!membershipRows[0]) {
+  if (!membership) {
     throw new CurrentUserMembershipNotFoundError();
   }
 
   const seasonRows = await db
     .select({ id: seasons.id })
     .from(seasons)
-    .where(and(eq(seasons.groupId, membershipRows[0].groupId), eq(seasons.status, "active")))
+    .where(and(eq(seasons.groupId, membership.groupId), eq(seasons.status, "active")))
     .limit(1);
 
   if (!seasonRows[0]) {
@@ -210,10 +273,10 @@ async function getCurrentSeedContext() {
   }
 
   return {
-    userId: membershipRows[0].userId.toString(),
-    groupId: membershipRows[0].groupId.toString(),
+    userId: membership.userId.toString(),
+    groupId: membership.groupId.toString(),
     seasonId: seasonRows[0].id.toString(),
-    roles: membershipRows[0].roles,
+    roles: membership.roles,
   };
 }
 

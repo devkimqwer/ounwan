@@ -13,9 +13,10 @@ import type {
   Settlement,
   SettlementRow,
   User,
+  UserGroupMembership,
   WorkoutPost,
 } from "@/domain/models";
-import { requireCurrentUserId } from "@/auth/session";
+import { getCurrentGroupIdForUser, requireCurrentUserId } from "@/auth/session";
 import type { OunwanAppData } from "@/domain/app-data";
 import { db } from "./client";
 import { CurrentUserMembershipNotFoundError } from "./errors";
@@ -38,8 +39,16 @@ import {
 
 export async function getOunwanAppData(): Promise<OunwanAppData> {
   const currentUser = await getCurrentUser();
-  const membership = await getCurrentMembership(currentUser.id);
-  const group = await getGroup(membership.groupId);
+  const approvedGroups = await getApprovedGroupMemberships(currentUser.id);
+  const selectedGroupId = await getCurrentGroupIdForUser(currentUser.id);
+  const selectedGroup = approvedGroups.find(({ group }) => group.id === selectedGroupId) ?? approvedGroups[0];
+
+  if (!selectedGroup) {
+    throw new CurrentUserMembershipNotFoundError();
+  }
+
+  const group = selectedGroup.group;
+  const membership = selectedGroup.membership;
   const season = await getActiveSeason(group.id);
   const [appUsers, posts, settlement, bankRecords, accountInfo] = await Promise.all([
     getGroupUsers(group.id),
@@ -58,6 +67,8 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
     currentUserId: currentUser.id,
     currentGroupId: group.id,
     currentSeasonId: season.id,
+    currentUser,
+    approvedGroups,
     users: appUsers,
     group,
     membership,
@@ -70,11 +81,18 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
   };
 }
 
-async function getCurrentUser() {
+async function getCurrentUser(): Promise<User> {
   const currentUserId = await requireCurrentUserId();
   const rows = await db
-    .select({ id: users.id })
+    .select({
+      id: users.id,
+      kakaoId: oauthAccounts.providerUserId,
+      displayName: users.displayName,
+      avatarStorageKey: users.avatarStorageKey,
+      updatedAt: users.updatedAt,
+    })
     .from(users)
+    .leftJoin(oauthAccounts, eq(oauthAccounts.userId, users.id))
     .where(and(eq(users.id, BigInt(currentUserId)), eq(users.status, "active"), isNull(users.deletedAt)))
     .limit(1);
 
@@ -82,27 +100,37 @@ async function getCurrentUser() {
     throw new Error("Current user not found.");
   }
 
-  return { id: rows[0].id.toString() };
+  return {
+    id: rows[0].id.toString(),
+    kakaoId: rows[0].kakaoId ?? "",
+    name: rows[0].displayName,
+    avatarUrl: rows[0].avatarStorageKey ? `/uploads/${rows[0].avatarStorageKey}?v=${rows[0].updatedAt.getTime()}` : undefined,
+  };
 }
 
-async function getCurrentMembership(currentUserId: string): Promise<GroupMembership> {
+async function getApprovedGroupMemberships(currentUserId: string): Promise<UserGroupMembership[]> {
   const rows = await db
-    .select()
+    .select({ group: groups, member: groupMembers })
     .from(groupMembers)
-    .where(and(eq(groupMembers.userId, BigInt(currentUserId)), isNull(groupMembers.leftAt)))
-    .limit(1);
+    .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+    .where(and(eq(groupMembers.userId, BigInt(currentUserId)), isNull(groupMembers.leftAt), isNull(groups.deletedAt)))
+    .orderBy(desc(groupMembers.updatedAt), desc(groups.id));
 
-  if (!rows[0]) {
-    throw new CurrentUserMembershipNotFoundError();
-  }
-
-  return {
-    groupId: rows[0].groupId.toString(),
-    userId: rows[0].userId.toString(),
-    roles: rows[0].roles,
-    joinedAt: rows[0].joinedAt,
-    leftAt: rows[0].leftAt ?? undefined,
-  };
+  return rows.map(({ group, member }) => ({
+    group: {
+      id: group.id.toString(),
+      name: group.name,
+      visibility: group.visibility,
+      ownerUserId: group.ownerUserId.toString(),
+    },
+    membership: {
+      groupId: member.groupId.toString(),
+      userId: member.userId.toString(),
+      roles: member.roles,
+      joinedAt: member.joinedAt,
+      leftAt: member.leftAt ?? undefined,
+    },
+  }));
 }
 
 async function getGroup(groupId: string): Promise<Group> {
@@ -149,8 +177,8 @@ async function getGroupUsers(groupId: string): Promise<User[]> {
       id: users.id,
       kakaoId: oauthAccounts.providerUserId,
       displayName: users.displayName,
-      avatarColor: users.avatarColor,
       avatarStorageKey: users.avatarStorageKey,
+      updatedAt: users.updatedAt,
     })
     .from(groupMembers)
     .innerJoin(users, eq(groupMembers.userId, users.id))
@@ -162,8 +190,7 @@ async function getGroupUsers(groupId: string): Promise<User[]> {
     id: row.id.toString(),
     kakaoId: row.kakaoId,
     name: row.displayName,
-    avatarColor: row.avatarColor ?? "#5e4ea5",
-    avatarUrl: row.avatarStorageKey ? `/uploads/${row.avatarStorageKey}` : undefined,
+    avatarUrl: row.avatarStorageKey ? `/uploads/${row.avatarStorageKey}?v=${row.updatedAt.getTime()}` : undefined,
   }));
 }
 

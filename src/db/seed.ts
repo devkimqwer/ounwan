@@ -44,12 +44,12 @@ const queryClient = postgres(getDatabaseUrl(), { max: 1 });
 const db = drizzle(queryClient);
 
 const seedUsers = [
-  { key: "user-1", kakaoId: "kakao-1", displayName: "김지수", avatarColor: "#5e4ea5" },
-  { key: "user-2", kakaoId: "kakao-2", displayName: "박은영", avatarColor: "#8b5cf6" },
-  { key: "user-3", kakaoId: "kakao-3", displayName: "이철수", avatarColor: "#f59e0b" },
-  { key: "user-4", kakaoId: "kakao-4", displayName: "최민준", avatarColor: "#3b82f6" },
-  { key: "user-5", kakaoId: "kakao-5", displayName: "정수아", avatarColor: "#ec4899" },
-  { key: "user-6", kakaoId: "kakao-6", displayName: "한태양", avatarColor: "#10b981" },
+  { key: "user-1", kakaoId: "kakao-1", displayName: "김지수" },
+  { key: "user-2", kakaoId: "kakao-2", displayName: "박은영" },
+  { key: "user-3", kakaoId: "kakao-3", displayName: "이철수" },
+  { key: "user-4", kakaoId: "kakao-4", displayName: "최민준" },
+  { key: "user-5", kakaoId: "kakao-5", displayName: "정수아" },
+  { key: "user-6", kakaoId: "kakao-6", displayName: "한태양" },
 ] as const;
 
 type UserKey = (typeof seedUsers)[number]["key"];
@@ -139,7 +139,7 @@ async function main() {
       if (existing[0]) {
         await tx
           .update(users)
-          .set({ displayName: seedUser.displayName, avatarColor: seedUser.avatarColor, updatedAt: new Date() })
+          .set({ displayName: seedUser.displayName, updatedAt: new Date() })
           .where(eq(users.id, existing[0].userId));
         userIds.set(seedUser.key, existing[0].userId);
         continue;
@@ -147,7 +147,7 @@ async function main() {
 
       const [createdUser] = await tx
         .insert(users)
-        .values({ displayName: seedUser.displayName, avatarColor: seedUser.avatarColor })
+        .values({ displayName: seedUser.displayName })
         .returning({ id: users.id });
 
       await tx.insert(oauthAccounts).values({
