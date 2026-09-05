@@ -208,7 +208,6 @@ async function main() {
       .insert(groupInvites)
       .values({
         groupId,
-        seasonId: season.id,
         inviteToken: "seed-invite-ounwan-2026-3",
         createdByUserId: ownerUserId,
         status: "active",
@@ -217,7 +216,6 @@ async function main() {
 
     await tx.insert(groupJoinRequests).values({
       groupId,
-      seasonId: season.id,
       inviteId: invite.id,
       userId: requiredId(userIds, "user-6", "user"),
       status: "approved",

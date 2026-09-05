@@ -134,20 +134,17 @@ export async function getValidGroupInviteByToken(inviteToken: string): Promise<G
     .select({
       invite: groupInvites,
       group: groups,
-      season: seasons,
       createdByUser: users,
       createdByKakaoId: oauthAccounts.providerUserId,
     })
     .from(groupInvites)
     .innerJoin(groups, eq(groupInvites.groupId, groups.id))
-    .innerJoin(seasons, eq(groupInvites.seasonId, seasons.id))
     .innerJoin(users, eq(groupInvites.createdByUserId, users.id))
     .leftJoin(oauthAccounts, and(eq(oauthAccounts.userId, users.id), eq(oauthAccounts.provider, "kakao")))
     .where(
       and(
         eq(groupInvites.inviteToken, trimmedToken),
         eq(groupInvites.status, "active"),
-        eq(seasons.status, "active"),
         isNull(groups.deletedAt),
         isNull(users.deletedAt),
         gt(groupInvites.expiresAt, now),
@@ -169,7 +166,6 @@ export async function getValidGroupInviteByToken(inviteToken: string): Promise<G
       visibility: row.group.visibility,
       ownerUserId: row.group.ownerUserId.toString(),
     },
-    season: toSeason(row.season),
     createdByUser: {
       id: row.createdByUser.id.toString(),
       kakaoId: row.createdByKakaoId ?? "",
@@ -219,21 +215,19 @@ async function getPendingGroupMembers(groupId: string, keyword?: string): Promis
   }
 
   const rows = await db
-    .select({ request: groupJoinRequests, user: users, kakaoId: oauthAccounts.providerUserId, season: seasons })
+    .select({ request: groupJoinRequests, user: users, kakaoId: oauthAccounts.providerUserId })
     .from(groupJoinRequests)
     .innerJoin(users, eq(groupJoinRequests.userId, users.id))
-    .innerJoin(seasons, eq(groupJoinRequests.seasonId, seasons.id))
     .leftJoin(oauthAccounts, and(eq(oauthAccounts.userId, users.id), eq(oauthAccounts.provider, "kakao")))
     .where(and(...conditions))
     .orderBy(desc(groupJoinRequests.requestedAt), users.displayName, users.id);
 
-  return rows.map(({ request, user, kakaoId, season }) => ({
+  return rows.map(({ request, user, kakaoId }) => ({
     id: `pending:${request.id.toString()}`,
     status: "pending",
     user: toUser(user, kakaoId),
     roles: [],
     requestedAt: request.requestedAt.toISOString(),
-    season: toSeason(season),
   }));
 }
 

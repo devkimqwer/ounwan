@@ -157,9 +157,6 @@ export const groupInvites = pgTable(
     groupId: bigint("group_id", { mode: "bigint" })
       .notNull()
       .references(() => groups.id, { onDelete: "cascade" }),
-    seasonId: bigint("season_id", { mode: "bigint" })
-      .notNull()
-      .references(() => seasons.id, { onDelete: "cascade" }),
     inviteToken: varchar("invite_token", { length: 120 }).notNull().unique(),
     createdByUserId: bigint("created_by_user_id", { mode: "bigint" })
       .notNull()
@@ -171,7 +168,7 @@ export const groupInvites = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index("idx_group_invites_group_season").on(table.groupId, table.seasonId),
+    index("idx_group_invites_group").on(table.groupId),
     check("ck_group_invites_max_uses", sql`${table.maxUses} IS NULL OR ${table.maxUses} > 0`),
     check("ck_group_invites_used_count", sql`${table.usedCount} >= 0`),
   ],
@@ -184,9 +181,6 @@ export const groupJoinRequests = pgTable(
     groupId: bigint("group_id", { mode: "bigint" })
       .notNull()
       .references(() => groups.id, { onDelete: "cascade" }),
-    seasonId: bigint("season_id", { mode: "bigint" })
-      .notNull()
-      .references(() => seasons.id, { onDelete: "cascade" }),
     inviteId: bigint("invite_id", { mode: "bigint" }).references(() => groupInvites.id, { onDelete: "set null" }),
     userId: bigint("user_id", { mode: "bigint" })
       .notNull()
@@ -197,7 +191,7 @@ export const groupJoinRequests = pgTable(
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
   },
   (table) => [
-    unique("ux_group_join_requests_group_season_user").on(table.groupId, table.seasonId, table.userId),
+    unique("ux_group_join_requests_group_user").on(table.groupId, table.userId),
     index("idx_group_join_requests_review").on(table.groupId, table.status, table.requestedAt),
   ],
 );

@@ -282,7 +282,6 @@ function MemberDetailDialog({ member, onClose }: { member: AdminGroupMember | nu
           <MemberInfoRow label="상태" value={member.status === "approved" ? "승인된 멤버" : "승인 대기"} />
           {member.joinedAt && <MemberInfoRow label="가입일" value={formatDate(member.joinedAt)} />}
           {member.requestedAt && <MemberInfoRow label="요청일" value={formatDateTime(member.requestedAt)} />}
-          {member.season && <MemberInfoRow label="요청 시즌" value={member.season.name} />}
         </div>
       )}
     </AppDialog>

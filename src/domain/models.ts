@@ -40,13 +40,11 @@ export interface AdminGroupMember {
   joinedAt?: string;
   leftAt?: string;
   requestedAt?: string;
-  season?: Season;
 }
 
 export interface GroupInvite {
   id: string;
   group: Group;
-  season: Season;
   createdByUser: User;
   inviteToken: string;
   expiresAt?: string;

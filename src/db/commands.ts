@@ -79,11 +79,7 @@ export async function switchCurrentGroup(groupId: string) {
 }
 
 export async function getOrCreateCurrentGroupInvite() {
-  const context = await getCurrentSeedContext();
-
-  if (!context.roles.includes("admin")) {
-    throw new Error("Only admins can create group invites.");
-  }
+  const context = await getCurrentGroupAdminContext();
 
   const now = new Date();
   const reusableRows = await db
@@ -99,7 +95,6 @@ export async function getOrCreateCurrentGroupInvite() {
     .where(
       and(
         eq(groupInvites.groupId, BigInt(context.groupId)),
-        eq(groupInvites.seasonId, BigInt(context.seasonId)),
         eq(groupInvites.status, "active"),
         gt(groupInvites.expiresAt, now),
         or(isNull(groupInvites.maxUses), sql`${groupInvites.usedCount} < ${groupInvites.maxUses}`),
@@ -120,7 +115,6 @@ export async function getOrCreateCurrentGroupInvite() {
       .insert(groupInvites)
       .values({
         groupId: BigInt(context.groupId),
-        seasonId: BigInt(context.seasonId),
         inviteToken: generateInviteToken(),
         createdByUserId: BigInt(context.userId),
         expiresAt,
@@ -369,6 +363,32 @@ export async function deleteWorkoutPost(postId: string) {
 
   return { id: postRows[0].id.toString() };
 }
+async function getCurrentGroupAdminContext() {
+  const userId = await requireCurrentUserId();
+  const selectedGroupId = await getCurrentGroupIdForUser(userId);
+  const membershipRows = await db
+    .select({ groupId: groupMembers.groupId, userId: groupMembers.userId, roles: groupMembers.roles })
+    .from(groupMembers)
+    .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+    .where(and(eq(groupMembers.userId, BigInt(userId)), isNull(groupMembers.leftAt), isNull(groups.deletedAt)))
+    .orderBy(desc(groupMembers.updatedAt), desc(groups.id));
+  const membership = membershipRows.find((row) => row.groupId.toString() === selectedGroupId) ?? membershipRows[0];
+
+  if (!membership) {
+    throw new CurrentUserMembershipNotFoundError();
+  }
+
+  if (!membership.roles.includes("admin")) {
+    throw new Error("Only admins can create group invites.");
+  }
+
+  return {
+    userId: membership.userId.toString(),
+    groupId: membership.groupId.toString(),
+    roles: membership.roles,
+  };
+}
+
 async function getCurrentSeedContext() {
   const userId = await requireCurrentUserId();
   const selectedGroupId = await getCurrentGroupIdForUser(userId);
