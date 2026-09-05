@@ -1,11 +1,12 @@
 import "server-only";
 
-import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 
 import type {
   AccountInfo,
   BankRecord,
   Group,
+  GroupInvite,
   GroupMembership,
   PostMedia,
   PostComment,
@@ -18,12 +19,14 @@ import type {
   WorkoutPost,
 } from "@/domain/models";
 import { getCurrentGroupIdForUser, requireCurrentUserId } from "@/auth/session";
+import { isInviteTokenFormat } from "@/invites/tokens";
 import type { OunwanAppData } from "@/domain/app-data";
 import { db } from "./client";
 import { CurrentUserMembershipNotFoundError } from "./errors";
 import {
   bankAccounts,
   bankBalanceRecords,
+  groupInvites,
   groupMembers,
   groups,
   oauthAccounts,
@@ -87,6 +90,67 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
   };
 }
 
+export async function getValidGroupInviteByToken(inviteToken: string): Promise<GroupInvite | undefined> {
+  const trimmedToken = inviteToken.trim();
+
+  if (!isInviteTokenFormat(trimmedToken)) {
+    return undefined;
+  }
+
+  const now = new Date();
+  const rows = await db
+    .select({
+      invite: groupInvites,
+      group: groups,
+      season: seasons,
+      createdByUser: users,
+      createdByKakaoId: oauthAccounts.providerUserId,
+    })
+    .from(groupInvites)
+    .innerJoin(groups, eq(groupInvites.groupId, groups.id))
+    .innerJoin(seasons, eq(groupInvites.seasonId, seasons.id))
+    .innerJoin(users, eq(groupInvites.createdByUserId, users.id))
+    .leftJoin(oauthAccounts, and(eq(oauthAccounts.userId, users.id), eq(oauthAccounts.provider, "kakao")))
+    .where(
+      and(
+        eq(groupInvites.inviteToken, trimmedToken),
+        eq(groupInvites.status, "active"),
+        eq(seasons.status, "active"),
+        isNull(groups.deletedAt),
+        isNull(users.deletedAt),
+        gt(groupInvites.expiresAt, now),
+        or(isNull(groupInvites.maxUses), sql`${groupInvites.usedCount} < ${groupInvites.maxUses}`),
+      ),
+    )
+    .limit(1);
+
+  const row = rows[0];
+  if (!row) {
+    return undefined;
+  }
+
+  return {
+    id: row.invite.id.toString(),
+    group: {
+      id: row.group.id.toString(),
+      name: row.group.name,
+      visibility: row.group.visibility,
+      ownerUserId: row.group.ownerUserId.toString(),
+    },
+    season: toSeason(row.season),
+    createdByUser: {
+      id: row.createdByUser.id.toString(),
+      kakaoId: row.createdByKakaoId ?? "",
+      name: row.createdByUser.displayName,
+      avatarUrl: row.createdByUser.avatarStorageKey ? `/uploads/${row.createdByUser.avatarStorageKey}?v=${row.createdByUser.updatedAt.getTime()}` : undefined,
+    },
+    inviteToken: row.invite.inviteToken,
+    expiresAt: row.invite.expiresAt?.toISOString(),
+    maxUses: row.invite.maxUses ?? undefined,
+    usedCount: row.invite.usedCount,
+    status: row.invite.status,
+  };
+}
 async function getCurrentUser(): Promise<User> {
   const currentUserId = await requireCurrentUserId();
   const rows = await db

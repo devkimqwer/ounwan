@@ -1,13 +1,16 @@
 import "server-only";
 
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 
 import { getCurrentGroupIdForUser, requireCurrentUserId, setCurrentGroupIdForUser } from "@/auth/session";
+import { generateInviteToken } from "@/invites/tokens";
 import { deleteLocalMediaFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/local";
 
 import { db } from "./client";
 import { CurrentUserMembershipNotFoundError } from "./errors";
-import { groupMembers, groups, postComments, postLikes, postMedia, seasons, users, workoutPosts } from "./schema";
+import { groupInvites, groupMembers, groups, postComments, postLikes, postMedia, seasons, users, workoutPosts } from "./schema";
+
+const GROUP_INVITE_EXPIRES_HOURS = 72;
 
 type CreateWorkoutPostInput = {
   workoutType?: string;
@@ -73,6 +76,90 @@ export async function switchCurrentGroup(groupId: string) {
 
   await setCurrentGroupIdForUser(userId, rows[0].groupId.toString());
   return { groupId: rows[0].groupId.toString() };
+}
+
+export async function getOrCreateCurrentGroupInvite() {
+  const context = await getCurrentSeedContext();
+
+  if (!context.roles.includes("admin")) {
+    throw new Error("Only admins can create group invites.");
+  }
+
+  const now = new Date();
+  const reusableRows = await db
+    .select({
+      id: groupInvites.id,
+      inviteToken: groupInvites.inviteToken,
+      expiresAt: groupInvites.expiresAt,
+      maxUses: groupInvites.maxUses,
+      usedCount: groupInvites.usedCount,
+      status: groupInvites.status,
+    })
+    .from(groupInvites)
+    .where(
+      and(
+        eq(groupInvites.groupId, BigInt(context.groupId)),
+        eq(groupInvites.seasonId, BigInt(context.seasonId)),
+        eq(groupInvites.status, "active"),
+        gt(groupInvites.expiresAt, now),
+        or(isNull(groupInvites.maxUses), sql`${groupInvites.usedCount} < ${groupInvites.maxUses}`),
+      ),
+    )
+    .orderBy(desc(groupInvites.createdAt), desc(groupInvites.id))
+    .limit(1);
+
+  if (reusableRows[0]) {
+    return toGroupInviteResult(reusableRows[0]);
+  }
+
+  const expiresAt = new Date(now);
+  expiresAt.setHours(expiresAt.getHours() + GROUP_INVITE_EXPIRES_HOURS);
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const rows = await db
+      .insert(groupInvites)
+      .values({
+        groupId: BigInt(context.groupId),
+        seasonId: BigInt(context.seasonId),
+        inviteToken: generateInviteToken(),
+        createdByUserId: BigInt(context.userId),
+        expiresAt,
+      })
+      .onConflictDoNothing({ target: groupInvites.inviteToken })
+      .returning({
+        id: groupInvites.id,
+        inviteToken: groupInvites.inviteToken,
+        expiresAt: groupInvites.expiresAt,
+        maxUses: groupInvites.maxUses,
+        usedCount: groupInvites.usedCount,
+        status: groupInvites.status,
+      });
+
+    if (rows[0]) {
+      return toGroupInviteResult(rows[0]);
+    }
+  }
+
+  throw new Error("Failed to create invite token.");
+}
+
+function toGroupInviteResult(row: {
+  id: bigint;
+  inviteToken: string;
+  expiresAt: Date | null;
+  maxUses: number | null;
+  usedCount: number;
+  status: "active" | "disabled" | "expired";
+}) {
+  return {
+    id: row.id.toString(),
+    inviteToken: row.inviteToken,
+    invitePath: `/join/${row.inviteToken}`,
+    expiresAt: row.expiresAt?.toISOString(),
+    maxUses: row.maxUses ?? undefined,
+    usedCount: row.usedCount,
+    status: row.status,
+  };
 }
 
 export async function createWorkoutPost(input: CreateWorkoutPostInput) {

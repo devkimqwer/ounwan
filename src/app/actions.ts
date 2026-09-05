@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createPostComment, createWorkoutPost, deletePostComment, deleteWorkoutPost, refreshCurrentUserAvatar, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
+import { createPostComment, createWorkoutPost, deletePostComment, deleteWorkoutPost, getOrCreateCurrentGroupInvite, refreshCurrentUserAvatar, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
 const MAX_WORKOUT_POST_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -25,12 +25,35 @@ export type CreateWorkoutPostState = {
   postId?: string;
 };
 
+export type CreateGroupInviteState = {
+  status: "idle" | "success" | "error";
+  message: string;
+  invitePath?: string;
+  expiresAt?: string;
+};
+
 
 export type CreatePostCommentState = {
   status: "idle" | "success" | "error";
   message: string;
 };
 
+
+export async function createGroupInviteAction(): Promise<CreateGroupInviteState> {
+  try {
+    const invite = await getOrCreateCurrentGroupInvite();
+    revalidatePath("/");
+
+    return {
+      status: "success",
+      message: "초대 링크가 생성됐습니다.",
+      invitePath: invite.invitePath,
+      expiresAt: invite.expiresAt,
+    };
+  } catch {
+    return { status: "error", message: "초대 링크를 생성할 수 없습니다." };
+  }
+}
 
 export async function updateCurrentUserProfileAction(
   _previousState: UpdateCurrentUserProfileState,

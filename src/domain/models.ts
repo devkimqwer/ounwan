@@ -29,6 +29,18 @@ export interface UserGroupMembership {
   membership: GroupMembership;
 }
 
+export interface GroupInvite {
+  id: string;
+  group: Group;
+  season: Season;
+  createdByUser: User;
+  inviteToken: string;
+  expiresAt?: string;
+  maxUses?: number;
+  usedCount: number;
+  status: "active" | "disabled" | "expired";
+}
+
 export interface Season {
   id: string;
   groupId: string;
