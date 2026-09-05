@@ -38,7 +38,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const selectedPostIdRef = useRef(selectedPostId);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTopRef = useRef(0);
-  const { accountInfo, approvedGroups, currentUser, currentUserId, group, membership, posts, season, settlement, users } = appData;
+  const { accountInfo, approvedGroups, currentUser, currentUserId, group, membership, posts, season, seasonParticipants, seasons, settlement, users } = appData;
   const roles = membership.roles;
   const isAdmin = roles.includes("admin");
   const isTreasurer = roles.includes("treasurer");
@@ -348,6 +348,8 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                   currentGroup={group}
                   approvedGroups={approvedGroups}
                   accountInfo={accountInfo}
+                  seasons={seasons}
+                  seasonParticipants={seasonParticipants}
                 />
               )}
             </>

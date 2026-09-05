@@ -4,8 +4,9 @@ import { useRouter } from "next/navigation";
 import { refreshCurrentUserAvatarAction, switchCurrentGroupAction, updateCurrentUserProfileAction } from "@/app/actions";
 import type { RefreshCurrentUserAvatarState, UpdateCurrentUserProfileState } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
-import type { AccountInfo, Group, User, UserGroupMembership } from "@/domain/models";
+import type { AccountInfo, Group, Season, SeasonParticipant, User, UserGroupMembership } from "@/domain/models";
 import { TextLogoutButton } from "@/features/auth/logout-controls";
+import { SeasonManagementView } from "./season-management-view";
 import { Avatar, Badge, getDisplayRoles, getRoleBadgeTone, getRoleLabel, MenuBlock } from "./shared-ui";
 
 export function MoreView({
@@ -15,6 +16,8 @@ export function MoreView({
   currentGroup,
   approvedGroups,
   accountInfo,
+  seasons,
+  seasonParticipants,
 }: {
   isAdmin: boolean;
   isTreasurer: boolean;
@@ -22,6 +25,8 @@ export function MoreView({
   currentGroup: Group;
   approvedGroups: UserGroupMembership[];
   accountInfo: AccountInfo;
+  seasons: Season[];
+  seasonParticipants: SeasonParticipant[];
 }) {
   const router = useRouter();
   const profileInitialState: UpdateCurrentUserProfileState = { status: "idle", message: "" };
@@ -35,6 +40,7 @@ export function MoreView({
   const [isAvatarRefreshing, setIsAvatarRefreshing] = useState(false);
   const [switchingGroupId, setSwitchingGroupId] = useState<string | null>(null);
   const [notReadyTitle, setNotReadyTitle] = useState<string | null>(null);
+  const [activeMorePage, setActiveMorePage] = useState<"main" | "season-management">("main");
 
   useEffect(() => {
     setProfileName(currentUser.name);
@@ -108,6 +114,10 @@ export function MoreView({
     setNotReadyTitle(title);
   };
 
+  if (activeMorePage === "season-management") {
+    return <SeasonManagementView seasons={seasons} seasonParticipants={seasonParticipants} onBack={() => setActiveMorePage("main")} />;
+  }
+
   return (
     <div className="space-y-4 p-4">
       <section className="relative rounded-2xl border border-slate-200 bg-white p-5">
@@ -171,6 +181,7 @@ export function MoreView({
         rows={[
           <MoreMenuRow key="settlement-history" label="결산 내역" onClick={() => openNotReadyDialog("결산 내역")} />,
           <MoreMenuRow key="balance-status" label="잔고 현황" onClick={() => openNotReadyDialog("잔고 현황")} />,
+          <MoreMenuRow key="season-archive" label="이전 시즌" onClick={() => openNotReadyDialog("이전 시즌")} />,
         ]}
       />
 
@@ -186,7 +197,7 @@ export function MoreView({
         <MenuBlock
           title="관리자"
           rows={[
-            <MoreMenuRow key="season-management" label="시즌 관리" onClick={() => openNotReadyDialog("시즌 관리")} />,
+            <MoreMenuRow key="season-management" label="시즌 관리" onClick={() => setActiveMorePage("season-management")} />,
             <MoreMenuRow key="settlement-management" label="결산 관리" onClick={() => openNotReadyDialog("결산 관리")} />,
             <MoreMenuRow key="member-management" label="그룹 멤버 관리" onClick={() => openNotReadyDialog("그룹 멤버 관리")} />,
           ]}

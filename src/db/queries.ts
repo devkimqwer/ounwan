@@ -10,6 +10,7 @@ import type {
   PostMedia,
   PostComment,
   Season,
+  SeasonParticipant,
   Settlement,
   SettlementRow,
   User,
@@ -30,6 +31,7 @@ import {
   postLikes,
   postMedia,
   seasons,
+  seasonParticipantPeriods,
   users,
   weeklySettlementRows,
   weeklySettlements,
@@ -50,8 +52,10 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
   const group = selectedGroup.group;
   const membership = selectedGroup.membership;
   const season = await getActiveSeason(group.id);
-  const [appUsers, posts, settlement, bankRecords, accountInfo] = await Promise.all([
+  const [appUsers, groupSeasons, seasonParticipants, posts, settlement, bankRecords, accountInfo] = await Promise.all([
     getGroupUsers(group.id),
+    getGroupSeasons(group.id),
+    getSeasonParticipants(group.id),
     getWorkoutPosts(group.id, season.id, currentUser.id),
     getLatestSettlement(group.id, season.id),
     getBankRecords(group.id),
@@ -73,6 +77,8 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
     group,
     membership,
     season,
+    seasons: groupSeasons,
+    seasonParticipants,
     posts,
     settlement,
     settlementRows,
@@ -159,15 +165,53 @@ async function getActiveSeason(groupId: string): Promise<Season> {
     throw new Error("Active season not found. Run npm run db:seed:local first.");
   }
 
+  return toSeason(rows[0]);
+}
+
+async function getGroupSeasons(groupId: string): Promise<Season[]> {
+  const rows = await db
+    .select()
+    .from(seasons)
+    .where(eq(seasons.groupId, BigInt(groupId)))
+    .orderBy(desc(seasons.startDate), desc(seasons.id));
+
+  return rows.map(toSeason);
+}
+
+async function getSeasonParticipants(groupId: string): Promise<SeasonParticipant[]> {
+  const rows = await db
+    .select({ period: seasonParticipantPeriods, user: users, kakaoId: oauthAccounts.providerUserId })
+    .from(seasonParticipantPeriods)
+    .innerJoin(seasons, eq(seasonParticipantPeriods.seasonId, seasons.id))
+    .innerJoin(users, eq(seasonParticipantPeriods.userId, users.id))
+    .leftJoin(oauthAccounts, eq(oauthAccounts.userId, users.id))
+    .where(and(eq(seasons.groupId, BigInt(groupId)), isNull(users.deletedAt)))
+    .orderBy(desc(seasons.startDate), seasonParticipantPeriods.startDate, users.id);
+
+  return rows.map(({ period, user, kakaoId }) => ({
+    id: period.id.toString(),
+    seasonId: period.seasonId.toString(),
+    user: {
+      id: user.id.toString(),
+      kakaoId: kakaoId ?? "",
+      name: user.displayName,
+      avatarUrl: user.avatarStorageKey ? `/uploads/${user.avatarStorageKey}?v=${user.updatedAt.getTime()}` : undefined,
+    },
+    startDate: period.startDate,
+    endDate: period.endDate ?? undefined,
+  }));
+}
+
+function toSeason(row: typeof seasons.$inferSelect): Season {
   return {
-    id: rows[0].id.toString(),
-    groupId: rows[0].groupId.toString(),
-    name: rows[0].name,
-    startDate: rows[0].startDate,
-    endDate: rows[0].endDate ?? undefined,
-    targetWorkoutCountPerWeek: rows[0].targetWorkoutCountPerWeek,
-    finePerMiss: rows[0].finePerMiss,
-    status: rows[0].status,
+    id: row.id.toString(),
+    groupId: row.groupId.toString(),
+    name: row.name,
+    startDate: row.startDate,
+    endDate: row.endDate ?? undefined,
+    targetWorkoutCountPerWeek: row.targetWorkoutCountPerWeek,
+    finePerMiss: row.finePerMiss,
+    status: row.status,
   };
 }
 

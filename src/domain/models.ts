@@ -40,6 +40,14 @@ export interface Season {
   status: "active" | "closed";
 }
 
+export interface SeasonParticipant {
+  id: string;
+  seasonId: string;
+  user: User;
+  startDate: string;
+  endDate?: string;
+}
+
 export interface PostMedia {
   id: string;
   postId: string;

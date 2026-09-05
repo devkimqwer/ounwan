@@ -5,6 +5,7 @@ import type {
   GroupMembership,
   UserGroupMembership,
   Season,
+  SeasonParticipant,
   Settlement,
   SettlementRow,
   User,
@@ -21,6 +22,8 @@ export interface OunwanAppData {
   group: Group;
   membership: GroupMembership;
   season: Season;
+  seasons: Season[];
+  seasonParticipants: SeasonParticipant[];
   posts: WorkoutPost[];
   settlement: Settlement;
   settlementRows: SettlementRow[];
