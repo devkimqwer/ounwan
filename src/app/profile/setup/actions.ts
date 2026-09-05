@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 
-import { clearPendingKakaoId, getPendingKakaoId, setSessionUserId } from "@/auth/session";
+import { clearPendingKakaoId, getPendingKakaoId, getPendingKakaoReturnTo, setSessionUserId } from "@/auth/session";
 import { registerKakaoUser } from "@/auth/users";
 
 export type ProfileSetupState = {
@@ -29,8 +29,9 @@ export async function completeProfileSetupAction(
     return { status: "error", message: "카카오 연동 정보가 만료됐습니다. 다시 로그인해주세요." };
   }
 
+  const returnTo = await getPendingKakaoReturnTo();
   const userId = await registerKakaoUser({ kakaoId, displayName });
   await setSessionUserId(userId);
   await clearPendingKakaoId();
-  redirect("/");
+  redirect(returnTo ?? "/");
 }

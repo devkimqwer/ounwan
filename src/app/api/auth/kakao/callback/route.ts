@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { exchangeKakaoToken, fetchKakaoUser } from "@/auth/kakao";
 import { findUserIdByKakaoId } from "@/auth/users";
-import { setPendingKakaoId, setSessionUserId, verifyOAuthState } from "@/auth/session";
+import { consumeOAuthReturnTo, setPendingKakaoId, setSessionUserId, verifyOAuthState } from "@/auth/session";
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const returnTo = await consumeOAuthReturnTo();
     const tokenData = await exchangeKakaoToken(request, code);
     const userData = await fetchKakaoUser(tokenData.access_token);
     const kakaoId = String(userData.id);
@@ -24,10 +25,10 @@ export async function GET(request: NextRequest) {
 
     if (userId) {
       await setSessionUserId(userId);
-      return NextResponse.redirect(new URL("/", request.nextUrl.origin));
+      return NextResponse.redirect(new URL(returnTo ?? "/", request.nextUrl.origin));
     }
 
-    await setPendingKakaoId(kakaoId);
+    await setPendingKakaoId(kakaoId, returnTo);
     return NextResponse.redirect(new URL("/profile/setup", request.nextUrl.origin));
   } catch (error) {
     console.error(error);

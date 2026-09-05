@@ -3,12 +3,12 @@ import "server-only";
 import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 
 import { getCurrentGroupIdForUser, requireCurrentUserId, setCurrentGroupIdForUser } from "@/auth/session";
-import { generateInviteToken } from "@/invites/tokens";
+import { generateInviteToken, isInviteTokenFormat } from "@/invites/tokens";
 import { deleteLocalMediaFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/local";
 
 import { db } from "./client";
 import { CurrentUserMembershipNotFoundError } from "./errors";
-import { groupInvites, groupMembers, groups, postComments, postLikes, postMedia, seasons, users, workoutPosts } from "./schema";
+import { groupInvites, groupJoinRequests, groupMembers, groups, postComments, postLikes, postMedia, seasons, users, workoutPosts } from "./schema";
 
 const GROUP_INVITE_EXPIRES_HOURS = 72;
 
@@ -156,6 +156,97 @@ function toGroupInviteResult(row: {
   };
 }
 
+export async function requestCurrentUserGroupJoin(inviteToken: string) {
+  const token = inviteToken.trim();
+  if (!isInviteTokenFormat(token)) {
+    return { status: "invalid" as const };
+  }
+
+  const userId = await requireCurrentUserId();
+  const now = new Date();
+
+  const result = await db.transaction(async (tx) => {
+    const inviteRows = await tx
+      .select({
+        id: groupInvites.id,
+        groupId: groupInvites.groupId,
+        maxUses: groupInvites.maxUses,
+        usedCount: groupInvites.usedCount,
+      })
+      .from(groupInvites)
+      .innerJoin(groups, eq(groupInvites.groupId, groups.id))
+      .where(
+        and(
+          eq(groupInvites.inviteToken, token),
+          eq(groupInvites.status, "active"),
+          isNull(groups.deletedAt),
+          gt(groupInvites.expiresAt, now),
+          or(isNull(groupInvites.maxUses), sql`${groupInvites.usedCount} < ${groupInvites.maxUses}`),
+        ),
+      )
+      .limit(1);
+
+    const invite = inviteRows[0];
+    if (!invite) {
+      return { status: "invalid" as const };
+    }
+
+    const memberRows = await tx
+      .select({ groupId: groupMembers.groupId })
+      .from(groupMembers)
+      .where(and(eq(groupMembers.groupId, invite.groupId), eq(groupMembers.userId, BigInt(userId)), isNull(groupMembers.leftAt)))
+      .limit(1);
+
+    if (memberRows[0]) {
+      return { status: "already_member" as const, groupId: invite.groupId.toString() };
+    }
+
+    const requestRows = await tx
+      .select({ id: groupJoinRequests.id, status: groupJoinRequests.status })
+      .from(groupJoinRequests)
+      .where(and(eq(groupJoinRequests.groupId, invite.groupId), eq(groupJoinRequests.userId, BigInt(userId))))
+      .limit(1);
+
+    const existingRequest = requestRows[0];
+    if (existingRequest?.status === "pending") {
+      return { status: "pending" as const, groupId: invite.groupId.toString() };
+    }
+
+    if (existingRequest) {
+      await tx
+        .update(groupJoinRequests)
+        .set({
+          inviteId: invite.id,
+          status: "pending",
+          requestedAt: now,
+          reviewedByUserId: null,
+          reviewedAt: null,
+        })
+        .where(eq(groupJoinRequests.id, existingRequest.id));
+    } else {
+      await tx.insert(groupJoinRequests).values({
+        groupId: invite.groupId,
+        inviteId: invite.id,
+        userId: BigInt(userId),
+        status: "pending",
+        requestedAt: now,
+      });
+    }
+
+    await tx
+      .update(groupInvites)
+      .set({ usedCount: sql`${groupInvites.usedCount} + 1` })
+      .where(eq(groupInvites.id, invite.id));
+
+    return { status: "requested" as const, groupId: invite.groupId.toString() };
+  });
+
+  if (result.status === "already_member") {
+    await setCurrentGroupIdForUser(userId, result.groupId);
+  }
+
+  return result;
+}
 export async function createWorkoutPost(input: CreateWorkoutPostInput) {
   const context = await getCurrentSeedContext();
   const postRows = await db

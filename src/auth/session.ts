@@ -9,6 +9,7 @@ const pendingKakaoCookieName = "ounwan_pending_kakao";
 const oauthStateCookieName = "ounwan_oauth_state";
 const sessionMaxAgeSeconds = 60 * 60 * 24 * 30;
 const pendingMaxAgeSeconds = 60 * 15;
+const oauthReturnToCookieName = "ounwan_oauth_return_to";
 const stateMaxAgeSeconds = 60 * 10;
 
 type SessionPayload = {
@@ -24,6 +25,12 @@ type CurrentGroupPayload = {
 
 type PendingKakaoPayload = {
   kakaoId: string;
+  returnTo?: string;
+  expiresAt: number;
+};
+
+type OAuthReturnToPayload = {
+  returnTo: string;
   expiresAt: number;
 };
 
@@ -72,7 +79,7 @@ export async function setCurrentGroupIdForUser(userId: string, groupId: string) 
   );
 }
 
-export async function createOAuthState() {
+export async function createOAuthState(returnTo?: string) {
   const state = randomBytes(24).toString("base64url");
   const cookieStore = await cookies();
   cookieStore.set(oauthStateCookieName, state, {
@@ -82,6 +89,17 @@ export async function createOAuthState() {
     path: "/",
     maxAge: stateMaxAgeSeconds,
   });
+
+  if (isSafeReturnPath(returnTo)) {
+    await writeSignedCookie(
+      oauthReturnToCookieName,
+      { returnTo, expiresAt: Date.now() + stateMaxAgeSeconds * 1000 },
+      stateMaxAgeSeconds,
+    );
+  } else {
+    cookieStore.delete(oauthReturnToCookieName);
+  }
+
   return state;
 }
 
@@ -93,10 +111,10 @@ export async function verifyOAuthState(state: string | null) {
   return Boolean(state && storedState && timingSafeEqualText(state, storedState));
 }
 
-export async function setPendingKakaoId(kakaoId: string) {
+export async function setPendingKakaoId(kakaoId: string, returnTo?: string) {
   await writeSignedCookie(
     pendingKakaoCookieName,
-    { kakaoId, expiresAt: Date.now() + pendingMaxAgeSeconds * 1000 },
+    { kakaoId, returnTo: isSafeReturnPath(returnTo) ? returnTo : undefined, expiresAt: Date.now() + pendingMaxAgeSeconds * 1000 },
     pendingMaxAgeSeconds,
   );
 }
@@ -108,6 +126,27 @@ export async function getPendingKakaoId() {
   }
 
   return payload.kakaoId;
+}
+
+export async function getPendingKakaoReturnTo() {
+  const payload = await readSignedCookie<PendingKakaoPayload>(pendingKakaoCookieName);
+  if (!payload || payload.expiresAt < Date.now() || !isSafeReturnPath(payload.returnTo)) {
+    return undefined;
+  }
+
+  return payload.returnTo;
+}
+
+export async function consumeOAuthReturnTo() {
+  const payload = await readSignedCookie<OAuthReturnToPayload>(oauthReturnToCookieName);
+  const cookieStore = await cookies();
+  cookieStore.delete(oauthReturnToCookieName);
+
+  if (!payload || payload.expiresAt < Date.now() || !isSafeReturnPath(payload.returnTo)) {
+    return undefined;
+  }
+
+  return payload.returnTo;
 }
 
 export async function clearPendingKakaoId() {
@@ -174,4 +213,7 @@ function timingSafeEqualText(left: string, right: string) {
   const rightBuffer = Buffer.from(right);
 
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+function isSafeReturnPath(value: string | undefined): value is string {
+  return Boolean(value && value.startsWith("/") && !value.startsWith("//"));
 }
