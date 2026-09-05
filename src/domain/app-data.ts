@@ -1,5 +1,6 @@
 import type {
   AccountInfo,
+  AdminGroupMember,
   BankRecord,
   Group,
   GroupMembership,
@@ -18,6 +19,7 @@ export interface OunwanAppData {
   currentSeasonId: string;
   currentUser: User;
   approvedGroups: UserGroupMembership[];
+  adminGroupMembers: AdminGroupMember[];
   users: User[];
   group: Group;
   membership: GroupMembership;

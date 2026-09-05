@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import type { OunwanAppData } from "@/domain/app-data";
-import type { TabId } from "./app-types";
+import type { MoreSubPage, TabId } from "./app-types";
 import { CertView } from "./cert-view";
 import { FeedView } from "./feed-view";
 import { HomeView } from "./home-view";
@@ -28,17 +28,21 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [pendingCreatedPostId, setPendingCreatedPostId] = useState<string | null>(null);
+  const [activeMorePage, setActiveMorePage] = useState<MoreSubPage>("main");
   const detailHistoryActiveRef = useRef(false);
   const menuHistoryActiveRef = useRef(false);
   const tabHistoryActiveRef = useRef(false);
+  const morePageHistoryActiveRef = useRef(false);
   const suppressNextPopRef = useRef(false);
   const pendingMenuSelectionRef = useRef<TabId | null>(null);
+  const pendingMenuMorePageRef = useRef<Exclude<MoreSubPage, "main"> | null>(null);
   const activeTabRef = useRef(activeTab);
+  const activeMorePageRef = useRef(activeMorePage);
   const menuOpenRef = useRef(menuOpen);
   const selectedPostIdRef = useRef(selectedPostId);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTopRef = useRef(0);
-  const { accountInfo, approvedGroups, currentUser, currentUserId, group, membership, posts, season, seasonParticipants, seasons, settlement, users } = appData;
+  const { accountInfo, adminGroupMembers, approvedGroups, currentUser, currentUserId, group, membership, posts, season, seasonParticipants, seasons, settlement, users } = appData;
   const roles = membership.roles;
   const isAdmin = roles.includes("admin");
   const isTreasurer = roles.includes("treasurer");
@@ -107,9 +111,42 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     setMenuOpen(false);
   };
 
+  const closeMorePageFromHistory = () => {
+    morePageHistoryActiveRef.current = false;
+    activeMorePageRef.current = "main";
+    setActiveMorePage("main");
+  };
+
+  const closeMorePage = () => {
+    if (morePageHistoryActiveRef.current) {
+      morePageHistoryActiveRef.current = false;
+      suppressNextPopRef.current = true;
+      window.history.back();
+    }
+
+    closeMorePageFromHistory();
+  };
+
+  const openMorePage = (page: Exclude<MoreSubPage, "main">) => {
+    if (activeMorePageRef.current === page) {
+      return;
+    }
+
+    morePageHistoryActiveRef.current = true;
+    window.history.pushState({ ounwanMorePage: page }, "");
+    activeMorePageRef.current = page;
+    setActiveMorePage(page);
+    requestAnimationFrame(() => {
+      contentScrollRef.current?.scrollTo({ top: 0 });
+    });
+  };
+
   const moveToTab = (tabId: TabId) => {
     selectedPostIdRef.current = null;
     setSelectedPostId(null);
+    if (activeMorePageRef.current !== "main") {
+      closeMorePageFromHistory();
+    }
 
     if (tabId === "home") {
       if (tabHistoryActiveRef.current) {
@@ -149,8 +186,25 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     setActiveTab("feed");
     selectedPostIdRef.current = null;
     setSelectedPostId(null);
+    if (activeMorePageRef.current !== "main") {
+      closeMorePageFromHistory();
+    }
     setPendingCreatedPostId(postId);
     router.refresh();
+  };
+
+  const openMorePageFromMenu = (page: Exclude<MoreSubPage, "main">) => {
+    if (menuHistoryActiveRef.current) {
+      pendingMenuMorePageRef.current = page;
+      menuHistoryActiveRef.current = false;
+      window.history.back();
+      menuOpenRef.current = false;
+      setMenuOpen(false);
+      return;
+    }
+
+    moveToTab("more");
+    openMorePage(page);
   };
 
   const selectTab = (tabId: TabId) => {
@@ -177,6 +231,10 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   }, [activeTab]);
 
   useEffect(() => {
+    activeMorePageRef.current = activeMorePage;
+  }, [activeMorePage]);
+
+  useEffect(() => {
     menuOpenRef.current = menuOpen;
   }, [menuOpen]);
 
@@ -185,12 +243,21 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   }, [selectedPostId]);
 
   useEffect(() => {
-    const handlePopState = () => {
+    const handlePopState = (event: PopStateEvent) => {
       const pendingMenuSelection = pendingMenuSelectionRef.current;
       if (pendingMenuSelection) {
         pendingMenuSelectionRef.current = null;
         closeMenuFromHistory();
         moveToTab(pendingMenuSelection);
+        return;
+      }
+
+      const pendingMenuMorePage = pendingMenuMorePageRef.current;
+      if (pendingMenuMorePage) {
+        pendingMenuMorePageRef.current = null;
+        closeMenuFromHistory();
+        moveToTab("more");
+        openMorePage(pendingMenuMorePage);
         return;
       }
 
@@ -206,6 +273,21 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
       if (menuHistoryActiveRef.current || menuOpenRef.current) {
         closeMenuFromHistory();
+        return;
+      }
+
+      const historyMorePage = event.state?.ounwanMorePage as MoreSubPage | undefined;
+      if (historyMorePage && historyMorePage !== "main") {
+        morePageHistoryActiveRef.current = true;
+        activeTabRef.current = "more";
+        activeMorePageRef.current = historyMorePage;
+        setActiveTab("more");
+        setActiveMorePage(historyMorePage);
+        return;
+      }
+
+      if (morePageHistoryActiveRef.current || activeMorePageRef.current !== "main") {
+        closeMorePageFromHistory();
         return;
       }
 
@@ -293,6 +375,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
           onSelect={(tabId) => {
             selectTab(tabId);
           }}
+          onOpenMorePage={openMorePageFromMenu}
         />
 
         <div className="z-40 flex h-9 shrink-0 items-center justify-center border-b border-slate-200 bg-white">
@@ -348,8 +431,12 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                   currentGroup={group}
                   approvedGroups={approvedGroups}
                   accountInfo={accountInfo}
+                  adminGroupMembers={adminGroupMembers}
                   seasons={seasons}
                   seasonParticipants={seasonParticipants}
+                  activeMorePage={activeMorePage}
+                  onOpenMorePage={openMorePage}
+                  onCloseMorePage={closeMorePage}
                 />
               )}
             </>

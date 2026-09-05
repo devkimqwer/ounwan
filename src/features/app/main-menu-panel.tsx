@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-import type { TabId } from "./app-types";
+import type { MoreSubPage, TabId } from "./app-types";
 import { MenuLogoutButton } from "@/features/auth/logout-controls";
 
 export function MainMenuPanel({
@@ -9,12 +9,14 @@ export function MainMenuPanel({
   isAdmin,
   onClose,
   onSelect,
+  onOpenMorePage,
 }: {
   open: boolean;
   userName: string;
   isAdmin: boolean;
   onClose: () => void;
   onSelect: (tabId: TabId) => void;
+  onOpenMorePage: (page: Exclude<MoreSubPage, "main">) => void;
 }) {
   return (
     <aside
@@ -82,9 +84,9 @@ export function MainMenuPanel({
             <MainMenuSection
               title="관리자"
               rows={[
-                { label: "시즌 관리", onClick: () => onSelect("more") },
+                { label: "시즌 관리", onClick: () => onOpenMorePage("season-management") },
                 { label: "결산 관리", onClick: () => onSelect("more") },
-                { label: "그룹 멤버 관리", onClick: () => onSelect("more") },
+                { label: "그룹 멤버 관리", onClick: () => onOpenMorePage("group-member-management") },
               ]}
             />
           )}

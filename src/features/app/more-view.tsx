@@ -4,8 +4,10 @@ import { useRouter } from "next/navigation";
 import { refreshCurrentUserAvatarAction, switchCurrentGroupAction, updateCurrentUserProfileAction } from "@/app/actions";
 import type { RefreshCurrentUserAvatarState, UpdateCurrentUserProfileState } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
-import type { AccountInfo, Group, Season, SeasonParticipant, User, UserGroupMembership } from "@/domain/models";
+import type { AccountInfo, AdminGroupMember, Group, Season, SeasonParticipant, User, UserGroupMembership } from "@/domain/models";
 import { TextLogoutButton } from "@/features/auth/logout-controls";
+import type { MoreSubPage } from "./app-types";
+import { GroupMemberManagementView } from "./group-member-management-view";
 import { SeasonManagementView } from "./season-management-view";
 import { Avatar, Badge, getDisplayRoles, getRoleBadgeTone, getRoleLabel, MenuBlock } from "./shared-ui";
 
@@ -16,8 +18,12 @@ export function MoreView({
   currentGroup,
   approvedGroups,
   accountInfo,
+  adminGroupMembers,
   seasons,
   seasonParticipants,
+  activeMorePage,
+  onOpenMorePage,
+  onCloseMorePage,
 }: {
   isAdmin: boolean;
   isTreasurer: boolean;
@@ -25,8 +31,12 @@ export function MoreView({
   currentGroup: Group;
   approvedGroups: UserGroupMembership[];
   accountInfo: AccountInfo;
+  adminGroupMembers: AdminGroupMember[];
   seasons: Season[];
   seasonParticipants: SeasonParticipant[];
+  activeMorePage: MoreSubPage;
+  onOpenMorePage: (page: Exclude<MoreSubPage, "main">) => void;
+  onCloseMorePage: () => void;
 }) {
   const router = useRouter();
   const profileInitialState: UpdateCurrentUserProfileState = { status: "idle", message: "" };
@@ -40,7 +50,6 @@ export function MoreView({
   const [isAvatarRefreshing, setIsAvatarRefreshing] = useState(false);
   const [switchingGroupId, setSwitchingGroupId] = useState<string | null>(null);
   const [notReadyTitle, setNotReadyTitle] = useState<string | null>(null);
-  const [activeMorePage, setActiveMorePage] = useState<"main" | "season-management">("main");
 
   useEffect(() => {
     setProfileName(currentUser.name);
@@ -115,7 +124,11 @@ export function MoreView({
   };
 
   if (activeMorePage === "season-management") {
-    return <SeasonManagementView seasons={seasons} seasonParticipants={seasonParticipants} onBack={() => setActiveMorePage("main")} />;
+    return <SeasonManagementView seasons={seasons} seasonParticipants={seasonParticipants} onBack={onCloseMorePage} />;
+  }
+
+  if (activeMorePage === "group-member-management") {
+    return <GroupMemberManagementView members={adminGroupMembers} onBack={onCloseMorePage} />;
   }
 
   return (
@@ -197,9 +210,9 @@ export function MoreView({
         <MenuBlock
           title="관리자"
           rows={[
-            <MoreMenuRow key="season-management" label="시즌 관리" onClick={() => setActiveMorePage("season-management")} />,
+            <MoreMenuRow key="season-management" label="시즌 관리" onClick={() => onOpenMorePage("season-management")} />,
             <MoreMenuRow key="settlement-management" label="결산 관리" onClick={() => openNotReadyDialog("결산 관리")} />,
-            <MoreMenuRow key="member-management" label="그룹 멤버 관리" onClick={() => openNotReadyDialog("그룹 멤버 관리")} />,
+            <MoreMenuRow key="member-management" label="그룹 멤버 관리" onClick={() => onOpenMorePage("group-member-management")} />,
           ]}
         />
       )}

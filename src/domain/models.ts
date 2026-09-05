@@ -29,7 +29,8 @@ export interface UserGroupMembership {
   membership: GroupMembership;
 }
 
-export type AdminGroupMemberStatus = "all" | "approved" | "pending";
+export type AdminGroupMemberStatus = "approved" | "pending";
+export type AdminGroupMemberStatusFilter = "all" | AdminGroupMemberStatus;
 
 export interface AdminGroupMember {
   id: string;

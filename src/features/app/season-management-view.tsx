@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AppDialog } from "@/components/ui/app-dialog";
 import type { Season, SeasonParticipant } from "@/domain/models";
@@ -22,6 +22,50 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
   const [participantMenu, setParticipantMenu] = useState<SeasonParticipantMember | null>(null);
   const [createSeasonDialogOpen, setCreateSeasonDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const seasonDetailHistoryActiveRef = useRef(false);
+  const selectedSeasonIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    selectedSeasonIdRef.current = selectedSeasonId;
+  }, [selectedSeasonId]);
+
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state?.ounwanSeasonDetail) {
+        seasonDetailHistoryActiveRef.current = true;
+        selectedSeasonIdRef.current = event.state.ounwanSeasonDetail;
+        setSelectedSeasonId(event.state.ounwanSeasonDetail);
+        return;
+      }
+
+      if (seasonDetailHistoryActiveRef.current || selectedSeasonIdRef.current) {
+        seasonDetailHistoryActiveRef.current = false;
+        selectedSeasonIdRef.current = null;
+        setSelectedSeasonId(null);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const openSeasonDetail = (seasonId: string) => {
+    seasonDetailHistoryActiveRef.current = true;
+    selectedSeasonIdRef.current = seasonId;
+    window.history.pushState({ ounwanMorePage: "season-management", ounwanSeasonDetail: seasonId }, "");
+    setSelectedSeasonId(seasonId);
+  };
+
+  const closeSeasonDetail = () => {
+    if (seasonDetailHistoryActiveRef.current) {
+      seasonDetailHistoryActiveRef.current = false;
+      window.history.back();
+      return;
+    }
+
+    selectedSeasonIdRef.current = null;
+    setSelectedSeasonId(null);
+  };
 
   const sortedSeasons = useMemo(() => [...seasons].sort(compareSeasonByStartDateDesc), [seasons]);
   const selectedSeason = sortedSeasons.find((season) => season.id === selectedSeasonId) ?? null;
@@ -33,7 +77,7 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
 
     return (
       <div className="space-y-4 p-4">
-        <SeasonManagementHeader title="시즌 상세" onBack={() => setSelectedSeasonId(null)} />
+        <SeasonManagementHeader title="시즌 상세" onBack={closeSeasonDetail} />
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="flex items-start justify-between gap-3">
@@ -141,7 +185,7 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
               key={season.id}
               type="button"
               className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left active:bg-slate-50"
-              onClick={() => setSelectedSeasonId(season.id)}
+              onClick={() => openSeasonDetail(season.id)}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">

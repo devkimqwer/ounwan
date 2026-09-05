@@ -4,7 +4,7 @@ import { and, count, desc, eq, gt, ilike, inArray, isNull, or, sql } from "drizz
 
 import type {
   AdminGroupMember,
-  AdminGroupMemberStatus,
+  AdminGroupMemberStatusFilter,
   AccountInfo,
   BankRecord,
   Group,
@@ -58,10 +58,12 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
   const group = selectedGroup.group;
   const membership = selectedGroup.membership;
   const season = await getActiveSeason(group.id);
-  const [appUsers, groupSeasons, seasonParticipants, posts, settlement, bankRecords, accountInfo] = await Promise.all([
+  const isAdmin = membership.roles.includes("admin");
+  const [appUsers, groupSeasons, seasonParticipants, adminGroupMembers, posts, settlement, bankRecords, accountInfo] = await Promise.all([
     getGroupUsers(group.id),
     getGroupSeasons(group.id),
     getSeasonParticipants(group.id),
+    isAdmin ? getAdminGroupMembers({ status: "all" }) : Promise.resolve([]),
     getWorkoutPosts(group.id, season.id, currentUser.id),
     getLatestSettlement(group.id, season.id),
     getBankRecords(group.id),
@@ -79,6 +81,7 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
     currentSeasonId: season.id,
     currentUser,
     approvedGroups,
+    adminGroupMembers,
     users: appUsers,
     group,
     membership,
@@ -94,7 +97,7 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
 }
 
 export type GetAdminGroupMembersInput = {
-  status?: AdminGroupMemberStatus;
+  status?: AdminGroupMemberStatusFilter;
   keyword?: string;
 };
 
@@ -118,6 +121,7 @@ export async function getAdminGroupMembers(input: GetAdminGroupMembersInput = {}
 
   return getApprovedGroupMembers(context.groupId, keyword);
 }
+
 export async function getValidGroupInviteByToken(inviteToken: string): Promise<GroupInvite | undefined> {
   const trimmedToken = inviteToken.trim();
 
@@ -179,6 +183,7 @@ export async function getValidGroupInviteByToken(inviteToken: string): Promise<G
     status: row.invite.status,
   };
 }
+
 async function getApprovedGroupMembers(groupId: string, keyword?: string): Promise<AdminGroupMember[]> {
   const conditions = [eq(groupMembers.groupId, BigInt(groupId)), isNull(groupMembers.leftAt), isNull(users.deletedAt)];
   const searchCondition = createUserSearchCondition(keyword);
