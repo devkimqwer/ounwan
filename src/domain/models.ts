@@ -29,6 +29,19 @@ export interface UserGroupMembership {
   membership: GroupMembership;
 }
 
+export type AdminGroupMemberStatus = "all" | "approved" | "pending";
+
+export interface AdminGroupMember {
+  id: string;
+  status: AdminGroupMemberStatus;
+  user: User;
+  roles: Role[];
+  joinedAt?: string;
+  leftAt?: string;
+  requestedAt?: string;
+  season?: Season;
+}
+
 export interface GroupInvite {
   id: string;
   group: Group;

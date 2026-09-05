@@ -1,8 +1,10 @@
 import "server-only";
 
-import { and, count, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 
 import type {
+  AdminGroupMember,
+  AdminGroupMemberStatus,
   AccountInfo,
   BankRecord,
   Group,
@@ -27,6 +29,7 @@ import {
   bankAccounts,
   bankBalanceRecords,
   groupInvites,
+  groupJoinRequests,
   groupMembers,
   groups,
   oauthAccounts,
@@ -90,6 +93,31 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
   };
 }
 
+export type GetAdminGroupMembersInput = {
+  status?: AdminGroupMemberStatus;
+  keyword?: string;
+};
+
+export async function getAdminGroupMembers(input: GetAdminGroupMembersInput = {}): Promise<AdminGroupMember[]> {
+  const context = await getCurrentAdminGroupContext();
+  const status = input.status ?? "approved";
+  const keyword = input.keyword?.trim();
+
+  if (status === "all") {
+    const [approvedMembers, pendingMembers] = await Promise.all([
+      getApprovedGroupMembers(context.groupId, keyword),
+      getPendingGroupMembers(context.groupId, keyword),
+    ]);
+
+    return [...approvedMembers, ...pendingMembers];
+  }
+
+  if (status === "pending") {
+    return getPendingGroupMembers(context.groupId, keyword);
+  }
+
+  return getApprovedGroupMembers(context.groupId, keyword);
+}
 export async function getValidGroupInviteByToken(inviteToken: string): Promise<GroupInvite | undefined> {
   const trimmedToken = inviteToken.trim();
 
@@ -151,6 +179,89 @@ export async function getValidGroupInviteByToken(inviteToken: string): Promise<G
     status: row.invite.status,
   };
 }
+async function getApprovedGroupMembers(groupId: string, keyword?: string): Promise<AdminGroupMember[]> {
+  const conditions = [eq(groupMembers.groupId, BigInt(groupId)), isNull(groupMembers.leftAt), isNull(users.deletedAt)];
+  const searchCondition = createUserSearchCondition(keyword);
+
+  if (searchCondition) {
+    conditions.push(searchCondition);
+  }
+
+  const rows = await db
+    .select({ member: groupMembers, user: users, kakaoId: oauthAccounts.providerUserId })
+    .from(groupMembers)
+    .innerJoin(users, eq(groupMembers.userId, users.id))
+    .leftJoin(oauthAccounts, and(eq(oauthAccounts.userId, users.id), eq(oauthAccounts.provider, "kakao")))
+    .where(and(...conditions))
+    .orderBy(groupMembers.joinedAt, users.displayName, users.id);
+
+  return rows.map(({ member, user, kakaoId }) => ({
+    id: `approved:${member.groupId.toString()}:${member.userId.toString()}`,
+    status: "approved",
+    user: toUser(user, kakaoId),
+    roles: member.roles,
+    joinedAt: member.joinedAt,
+    leftAt: member.leftAt ?? undefined,
+  }));
+}
+
+async function getPendingGroupMembers(groupId: string, keyword?: string): Promise<AdminGroupMember[]> {
+  const conditions = [eq(groupJoinRequests.groupId, BigInt(groupId)), eq(groupJoinRequests.status, "pending"), isNull(users.deletedAt)];
+  const searchCondition = createUserSearchCondition(keyword);
+
+  if (searchCondition) {
+    conditions.push(searchCondition);
+  }
+
+  const rows = await db
+    .select({ request: groupJoinRequests, user: users, kakaoId: oauthAccounts.providerUserId, season: seasons })
+    .from(groupJoinRequests)
+    .innerJoin(users, eq(groupJoinRequests.userId, users.id))
+    .innerJoin(seasons, eq(groupJoinRequests.seasonId, seasons.id))
+    .leftJoin(oauthAccounts, and(eq(oauthAccounts.userId, users.id), eq(oauthAccounts.provider, "kakao")))
+    .where(and(...conditions))
+    .orderBy(desc(groupJoinRequests.requestedAt), users.displayName, users.id);
+
+  return rows.map(({ request, user, kakaoId, season }) => ({
+    id: `pending:${request.id.toString()}`,
+    status: "pending",
+    user: toUser(user, kakaoId),
+    roles: [],
+    requestedAt: request.requestedAt.toISOString(),
+    season: toSeason(season),
+  }));
+}
+
+async function getCurrentAdminGroupContext() {
+  const userId = await requireCurrentUserId();
+  const selectedGroupId = await getCurrentGroupIdForUser(userId);
+  const membershipRows = await db
+    .select({ groupId: groupMembers.groupId, roles: groupMembers.roles })
+    .from(groupMembers)
+    .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+    .where(and(eq(groupMembers.userId, BigInt(userId)), isNull(groupMembers.leftAt), isNull(groups.deletedAt)))
+    .orderBy(desc(groupMembers.updatedAt), desc(groups.id));
+  const membership = membershipRows.find((row) => row.groupId.toString() === selectedGroupId) ?? membershipRows[0];
+
+  if (!membership) {
+    throw new CurrentUserMembershipNotFoundError();
+  }
+
+  if (!membership.roles.includes("admin")) {
+    throw new Error("Only admins can read group members.");
+  }
+
+  return { userId, groupId: membership.groupId.toString(), roles: membership.roles };
+}
+
+function createUserSearchCondition(keyword?: string) {
+  if (!keyword) {
+    return undefined;
+  }
+
+  const pattern = `%${keyword}%`;
+  return or(ilike(users.displayName, pattern), ilike(oauthAccounts.providerUserId, pattern), sql`${users.id}::text ILIKE ${pattern}`);
+}
 async function getCurrentUser(): Promise<User> {
   const currentUserId = await requireCurrentUserId();
   const rows = await db
@@ -170,11 +281,18 @@ async function getCurrentUser(): Promise<User> {
     throw new Error("Current user not found.");
   }
 
+  return toUser(rows[0], rows[0].kakaoId);
+}
+
+function toUser(
+  user: Pick<typeof users.$inferSelect, "id" | "displayName" | "avatarStorageKey" | "updatedAt">,
+  kakaoId?: string | null,
+): User {
   return {
-    id: rows[0].id.toString(),
-    kakaoId: rows[0].kakaoId ?? "",
-    name: rows[0].displayName,
-    avatarUrl: rows[0].avatarStorageKey ? `/uploads/${rows[0].avatarStorageKey}?v=${rows[0].updatedAt.getTime()}` : undefined,
+    id: user.id.toString(),
+    kakaoId: kakaoId ?? "",
+    name: user.displayName,
+    avatarUrl: user.avatarStorageKey ? `/uploads/${user.avatarStorageKey}?v=${user.updatedAt.getTime()}` : undefined,
   };
 }
 
