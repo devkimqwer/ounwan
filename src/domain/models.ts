@@ -40,6 +40,7 @@ export interface AdminGroupMember {
   joinedAt?: string;
   leftAt?: string;
   requestedAt?: string;
+  requestId?: string;
 }
 
 

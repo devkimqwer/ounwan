@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { createGroup, createPostComment, createWorkoutPost, deletePostComment, deleteWorkoutPost, getOrCreateCurrentGroupInvite, refreshCurrentUserAvatar, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
+import { createGroup, createPostComment, createWorkoutPost, deletePostComment, deleteWorkoutPost, getOrCreateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
 const MAX_WORKOUT_POST_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -119,6 +119,22 @@ export async function switchCurrentGroupAction(formData: FormData) {
   }
 
   await switchCurrentGroup(groupId);
+  revalidatePath("/");
+}
+
+export async function reviewGroupJoinRequestAction(formData: FormData) {
+  const requestId = String(formData.get("requestId") ?? "").trim();
+  const decision = String(formData.get("decision") ?? "").trim();
+
+  if (!requestId) {
+    throw new Error("requestId is required.");
+  }
+
+  if (decision !== "approve" && decision !== "reject") {
+    throw new Error("Invalid join request decision.");
+  }
+
+  await reviewGroupJoinRequest(requestId, decision);
   revalidatePath("/");
 }
 export async function createPostCommentAction(

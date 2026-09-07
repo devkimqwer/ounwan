@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
-import { createGroupInviteAction } from "@/app/actions";
+import { createGroupInviteAction, reviewGroupJoinRequestAction } from "@/app/actions";
 import type { AdminGroupMember, AdminGroupMemberStatus, AdminGroupMemberStatusFilter } from "@/domain/models";
 import { AppDialog } from "@/components/ui/app-dialog";
 import { Avatar, Badge, getRoleBadgeTone, getRoleLabel } from "./shared-ui";
@@ -11,6 +12,7 @@ type GroupMemberManagementViewProps = {
 };
 
 type MemberStatusFilter = AdminGroupMemberStatusFilter;
+type ReviewDecision = "approve" | "reject";
 
 const statusFilterOptions: Array<{ value: MemberStatusFilter; label: string }> = [
   { value: "approved", label: "승인" },
@@ -19,10 +21,14 @@ const statusFilterOptions: Array<{ value: MemberStatusFilter; label: string }> =
 ];
 
 export function GroupMemberManagementView({ members, onBack }: GroupMemberManagementViewProps) {
+  const router = useRouter();
   const [keyword, setKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState<MemberStatusFilter>("approved");
   const [selectedMember, setSelectedMember] = useState<AdminGroupMember | null>(null);
   const [memberMenu, setMemberMenu] = useState<AdminGroupMember | null>(null);
+  const [reviewTarget, setReviewTarget] = useState<{ member: AdminGroupMember; decision: ReviewDecision } | null>(null);
+  const [reviewError, setReviewError] = useState("");
+  const [isReviewSubmitting, setIsReviewSubmitting] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
   const [inviteExpiresAt, setInviteExpiresAt] = useState<string | undefined>();
@@ -85,6 +91,34 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
       setInviteCopied(true);
     } catch {
       setInviteError("복사에 실패했습니다. 링크를 직접 선택해서 복사해주세요.");
+    }
+  };
+
+  const handleReviewOpen = (member: AdminGroupMember, decision: ReviewDecision) => {
+    setMemberMenu(null);
+    setReviewError("");
+    setReviewTarget({ member, decision });
+  };
+
+  const handleReviewConfirm = async () => {
+    if (!reviewTarget?.member.requestId || isReviewSubmitting) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.set("requestId", reviewTarget.member.requestId);
+    formData.set("decision", reviewTarget.decision);
+    setIsReviewSubmitting(true);
+    setReviewError("");
+
+    try {
+      await reviewGroupJoinRequestAction(formData);
+      setReviewTarget(null);
+      router.refresh();
+    } catch {
+      setReviewError("참여 요청을 처리할 수 없습니다.");
+    } finally {
+      setIsReviewSubmitting(false);
     }
   };
 
@@ -164,7 +198,8 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
         onClose={() => setInviteDialogOpen(false)}
       />
       <MemberDetailDialog member={selectedMember} onClose={() => setSelectedMember(null)} />
-      <MemberMenuDialog member={memberMenu} onClose={() => setMemberMenu(null)} />
+      <MemberMenuDialog member={memberMenu} onReview={handleReviewOpen} onClose={() => setMemberMenu(null)} />
+      <JoinRequestReviewDialog target={reviewTarget} error={reviewError} submitting={isReviewSubmitting} onConfirm={handleReviewConfirm} onClose={() => setReviewTarget(null)} />
     </div>
   );
 }
@@ -288,22 +323,86 @@ function MemberDetailDialog({ member, onClose }: { member: AdminGroupMember | nu
   );
 }
 
-function MemberMenuDialog({ member, onClose }: { member: AdminGroupMember | null; onClose: () => void }) {
+function MemberMenuDialog({
+  member,
+  onReview,
+  onClose,
+}: {
+  member: AdminGroupMember | null;
+  onReview: (member: AdminGroupMember, decision: ReviewDecision) => void;
+  onClose: () => void;
+}) {
   return (
     <AppDialog open={Boolean(member)} title={member?.user.name ?? "멤버 설정"} onClose={onClose} dismissOnBackdrop footer={null}>
-      <div className="space-y-1">
-        <MemberMenuButton label="역할 변경" onClick={onClose} />
-        <MemberMenuButton label="추방하기" onClick={onClose} />
-      </div>
+      {member?.status === "pending" ? (
+        <div className="space-y-1">
+          <MemberMenuButton label="참여 요청 승인하기" onClick={() => onReview(member, "approve")} />
+          <MemberMenuButton label="참여 요청 반려하기" onClick={() => onReview(member, "reject")} />
+        </div>
+      ) : (
+        <div className="space-y-1">
+          <MemberMenuButton label="역할 변경" badge="준비중" onClick={onClose} />
+          <MemberMenuButton label="추방하기" badge="준비중" onClick={onClose} />
+        </div>
+      )}
     </AppDialog>
   );
 }
 
-function MemberMenuButton({ label, onClick }: { label: string; onClick: () => void }) {
+function JoinRequestReviewDialog({
+  target,
+  error,
+  submitting,
+  onConfirm,
+  onClose,
+}: {
+  target: { member: AdminGroupMember; decision: ReviewDecision } | null;
+  error: string;
+  submitting: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const actionLabel = target?.decision === "approve" ? "승인" : "반려";
+
+  return (
+    <AppDialog
+      open={Boolean(target)}
+      title={`참여 요청 ${actionLabel}`}
+      description={target ? `${target.member.user.name}님의 그룹 참여 요청을 ${actionLabel}하시겠습니까?` : undefined}
+      onClose={onClose}
+      dismissOnBackdrop={!submitting}
+      role="alertdialog"
+      footer={
+        <>
+          <button
+            type="button"
+            disabled={submitting}
+            className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-950 disabled:bg-slate-100 disabled:text-slate-400"
+            onClick={onClose}
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            disabled={submitting}
+            className="min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-extrabold text-white disabled:bg-slate-200 disabled:text-slate-400"
+            onClick={onConfirm}
+          >
+            {submitting ? "처리 중" : actionLabel}
+          </button>
+        </>
+      }
+    >
+      {error && <p className="text-sm font-bold text-red-500">{error}</p>}
+    </AppDialog>
+  );
+}
+
+function MemberMenuButton({ label, badge, onClick }: { label: string; badge?: string; onClick: () => void }) {
   return (
     <button type="button" className="flex min-h-11 w-full items-center justify-between rounded-xl px-3 text-sm font-extrabold text-slate-950 active:bg-slate-100" onClick={onClick}>
       <span>{label}</span>
-      <span className="text-xs font-bold text-slate-400">준비중</span>
+      {badge && <span className="text-xs font-bold text-slate-400">{badge}</span>}
     </button>
   );
 }

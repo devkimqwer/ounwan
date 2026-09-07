@@ -148,6 +148,7 @@ export async function getCurrentUserPendingGroupJoinRequests(): Promise<PendingG
       ownerUserId: group.ownerUserId.toString(),
     },
     requestedAt: request.requestedAt.toISOString(),
+    requestId: request.id.toString(),
   }));
 }
 export async function getValidGroupInviteByToken(inviteToken: string): Promise<GroupInvite | undefined> {
@@ -256,6 +257,7 @@ async function getPendingGroupMembers(groupId: string, keyword?: string): Promis
     user: toUser(user, kakaoId),
     roles: [],
     requestedAt: request.requestedAt.toISOString(),
+    requestId: request.id.toString(),
   }));
 }
 

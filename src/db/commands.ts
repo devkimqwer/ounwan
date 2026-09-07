@@ -8,7 +8,7 @@ import { deleteLocalMediaFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } f
 
 import { db } from "./client";
 import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError } from "./errors";
-import { groupInvites, groupJoinRequests, groupMembers, groups, postComments, postLikes, postMedia, seasons, users, workoutPosts } from "./schema";
+import { groupInvites, groupJoinRequests, groupMembers, groups, postComments, postLikes, postMedia, seasons, seasonParticipantPeriods, users, workoutPosts } from "./schema";
 
 const GROUP_INVITE_EXPIRES_HOURS = 72;
 
@@ -286,6 +286,114 @@ export async function requestCurrentUserGroupJoin(inviteToken: string) {
   }
 
   return result;
+}
+
+export async function reviewGroupJoinRequest(requestId: string, decision: "approve" | "reject") {
+  const context = await getCurrentGroupAdminContext();
+
+  if (!/^\d+$/.test(requestId)) {
+    throw new Error("Invalid join request id.");
+  }
+
+  const now = new Date();
+  const joinedAt = getKoreanDate(now);
+
+  return db.transaction(async (tx) => {
+    const requestRows = await tx
+      .select({ request: groupJoinRequests, userId: users.id })
+      .from(groupJoinRequests)
+      .innerJoin(users, eq(groupJoinRequests.userId, users.id))
+      .where(
+        and(
+          eq(groupJoinRequests.id, BigInt(requestId)),
+          eq(groupJoinRequests.groupId, BigInt(context.groupId)),
+          eq(groupJoinRequests.status, "pending"),
+          eq(users.status, "active"),
+          isNull(users.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    const target = requestRows[0];
+    if (!target) {
+      throw new Error("Pending join request not found.");
+    }
+
+    if (decision === "reject") {
+      const rows = await tx
+        .update(groupJoinRequests)
+        .set({
+          status: "rejected",
+          reviewedByUserId: BigInt(context.userId),
+          reviewedAt: now,
+        })
+        .where(eq(groupJoinRequests.id, target.request.id))
+        .returning({ id: groupJoinRequests.id });
+
+      return { id: rows[0].id.toString(), status: "rejected" as const };
+    }
+
+    const existingMemberRows = await tx
+      .select({ groupId: groupMembers.groupId, userId: groupMembers.userId })
+      .from(groupMembers)
+      .where(and(eq(groupMembers.groupId, target.request.groupId), eq(groupMembers.userId, target.userId)))
+      .limit(1);
+
+    if (existingMemberRows[0]) {
+      await tx
+        .update(groupMembers)
+        .set({ roles: ["member"], joinedAt, leftAt: null, updatedAt: now })
+        .where(and(eq(groupMembers.groupId, target.request.groupId), eq(groupMembers.userId, target.userId)));
+    } else {
+      await tx.insert(groupMembers).values({
+        groupId: target.request.groupId,
+        userId: target.userId,
+        roles: ["member"],
+        joinedAt,
+      });
+    }
+
+    const activeSeasonRows = await tx
+      .select({ id: seasons.id })
+      .from(seasons)
+      .where(and(eq(seasons.groupId, target.request.groupId), eq(seasons.status, "active")))
+      .limit(1);
+
+    const activeSeason = activeSeasonRows[0];
+    if (activeSeason) {
+      const activePeriodRows = await tx
+        .select({ id: seasonParticipantPeriods.id })
+        .from(seasonParticipantPeriods)
+        .where(
+          and(
+            eq(seasonParticipantPeriods.seasonId, activeSeason.id),
+            eq(seasonParticipantPeriods.userId, target.userId),
+            isNull(seasonParticipantPeriods.endDate),
+          ),
+        )
+        .limit(1);
+
+      if (!activePeriodRows[0]) {
+        await tx.insert(seasonParticipantPeriods).values({
+          seasonId: activeSeason.id,
+          userId: target.userId,
+          startDate: joinedAt,
+        });
+      }
+    }
+
+    const rows = await tx
+      .update(groupJoinRequests)
+      .set({
+        status: "approved",
+        reviewedByUserId: BigInt(context.userId),
+        reviewedAt: now,
+      })
+      .where(eq(groupJoinRequests.id, target.request.id))
+      .returning({ id: groupJoinRequests.id });
+
+    return { id: rows[0].id.toString(), status: "approved" as const };
+  });
 }
 export async function createWorkoutPost(input: CreateWorkoutPostInput) {
   const context = await getCurrentSeedContext();
