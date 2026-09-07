@@ -7,11 +7,51 @@ import { generateInviteToken, isInviteTokenFormat } from "@/invites/tokens";
 import { deleteLocalMediaFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/local";
 
 import { db } from "./client";
-import { CurrentUserMembershipNotFoundError } from "./errors";
+import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError } from "./errors";
 import { groupInvites, groupJoinRequests, groupMembers, groups, postComments, postLikes, postMedia, seasons, users, workoutPosts } from "./schema";
 
 const GROUP_INVITE_EXPIRES_HOURS = 72;
 
+export async function createGroup(name: string) {
+  const userId = await requireCurrentUserId();
+  const groupName = name.trim();
+
+  if (!groupName) {
+    throw new Error("Group name is required.");
+  }
+
+  const joinedAt = getKoreanDate();
+  const group = await db.transaction(async (tx) => {
+    const userRows = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.id, BigInt(userId)), eq(users.status, "active"), isNull(users.deletedAt)))
+      .limit(1);
+
+    if (!userRows[0]) {
+      throw new Error("Current user not found.");
+    }
+
+    const groupRows = await tx
+      .insert(groups)
+      .values({ name: groupName, ownerUserId: userRows[0].id })
+      .returning({ id: groups.id });
+
+    const groupId = groupRows[0].id;
+
+    await tx.insert(groupMembers).values({
+      groupId,
+      userId: userRows[0].id,
+      roles: ["admin"],
+      joinedAt,
+    });
+
+    return { id: groupId.toString() };
+  });
+
+  await setCurrentGroupIdForUser(userId, group.id);
+  return group;
+}
 type CreateWorkoutPostInput = {
   workoutType?: string;
   content?: string;
@@ -502,7 +542,7 @@ async function getCurrentSeedContext() {
     .limit(1);
 
   if (!seasonRows[0]) {
-    throw new Error("Active season not found. Run npm run db:seed:local first.");
+    throw new ActiveSeasonNotFoundError();
   }
 
   return {
@@ -534,4 +574,12 @@ function getKoreanWorkoutDate(now = new Date()) {
   }
 
   return date.toISOString().slice(0, 10);
+}
+function getKoreanDate(now = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
 }

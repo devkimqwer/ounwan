@@ -12,6 +12,7 @@ import type {
   GroupMembership,
   PostMedia,
   PostComment,
+  PendingGroupJoinRequest,
   Season,
   SeasonParticipant,
   Settlement,
@@ -24,7 +25,7 @@ import { getCurrentGroupIdForUser, requireCurrentUserId } from "@/auth/session";
 import { isInviteTokenFormat } from "@/invites/tokens";
 import type { OunwanAppData } from "@/domain/app-data";
 import { db } from "./client";
-import { CurrentUserMembershipNotFoundError } from "./errors";
+import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError } from "./errors";
 import {
   bankAccounts,
   bankBalanceRecords,
@@ -122,6 +123,33 @@ export async function getAdminGroupMembers(input: GetAdminGroupMembersInput = {}
   return getApprovedGroupMembers(context.groupId, keyword);
 }
 
+
+export async function getCurrentUserPendingGroupJoinRequests(): Promise<PendingGroupJoinRequest[]> {
+  const currentUserId = await requireCurrentUserId();
+  const rows = await db
+    .select({ request: groupJoinRequests, group: groups })
+    .from(groupJoinRequests)
+    .innerJoin(groups, eq(groupJoinRequests.groupId, groups.id))
+    .where(
+      and(
+        eq(groupJoinRequests.userId, BigInt(currentUserId)),
+        eq(groupJoinRequests.status, "pending"),
+        isNull(groups.deletedAt),
+      ),
+    )
+    .orderBy(desc(groupJoinRequests.requestedAt), desc(groupJoinRequests.id));
+
+  return rows.map(({ request, group }) => ({
+    id: request.id.toString(),
+    group: {
+      id: group.id.toString(),
+      name: group.name,
+      visibility: group.visibility,
+      ownerUserId: group.ownerUserId.toString(),
+    },
+    requestedAt: request.requestedAt.toISOString(),
+  }));
+}
 export async function getValidGroupInviteByToken(inviteToken: string): Promise<GroupInvite | undefined> {
   const trimmedToken = inviteToken.trim();
 
@@ -343,7 +371,7 @@ async function getActiveSeason(groupId: string): Promise<Season> {
     .limit(1);
 
   if (!rows[0]) {
-    throw new Error("Active season not found. Run npm run db:seed:local first.");
+    throw new ActiveSeasonNotFoundError();
   }
 
   return toSeason(rows[0]);

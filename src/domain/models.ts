@@ -42,6 +42,12 @@ export interface AdminGroupMember {
   requestedAt?: string;
 }
 
+
+export interface PendingGroupJoinRequest {
+  id: string;
+  group: Group;
+  requestedAt: string;
+}
 export interface GroupInvite {
   id: string;
   group: Group;

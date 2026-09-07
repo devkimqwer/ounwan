@@ -4,3 +4,9 @@ export class CurrentUserMembershipNotFoundError extends Error {
     this.name = "CurrentUserMembershipNotFoundError";
   }
 }
+export class ActiveSeasonNotFoundError extends Error {
+  constructor() {
+    super("Active season not found.");
+    this.name = "ActiveSeasonNotFoundError";
+  }
+}

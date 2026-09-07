@@ -1,6 +1,9 @@
+import type { ReactNode } from "react";
 import Image from "next/image";
 
+import type { PendingGroupJoinRequest } from "@/domain/models";
 import { isDevAuthEnabled } from "@/dev/auth";
+import { CreateGroupForm } from "./create-group-form";
 
 export function LoginPage({ authBlocked = false, devLoginFailed = false }: { authBlocked?: boolean; devLoginFailed?: boolean }) {
   const showDevLogin = isDevAuthEnabled();
@@ -51,24 +54,82 @@ export function LoginPage({ authBlocked = false, devLoginFailed = false }: { aut
   );
 }
 
+export function PendingGroupJoinPage({ requests }: { requests: PendingGroupJoinRequest[] }) {
+  return (
+    <AuthStatusShell title="그룹 참여 승인 대기 중">
+      <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">
+        관리자의 승인이 완료되면 서비스를 이용할 수 있습니다.
+      </p>
+      <div className="mt-5 space-y-2">
+        {requests.map((request) => (
+          <div key={request.id} className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="min-w-0 truncate text-sm font-extrabold text-slate-950">{request.group.name}</p>
+              <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-extrabold text-amber-700">대기</span>
+            </div>
+            <p className="mt-1 text-xs font-bold text-slate-500">요청일 {formatDate(request.requestedAt)}</p>
+          </div>
+        ))}
+      </div>
+      <LogoutForm />
+    </AuthStatusShell>
+  );
+}
+
 export function NoGroupPage() {
+  return (
+    <AuthStatusShell title="그룹이 아직 없습니다">
+      <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">
+        초대 링크로 참여 요청을 보내거나, 직접 그룹을 만들어 시작할 수 있습니다.
+        그룹을 만든 사용자는 해당 그룹의 관리자가 됩니다.
+      </p>
+      <CreateGroupForm />
+      <LogoutForm />
+    </AuthStatusShell>
+  );
+}
+
+export function NoActiveSeasonPage() {
+  return (
+    <AuthStatusShell title="시즌이 아직 없습니다">
+      <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">
+        그룹 생성이 완료됐습니다.
+        <br />
+        운동 인증을 시작하려면 시즌 생성 기능을 이어서 준비해야 합니다.
+      </p>
+      <LogoutForm />
+    </AuthStatusShell>
+  );
+}
+
+function AuthStatusShell({ title, children }: { title: string; children: ReactNode }) {
   return (
     <main className="min-h-dvh bg-slate-50 px-5 py-10 text-slate-950">
       <div className="mx-auto flex min-h-[calc(100dvh-5rem)] max-w-sm flex-col justify-center">
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <h1 className="text-lg font-extrabold">그룹 참여 대기 중</h1>
-          <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">
-            회원 정보 설정이 완료됐습니다.
-            <br />
-            관리자의 승인이 완료되면 서비스를 이용할 수 있습니다.
-          </p>
-          <form action="/api/auth/logout" method="post" className="mt-5">
-            <button type="submit" className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-950">
-              로그아웃
-            </button>
-          </form>
+          <h1 className="text-lg font-extrabold">{title}</h1>
+          {children}
         </div>
       </div>
     </main>
   );
+}
+
+function LogoutForm() {
+  return (
+    <form action="/api/auth/logout" method="post" className="mt-5">
+      <button type="submit" className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-950">
+        로그아웃
+      </button>
+    </form>
+  );
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(value));
 }

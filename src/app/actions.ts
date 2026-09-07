@@ -1,14 +1,20 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
-import { createPostComment, createWorkoutPost, deletePostComment, deleteWorkoutPost, getOrCreateCurrentGroupInvite, refreshCurrentUserAvatar, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
+import { createGroup, createPostComment, createWorkoutPost, deletePostComment, deleteWorkoutPost, getOrCreateCurrentGroupInvite, refreshCurrentUserAvatar, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
 const MAX_WORKOUT_POST_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_POST_COMMENT_LENGTH = 500;
 const MAX_DISPLAY_NAME_LENGTH = 20;
+const MAX_GROUP_NAME_LENGTH = 30;
 
+export type CreateGroupState = {
+  status: "idle" | "error";
+  message: string;
+};
 export type UpdateCurrentUserProfileState = {
   status: "idle" | "success" | "error";
   message: string;
@@ -39,6 +45,24 @@ export type CreatePostCommentState = {
 };
 
 
+export async function createGroupAction(
+  _previousState: CreateGroupState,
+  formData: FormData,
+): Promise<CreateGroupState> {
+  const groupName = String(formData.get("groupName") ?? "").trim();
+
+  if (!groupName) {
+    return { status: "error", message: "그룹명을 입력해주세요." };
+  }
+
+  if (groupName.length > MAX_GROUP_NAME_LENGTH) {
+    return { status: "error", message: `그룹명은 ${MAX_GROUP_NAME_LENGTH}자 이내로 입력해주세요.` };
+  }
+
+  await createGroup(groupName);
+  revalidatePath("/");
+  redirect("/");
+}
 export async function createGroupInviteAction(): Promise<CreateGroupInviteState> {
   try {
     const invite = await getOrCreateCurrentGroupInvite();
