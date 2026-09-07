@@ -49,6 +49,7 @@ export interface AuthGroupSwitchOption {
   group: Group;
   membership: GroupMembership;
   hasActiveSeason: boolean;
+  pendingSeason?: Season;
   isCurrent: boolean;
 }
 export interface PendingGroupJoinRequest {
@@ -75,7 +76,7 @@ export interface Season {
   endDate?: string;
   targetWorkoutCountPerWeek: number;
   finePerMiss: number;
-  status: "active" | "closed";
+  status: "pending" | "active" | "closed";
 }
 
 export interface SeasonParticipant {

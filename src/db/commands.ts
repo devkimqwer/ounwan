@@ -7,7 +7,7 @@ import { generateInviteToken, isInviteTokenFormat } from "@/invites/tokens";
 import { deleteLocalMediaFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/local";
 
 import { db } from "./client";
-import { ActiveSeasonAlreadyExistsError, ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError } from "./errors";
+import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "./errors";
 import { groupInvites, groupJoinRequests, groupMembers, groups, postComments, postLikes, postMedia, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
 
 const GROUP_INVITE_EXPIRES_HOURS = 72;
@@ -406,22 +406,35 @@ export async function reviewGroupJoinRequest(requestId: string, decision: "appro
 export async function createSeason(input: CreateSeasonInput) {
   const context = await getCurrentGroupAdminContext();
   const seasonName = input.name.trim();
+  const today = getKoreanDate();
 
   if (!seasonName) {
     throw new Error("Season name is required.");
   }
 
-  return db.transaction(async (tx) => {
-    const activeSeasonRows = await tx
-      .select({ id: seasons.id })
-      .from(seasons)
-      .where(and(eq(seasons.groupId, BigInt(context.groupId)), eq(seasons.status, "active")))
-      .limit(1);
+  if (input.startDate < today) {
+    throw new SeasonStartDateInPastError();
+  }
 
-    if (activeSeasonRows[0]) {
-      throw new ActiveSeasonAlreadyExistsError();
+  return db.transaction(async (tx) => {
+    const [activeSeasonRows, pendingSeasonRows] = await Promise.all([
+      tx
+        .select({ id: seasons.id })
+        .from(seasons)
+        .where(and(eq(seasons.groupId, BigInt(context.groupId)), eq(seasons.status, "active")))
+        .limit(1),
+      tx
+        .select({ id: seasons.id })
+        .from(seasons)
+        .where(and(eq(seasons.groupId, BigInt(context.groupId)), eq(seasons.status, "pending")))
+        .limit(1),
+    ]);
+
+    if (pendingSeasonRows[0]) {
+      throw new PendingSeasonAlreadyExistsError();
     }
 
+    const shouldActivateNow = input.startDate === today && !activeSeasonRows[0];
     const seasonRows = await tx
       .insert(seasons)
       .values({
@@ -430,54 +443,125 @@ export async function createSeason(input: CreateSeasonInput) {
         startDate: input.startDate,
         targetWorkoutCountPerWeek: input.targetWorkoutCountPerWeek,
         finePerMiss: input.finePerMiss,
-        status: "active",
+        status: shouldActivateNow ? "active" : "pending",
       })
       .returning({ id: seasons.id });
 
     const seasonId = seasonRows[0].id;
-    const memberRows = await tx
-      .select({ userId: groupMembers.userId })
-      .from(groupMembers)
-      .where(and(eq(groupMembers.groupId, BigInt(context.groupId)), isNull(groupMembers.leftAt)));
 
-    if (memberRows.length > 0) {
-      await tx.insert(seasonParticipantPeriods).values(
-        memberRows.map((member) => ({
-          seasonId,
-          userId: member.userId,
-          startDate: input.startDate,
-        })),
-      );
+    if (shouldActivateNow) {
+      await initializeActiveSeason(tx, seasonId, BigInt(context.groupId), today);
     }
 
-    const weekRange = getKoreanWeekRange(new Date(`${input.startDate}T00:00:00+09:00`));
-    const settlementRows = await tx
-      .insert(weeklySettlements)
-      .values({
-        groupId: BigInt(context.groupId),
-        seasonId,
-        weekStartDate: weekRange.weekStartDate,
-        weekEndDate: weekRange.weekEndDate,
-        status: "draft",
-      })
-      .onConflictDoNothing()
-      .returning({ id: weeklySettlements.id });
+    return { id: seasonId.toString(), status: shouldActivateNow ? "active" as const : "pending" as const };
+  });
+}
 
-    const settlementId = settlementRows[0]?.id;
-    if (settlementId && memberRows.length > 0) {
-      await tx.insert(weeklySettlementRows).values(
-        memberRows.map((member) => ({
-          settlementId,
-          userId: member.userId,
-          validWorkoutCount: 0,
-          missedCount: 0,
-          autoFineAmount: 0,
-          finalFineAmount: 0,
-        })),
-      );
+export async function activateCurrentGroupPendingSeason() {
+  const context = await getCurrentGroupAdminContext();
+  const today = getKoreanDate();
+
+  return db.transaction(async (tx) => {
+    const pendingSeasonRows = await tx
+      .select({ id: seasons.id, startDate: seasons.startDate })
+      .from(seasons)
+      .where(and(eq(seasons.groupId, BigInt(context.groupId)), eq(seasons.status, "pending")))
+      .orderBy(seasons.startDate, seasons.id)
+      .limit(1);
+    const pendingSeason = pendingSeasonRows[0];
+
+    if (!pendingSeason) {
+      throw new PendingSeasonNotFoundError();
     }
 
-    return { id: seasonId.toString() };
+
+    const activatedSeason = await activatePendingSeasonForGroup(tx, BigInt(context.groupId), today);
+    if (!activatedSeason) {
+      throw new ActiveSeasonNotFoundError();
+    }
+
+    return { id: activatedSeason.id.toString() };
+  });
+}
+
+export async function deletePendingSeason(seasonId: string) {
+  const context = await getCurrentGroupAdminContext();
+  const rows = await db
+    .delete(seasons)
+    .where(and(eq(seasons.id, BigInt(seasonId)), eq(seasons.groupId, BigInt(context.groupId)), eq(seasons.status, "pending")))
+    .returning({ id: seasons.id });
+
+  if (!rows[0]) {
+    throw new Error("Pending season not found.");
+  }
+
+  return { id: rows[0].id.toString() };
+}
+
+type CloseSeasonInput = {
+  seasonId: string;
+  activatePendingSeason: boolean;
+};
+
+export async function closeActiveSeason(input: CloseSeasonInput) {
+  const context = await getCurrentGroupAdminContext();
+  const today = getKoreanDate();
+
+  return db.transaction(async (tx) => {
+    const closedSeasonRows = await tx
+      .update(seasons)
+      .set({ status: "closed", endDate: today, updatedAt: new Date() })
+      .where(and(eq(seasons.id, BigInt(input.seasonId)), eq(seasons.groupId, BigInt(context.groupId)), eq(seasons.status, "active")))
+      .returning({ id: seasons.id });
+
+    if (!closedSeasonRows[0]) {
+      throw new ActiveSeasonNotFoundError();
+    }
+
+    await tx
+      .update(seasonParticipantPeriods)
+      .set({ endDate: today })
+      .where(and(eq(seasonParticipantPeriods.seasonId, closedSeasonRows[0].id), isNull(seasonParticipantPeriods.endDate)));
+
+    if (!input.activatePendingSeason) {
+      return { closedSeasonId: closedSeasonRows[0].id.toString(), activatedSeasonId: undefined };
+    }
+
+    const activatedSeason = await activatePendingSeasonForGroup(tx, BigInt(context.groupId), today);
+
+    return {
+      closedSeasonId: closedSeasonRows[0].id.toString(),
+      activatedSeasonId: activatedSeason?.id.toString(),
+    };
+  });
+}
+
+export async function activateDuePendingSeasons(now = new Date()) {
+  const today = getKoreanDate(now);
+  return db.transaction(async (tx) => {
+    const pendingRows = await tx
+      .select({ groupId: seasons.groupId })
+      .from(seasons)
+      .where(and(eq(seasons.status, "pending"), sql`${seasons.startDate} <= ${today}`))
+      .orderBy(seasons.startDate, seasons.id);
+
+    const activatedSeasonIds: string[] = [];
+    const seenGroupIds = new Set<string>();
+
+    for (const pending of pendingRows) {
+      const groupId = pending.groupId.toString();
+      if (seenGroupIds.has(groupId)) {
+        continue;
+      }
+
+      seenGroupIds.add(groupId);
+      const activatedSeason = await activateDuePendingSeasonForGroup(tx, pending.groupId, today);
+      if (activatedSeason) {
+        activatedSeasonIds.push(activatedSeason.id.toString());
+      }
+    }
+
+    return { activatedSeasonIds };
   });
 }
 export async function createWorkoutPost(input: CreateWorkoutPostInput) {
@@ -767,6 +851,125 @@ function getKoreanWorkoutDate(now = new Date()) {
   }
 
   return date.toISOString().slice(0, 10);
+}
+async function activatePendingSeasonForGroup(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], groupId: bigint, activationDate: string) {
+  const activeSeasonRows = await tx
+    .select({ id: seasons.id })
+    .from(seasons)
+    .where(and(eq(seasons.groupId, groupId), eq(seasons.status, "active")))
+    .limit(1);
+
+  if (activeSeasonRows[0]) {
+    return undefined;
+  }
+
+  const pendingSeasonRows = await tx
+    .select({ id: seasons.id })
+    .from(seasons)
+    .where(and(eq(seasons.groupId, groupId), eq(seasons.status, "pending")))
+    .orderBy(seasons.startDate, seasons.id)
+    .limit(1);
+  const pendingSeason = pendingSeasonRows[0];
+
+  if (!pendingSeason) {
+    return undefined;
+  }
+
+  const activatedSeasonRows = await tx
+    .update(seasons)
+    .set({ status: "active", startDate: activationDate, updatedAt: new Date() })
+    .where(and(eq(seasons.id, pendingSeason.id), eq(seasons.groupId, groupId), eq(seasons.status, "pending")))
+    .returning({ id: seasons.id });
+  const activatedSeason = activatedSeasonRows[0];
+
+  if (!activatedSeason) {
+    return undefined;
+  }
+
+  await initializeActiveSeason(tx, activatedSeason.id, groupId, activationDate);
+  return activatedSeason;
+}
+
+async function activateDuePendingSeasonForGroup(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], groupId: bigint, activationDate: string) {
+  const activeSeasonRows = await tx
+    .select({ id: seasons.id })
+    .from(seasons)
+    .where(and(eq(seasons.groupId, groupId), eq(seasons.status, "active")))
+    .limit(1);
+
+  if (activeSeasonRows[0]) {
+    return undefined;
+  }
+
+  const pendingSeasonRows = await tx
+    .select({ id: seasons.id })
+    .from(seasons)
+    .where(and(eq(seasons.groupId, groupId), eq(seasons.status, "pending"), sql`${seasons.startDate} <= ${activationDate}`))
+    .orderBy(seasons.startDate, seasons.id)
+    .limit(1);
+  const pendingSeason = pendingSeasonRows[0];
+
+  if (!pendingSeason) {
+    return undefined;
+  }
+
+  const activatedSeasonRows = await tx
+    .update(seasons)
+    .set({ status: "active", startDate: activationDate, updatedAt: new Date() })
+    .where(and(eq(seasons.id, pendingSeason.id), eq(seasons.groupId, groupId), eq(seasons.status, "pending")))
+    .returning({ id: seasons.id });
+  const activatedSeason = activatedSeasonRows[0];
+
+  if (!activatedSeason) {
+    return undefined;
+  }
+
+  await initializeActiveSeason(tx, activatedSeason.id, groupId, activationDate);
+  return activatedSeason;
+}
+
+async function initializeActiveSeason(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], seasonId: bigint, groupId: bigint, activationDate: string) {
+  const memberRows = await tx
+    .select({ userId: groupMembers.userId })
+    .from(groupMembers)
+    .where(and(eq(groupMembers.groupId, groupId), isNull(groupMembers.leftAt)));
+
+  if (memberRows.length > 0) {
+    await tx.insert(seasonParticipantPeriods).values(
+      memberRows.map((member) => ({
+        seasonId,
+        userId: member.userId,
+        startDate: activationDate,
+      })),
+    );
+  }
+
+  const weekRange = getKoreanWeekRange(new Date(`${activationDate}T00:00:00+09:00`));
+  const settlementRows = await tx
+    .insert(weeklySettlements)
+    .values({
+      groupId,
+      seasonId,
+      weekStartDate: weekRange.weekStartDate,
+      weekEndDate: weekRange.weekEndDate,
+      status: "draft",
+    })
+    .onConflictDoNothing()
+    .returning({ id: weeklySettlements.id });
+
+  const settlementId = settlementRows[0]?.id;
+  if (settlementId && memberRows.length > 0) {
+    await tx.insert(weeklySettlementRows).values(
+      memberRows.map((member) => ({
+        settlementId,
+        userId: member.userId,
+        validWorkoutCount: 0,
+        missedCount: 0,
+        autoFineAmount: 0,
+        finalFineAmount: 0,
+      })),
+    );
+  }
 }
 function getKoreanDate(now = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {

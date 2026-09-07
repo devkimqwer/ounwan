@@ -21,7 +21,7 @@ export const userStatusEnum = pgEnum("user_status", ["active", "blocked", "delet
 export const oauthProviderEnum = pgEnum("oauth_provider", ["kakao"]);
 export const groupVisibilityEnum = pgEnum("group_visibility", ["private", "public"]);
 export const memberRoleEnum = pgEnum("member_role", ["admin", "treasurer", "member"]);
-export const seasonStatusEnum = pgEnum("season_status", ["active", "closed"]);
+export const seasonStatusEnum = pgEnum("season_status", ["pending", "active", "closed"]);
 export const inviteStatusEnum = pgEnum("invite_status", ["active", "disabled", "expired"]);
 export const joinRequestStatusEnum = pgEnum("join_request_status", [
   "pending",
@@ -121,6 +121,9 @@ export const seasons = pgTable(
     uniqueIndex("ux_seasons_one_active_per_group")
       .on(table.groupId)
       .where(sql`${table.status} = 'active'`),
+    uniqueIndex("ux_seasons_one_open_status_per_group")
+      .on(table.groupId, table.status)
+      .where(sql`${table.status} <> 'closed'`),
     check("ck_seasons_end_after_start", sql`${table.endDate} IS NULL OR ${table.endDate} >= ${table.startDate}`),
     check("ck_seasons_target_positive", sql`${table.targetWorkoutCountPerWeek} > 0`),
     check("ck_seasons_fine_non_negative", sql`${table.finePerMiss} >= 0`),

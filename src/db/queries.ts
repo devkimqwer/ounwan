@@ -132,6 +132,14 @@ export async function getCurrentUserGroupSwitchOptions(): Promise<AuthGroupSwitc
     .leftJoin(seasons, and(eq(seasons.groupId, groups.id), eq(seasons.status, "active")))
     .where(and(eq(groupMembers.userId, BigInt(currentUserId)), isNull(groupMembers.leftAt), isNull(groups.deletedAt)))
     .orderBy(desc(groupMembers.updatedAt), desc(groups.id));
+  const groupIds = rows.map(({ group }) => group.id);
+  const pendingSeasonRows = groupIds.length
+    ? await db
+        .select()
+        .from(seasons)
+        .where(and(inArray(seasons.groupId, groupIds), eq(seasons.status, "pending")))
+    : [];
+  const pendingSeasonByGroupId = new Map(pendingSeasonRows.map((season) => [season.groupId.toString(), toSeason(season)]));
 
   return rows.map(({ group, member, activeSeasonId }) => ({
     group: {
@@ -148,6 +156,7 @@ export async function getCurrentUserGroupSwitchOptions(): Promise<AuthGroupSwitc
       leftAt: member.leftAt ?? undefined,
     },
     hasActiveSeason: Boolean(activeSeasonId),
+    pendingSeason: pendingSeasonByGroupId.get(group.id.toString()),
     isCurrent: group.id.toString() === selectedGroupId,
   }));
 }

@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { createGroup, createPostComment, createSeason, createWorkoutPost, deletePostComment, deleteWorkoutPost, getOrCreateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
-import { ActiveSeasonAlreadyExistsError } from "@/db/errors";
+import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deletePendingSeason, deletePostComment, deleteWorkoutPost, getOrCreateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
+import { PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
 const MAX_WORKOUT_POST_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -35,6 +35,11 @@ export type CreateWorkoutPostState = {
 
 export type CreateSeasonState = {
   status: "idle" | "success" | "error";
+  message: string;
+};
+
+export type SeasonCommandState = {
+  status: "success" | "error";
   message: string;
 };
 export type CreateGroupInviteState = {
@@ -89,6 +94,10 @@ export async function createSeasonAction(
     return { status: "error", message: "시작일을 선택해주세요." };
   }
 
+  if (startDate < getKoreanDate()) {
+    return { status: "error", message: "시작일은 오늘 또는 이후 일자로 선택해주세요." };
+  }
+
   if (!Number.isInteger(targetWorkoutCountPerWeek) || targetWorkoutCountPerWeek < 1 || targetWorkoutCountPerWeek > 7) {
     return { status: "error", message: "주간 목표는 1~7회로 입력해주세요." };
   }
@@ -102,13 +111,66 @@ export async function createSeasonAction(
     revalidatePath("/");
     return { status: "success", message: "시즌이 생성됐습니다." };
   } catch (error) {
-    if (error instanceof ActiveSeasonAlreadyExistsError) {
-      return { status: "error", message: "진행 중인 시즌을 먼저 종료해주세요." };
+    if (error instanceof PendingSeasonAlreadyExistsError) {
+      return { status: "error", message: "이미 대기중인 시즌이 있습니다." };
     }
+
+    if (error instanceof SeasonStartDateInPastError) {
+      return { status: "error", message: "시작일은 오늘 또는 이후 일자로 선택해주세요." };
+    }
+
+    console.error("[ounwan error]", error);
 
     return { status: "error", message: "시즌을 생성할 수 없습니다." };
   }
 }
+export async function activatePendingSeasonAction(): Promise<SeasonCommandState> {
+  try {
+    await activateCurrentGroupPendingSeason();
+    revalidatePath("/");
+    return { status: "success", message: "대기중 시즌이 시작됐습니다." };
+  } catch (error) {
+    if (error instanceof PendingSeasonNotFoundError) {
+      return { status: "error", message: "대기중인 시즌이 없습니다." };
+    }
+
+
+    return { status: "error", message: "대기중 시즌을 시작할 수 없습니다." };
+  }
+}
+export async function closeSeasonAction(formData: FormData): Promise<SeasonCommandState> {
+  const seasonId = String(formData.get("seasonId") ?? "").trim();
+  const activatePendingSeason = formData.get("activatePendingSeason") === "true";
+
+  if (!seasonId) {
+    return { status: "error", message: "시즌 정보를 확인할 수 없습니다." };
+  }
+
+  try {
+    await closeActiveSeason({ seasonId, activatePendingSeason });
+    revalidatePath("/");
+    return { status: "success", message: "시즌이 종료됐습니다." };
+  } catch {
+    return { status: "error", message: "시즌을 종료할 수 없습니다." };
+  }
+}
+
+export async function deletePendingSeasonAction(formData: FormData): Promise<SeasonCommandState> {
+  const seasonId = String(formData.get("seasonId") ?? "").trim();
+
+  if (!seasonId) {
+    return { status: "error", message: "시즌 정보를 확인할 수 없습니다." };
+  }
+
+  try {
+    await deletePendingSeason(seasonId);
+    revalidatePath("/");
+    return { status: "success", message: "대기중 시즌이 삭제됐습니다." };
+  } catch {
+    return { status: "error", message: "대기중 시즌을 삭제할 수 없습니다." };
+  }
+}
+
 export async function createGroupInviteAction(): Promise<CreateGroupInviteState> {
   try {
     const invite = await getOrCreateCurrentGroupInvite();
@@ -304,4 +366,13 @@ function isSupportedMediaFile(file: File) {
 
 function isPhoneMediaFile(file: File) {
   return /\.(heic|heif|mov|m4v|mp4)$/i.test(file.name);
+}
+
+function getKoreanDate(now = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
 }

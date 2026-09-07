@@ -5,6 +5,7 @@ import type { AuthGroupSwitchOption, PendingGroupJoinRequest } from "@/domain/mo
 import { isDevAuthEnabled } from "@/dev/auth";
 import { SeasonCreateForm } from "@/features/app/season-create-form";
 import { CreateGroupForm } from "./create-group-form";
+import { PendingSeasonActivateForm } from "./pending-season-activate-form";
 import { SeasonlessGroupSwitchSelect } from "./seasonless-group-switch-select";
 
 export function LoginPage({ authBlocked = false, devLoginFailed = false }: { authBlocked?: boolean; devLoginFailed?: boolean }) {
@@ -121,9 +122,36 @@ function AuthStatusShell({ title, children }: { title: string; children: ReactNo
 
 function SeasonlessSeasonCreateSection({ groups }: { groups: AuthGroupSwitchOption[] }) {
   const currentGroup = groups.find((group) => group.isCurrent);
-  const canCreateSeason = currentGroup?.membership.roles.includes("admin");
+  const pendingSeason = currentGroup?.pendingSeason;
+  const canManageSeason = currentGroup?.membership.roles.includes("admin");
 
-  if (!canCreateSeason) {
+  if (pendingSeason) {
+    const canActivate = canManageSeason;
+
+    return (
+      <section className="mt-5 border-t border-slate-100 pt-5">
+        <h2 className="text-sm font-extrabold text-slate-950">대기중인 시즌</h2>
+        <div className="mt-3 rounded-xl border border-[#E6E0FA] bg-[#F7F5FF] px-4 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-extrabold text-slate-950">{pendingSeason.name}</p>
+              <p className="mt-1 text-xs font-bold text-[#51438f]">예정일 {formatDate(pendingSeason.startDate)}</p>
+            </div>
+            <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-extrabold text-[#51438f]">대기중</span>
+          </div>
+          {canActivate ? (
+            <PendingSeasonActivateForm />
+          ) : (
+            <p className="mt-3 text-xs font-bold leading-5 text-slate-500">
+              {canManageSeason ? "관리자가 시즌을 시작할 수 있습니다." : "관리자가 시즌을 시작하면 서비스를 이용할 수 있습니다."}
+            </p>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  if (!canManageSeason) {
     return null;
   }
 

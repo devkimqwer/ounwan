@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
+import { closeSeasonAction, deletePendingSeasonAction } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
 import type { Season, SeasonParticipant } from "@/domain/models";
 import { SeasonCreateForm } from "./season-create-form";
@@ -18,11 +20,13 @@ type SeasonParticipantMember = {
 };
 
 export function SeasonManagementView({ seasons, seasonParticipants, onBack }: SeasonManagementViewProps) {
+  const router = useRouter();
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
   const [selectedParticipant, setSelectedParticipant] = useState<SeasonParticipantMember | null>(null);
   const [participantMenu, setParticipantMenu] = useState<SeasonParticipantMember | null>(null);
   const [createSeasonDialogOpen, setCreateSeasonDialogOpen] = useState(false);
   const [closeSeasonDialogOpen, setCloseSeasonDialogOpen] = useState(false);
+  const [deletePendingSeasonDialogOpen, setDeletePendingSeasonDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const seasonDetailHistoryActiveRef = useRef(false);
   const selectedSeasonIdRef = useRef<string | null>(null);
@@ -69,10 +73,18 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
     setSelectedSeasonId(null);
   };
 
+  const handlePendingSeasonDeleted = () => {
+    setDeletePendingSeasonDialogOpen(false);
+    closeSeasonDetail();
+    router.refresh();
+  };
+
   const sortedSeasons = useMemo(() => [...seasons].sort(compareSeasonByStartDateDesc), [seasons]);
   const selectedSeason = sortedSeasons.find((season) => season.id === selectedSeasonId) ?? null;
   const participantsBySeasonId = useMemo(() => groupParticipantsBySeason(seasonParticipants), [seasonParticipants]);
   const activeSeason = sortedSeasons.find((season) => season.status === "active");
+  const pendingSeason = sortedSeasons.find((season) => season.status === "pending");
+  const nextPendingSeason = pendingSeason;
 
   if (selectedSeason) {
     const participants = participantsBySeasonId.get(selectedSeason.id) ?? [];
@@ -146,6 +158,16 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
           </button>
         )}
 
+        {selectedSeason.status === "pending" && (
+          <button
+            type="button"
+            className="min-h-12 w-full rounded-2xl border border-red-200 bg-white text-sm font-extrabold text-red-500 active:bg-red-50"
+            onClick={() => setDeletePendingSeasonDialogOpen(true)}
+          >
+            대기중 시즌 삭제
+          </button>
+        )}
+
         <AppDialog
           open={inviteDialogOpen}
           title="카카오 공유"
@@ -156,7 +178,22 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
         />
         <ParticipantDetailDialog participant={selectedParticipant} onClose={() => setSelectedParticipant(null)} />
         <ParticipantMenuDialog participant={participantMenu} onClose={() => setParticipantMenu(null)} />
-        <SeasonActionNotReadyDialog open={closeSeasonDialogOpen} title="시즌 종료" onClose={() => setCloseSeasonDialogOpen(false)} />
+        <SeasonCloseDialog
+          open={closeSeasonDialogOpen}
+          season={selectedSeason}
+          duePendingSeason={nextPendingSeason}
+          onClose={() => setCloseSeasonDialogOpen(false)}
+          onClosed={() => {
+            setCloseSeasonDialogOpen(false);
+            router.refresh();
+          }}
+        />
+        <PendingSeasonDeleteDialog
+          open={deletePendingSeasonDialogOpen}
+          season={selectedSeason}
+          onClose={() => setDeletePendingSeasonDialogOpen(false)}
+          onDeleted={handlePendingSeasonDeleted}
+        />
       </div>
     );
   }
@@ -168,15 +205,15 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
       <button
         type="button"
         className="flex min-h-12 w-full items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-extrabold text-white active:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400"
-        disabled={Boolean(activeSeason)}
+        disabled={Boolean(pendingSeason)}
         onClick={() => setCreateSeasonDialogOpen(true)}
       >
         새 시즌 추가
       </button>
 
-      {activeSeason && (
+      {pendingSeason && (
         <p className="rounded-2xl bg-[#F7F5FF] px-4 py-3 text-xs font-bold leading-5 text-[#51438f]">
-          새 시즌을 시작하려면 현재 진행중인 시즌을 먼저 종료해야 합니다.
+          이미 대기중인 시즌이 있어 새 시즌을 추가할 수 없습니다.
         </p>
       )}
 
@@ -235,12 +272,13 @@ function SeasonManagementHeader({ title, onBack }: { title: string; onBack: () =
 }
 
 function SeasonStatusBadge({ status }: { status: Season["status"] }) {
-  const active = status === "active";
-  return (
-    <span className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-extrabold ${active ? "bg-[#5e4ea5] text-white" : "bg-slate-100 text-slate-500"}`}>
-      {active ? "진행중" : "종료"}
-    </span>
-  );
+  const statusMeta = {
+    pending: { label: "대기중", className: "bg-[#F2F0FA] text-[#51438f]" },
+    active: { label: "진행중", className: "bg-[#5e4ea5] text-white" },
+    closed: { label: "종료", className: "bg-slate-100 text-slate-500" },
+  }[status];
+
+  return <span className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-extrabold ${statusMeta.className}`}>{statusMeta.label}</span>;
 }
 
 function SeasonParticipantRow({
@@ -290,6 +328,7 @@ function SeasonParticipantRow({
     </div>
   );
 }
+
 function ParticipantDetailDialog({ participant, onClose }: { participant: SeasonParticipantMember | null; onClose: () => void }) {
   return (
     <AppDialog open={Boolean(participant)} title={participant?.user.name ?? "참가자 상세"} onClose={onClose} dismissOnBackdrop actions={[{ label: "닫기", onClick: onClose }]}>
@@ -321,7 +360,6 @@ function SeasonMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-
 function CreateSeasonDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <AppDialog open={open} title="새 시즌 추가" onClose={onClose} dismissOnBackdrop footer={null}>
@@ -329,9 +367,122 @@ function CreateSeasonDialog({ open, onClose }: { open: boolean; onClose: () => v
     </AppDialog>
   );
 }
-function SeasonActionNotReadyDialog({ open, title, onClose }: { open: boolean; title: string; onClose: () => void }) {
+
+function SeasonCloseDialog({
+  open,
+  season,
+  duePendingSeason,
+  onClose,
+  onClosed,
+}: {
+  open: boolean;
+  season: Season;
+  duePendingSeason?: Season;
+  onClose: () => void;
+  onClosed: () => void;
+}) {
+  const [isPending, startTransition] = useTransition();
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const handleCloseSeason = (activatePendingSeason: boolean) => {
+    const formData = new FormData();
+    formData.set("seasonId", season.id);
+    formData.set("activatePendingSeason", String(activatePendingSeason));
+    setErrorMessage("");
+
+    startTransition(async () => {
+      const result = await closeSeasonAction(formData);
+      if (result.status === "error") {
+        setErrorMessage(result.message);
+        return;
+      }
+
+      onClosed();
+    });
+  };
+
   return (
-    <AppDialog open={open} title={title} description="이 기능은 다음 단계에서 구현할 예정입니다." onClose={onClose} dismissOnBackdrop actions={[{ label: "확인", onClick: onClose }]} />
+    <AppDialog
+      open={open}
+      title="시즌 종료"
+      description={duePendingSeason ? `대기중인 ${duePendingSeason.name} 시즌도 바로 진행중으로 전환할까요?` : "현재 진행중인 시즌을 종료할까요?"}
+      onClose={onClose}
+      dismissOnBackdrop={false}
+      role="alertdialog"
+      footer={
+        <div className="flex w-full flex-col gap-2">
+          {errorMessage && <p className="text-sm font-bold text-red-600">{errorMessage}</p>}
+          <div className="flex justify-end gap-2">
+            <button type="button" className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-950 disabled:bg-slate-200 disabled:text-slate-400" disabled={isPending} onClick={onClose}>
+              취소
+            </button>
+            {duePendingSeason && (
+              <button type="button" className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-950 disabled:bg-slate-200 disabled:text-slate-400" disabled={isPending} onClick={() => handleCloseSeason(false)}>
+                종료만
+              </button>
+            )}
+            <button type="button" className="min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-extrabold text-white disabled:bg-slate-200 disabled:text-slate-400" disabled={isPending} onClick={() => handleCloseSeason(Boolean(duePendingSeason))}>
+              {duePendingSeason ? "종료 후 활성화" : "종료"}
+            </button>
+          </div>
+        </div>
+      }
+    />
+  );
+}
+
+function PendingSeasonDeleteDialog({
+  open,
+  season,
+  onClose,
+  onDeleted,
+}: {
+  open: boolean;
+  season: Season;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [isPending, startTransition] = useTransition();
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const handleDelete = () => {
+    const formData = new FormData();
+    formData.set("seasonId", season.id);
+    setErrorMessage("");
+
+    startTransition(async () => {
+      const result = await deletePendingSeasonAction(formData);
+      if (result.status === "error") {
+        setErrorMessage(result.message);
+        return;
+      }
+
+      onDeleted();
+    });
+  };
+
+  return (
+    <AppDialog
+      open={open}
+      title="대기중 시즌 삭제"
+      description="삭제한 대기중 시즌은 복구할 수 없습니다."
+      onClose={onClose}
+      dismissOnBackdrop={false}
+      role="alertdialog"
+      footer={
+        <div className="flex w-full flex-col gap-2">
+          {errorMessage && <p className="text-sm font-bold text-red-600">{errorMessage}</p>}
+          <div className="flex justify-end gap-2">
+            <button type="button" className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-950 disabled:bg-slate-200 disabled:text-slate-400" disabled={isPending} onClick={onClose}>
+              취소
+            </button>
+            <button type="button" className="min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-extrabold text-white disabled:bg-slate-200 disabled:text-slate-400" disabled={isPending} onClick={handleDelete}>
+              삭제
+            </button>
+          </div>
+        </div>
+      }
+    />
   );
 }
 
@@ -354,6 +505,10 @@ function groupParticipantsBySeason(participants: SeasonParticipant[]) {
     }
 
     map.set(participant.seasonId, list);
+  });
+
+  map.forEach((members) => {
+    members.forEach((member) => member.periods.sort(comparePeriodByStartDate));
   });
 
   return map;
