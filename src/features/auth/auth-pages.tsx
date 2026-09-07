@@ -2,7 +2,7 @@ import Image from "next/image";
 
 import { isDevAuthEnabled } from "@/dev/auth";
 
-export function LoginPage({ devLoginFailed = false }: { devLoginFailed?: boolean }) {
+export function LoginPage({ authBlocked = false, devLoginFailed = false }: { authBlocked?: boolean; devLoginFailed?: boolean }) {
   const showDevLogin = isDevAuthEnabled();
 
   return (
@@ -25,6 +25,7 @@ export function LoginPage({ devLoginFailed = false }: { devLoginFailed?: boolean
         >
           카카오로 시작하기
         </a>
+        {authBlocked && <p className="mt-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold leading-5 text-red-600">차단된 계정은 로그인할 수 없습니다.</p>}
         {showDevLogin && (
           <form action="/api/dev/auth/login" method="post" className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white p-4">
             <p className="text-xs font-extrabold text-slate-500">개발용 강제 로그인</p>

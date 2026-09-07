@@ -6,11 +6,11 @@ import { OunwanApp } from "@/features/app/ounwan-app";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ devLoginError?: string }> }) {
+export default async function Home({ searchParams }: { searchParams: Promise<{ authError?: string; devLoginError?: string }> }) {
   const params = await searchParams;
   const currentUserId = await getCurrentUserId();
   if (!currentUserId) {
-    return <LoginPage devLoginFailed={params.devLoginError === "1"} />;
+    return <LoginPage authBlocked={params.authError === "blocked"} devLoginFailed={params.devLoginError === "1"} />;
   }
 
   try {

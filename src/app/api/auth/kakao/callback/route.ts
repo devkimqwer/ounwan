@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { exchangeKakaoToken, fetchKakaoUser } from "@/auth/kakao";
-import { findUserIdByKakaoId } from "@/auth/users";
+import { getKakaoAccountAuthState } from "@/auth/users";
 import { consumeOAuthReturnTo, setPendingKakaoId, setSessionUserId, verifyOAuthState } from "@/auth/session";
 
 export async function GET(request: NextRequest) {
@@ -21,11 +21,15 @@ export async function GET(request: NextRequest) {
     const tokenData = await exchangeKakaoToken(request, code);
     const userData = await fetchKakaoUser(tokenData.access_token);
     const kakaoId = String(userData.id);
-    const userId = await findUserIdByKakaoId(kakaoId);
+    const accountState = await getKakaoAccountAuthState(kakaoId);
 
-    if (userId) {
-      await setSessionUserId(userId);
+    if (accountState.status === "active") {
+      await setSessionUserId(accountState.userId);
       return NextResponse.redirect(new URL(returnTo ?? "/", request.nextUrl.origin));
+    }
+
+    if (accountState.status === "blocked") {
+      return NextResponse.redirect(new URL("/?authError=blocked", request.nextUrl.origin));
     }
 
     await setPendingKakaoId(kakaoId, returnTo);

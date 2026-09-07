@@ -1,25 +1,59 @@
 import "server-only";
 
+import { and, eq } from "drizzle-orm";
+
 import { db } from "@/db/client";
 import { oauthAccounts, users } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
 import { saveUserAvatarSvg } from "@/storage/local";
 
+export type KakaoAccountAuthState =
+  | { status: "active"; userId: string }
+  | { status: "blocked"; userId: string }
+  | { status: "deleted"; userId: string }
+  | { status: "none" };
 
-export async function findUserIdByKakaoId(kakaoId: string) {
+export async function getKakaoAccountAuthState(kakaoId: string): Promise<KakaoAccountAuthState> {
   const rows = await db
-    .select({ userId: oauthAccounts.userId })
+    .select({
+      userId: oauthAccounts.userId,
+      userStatus: users.status,
+      deletedAt: users.deletedAt,
+    })
     .from(oauthAccounts)
+    .innerJoin(users, eq(oauthAccounts.userId, users.id))
     .where(and(eq(oauthAccounts.provider, "kakao"), eq(oauthAccounts.providerUserId, kakaoId)))
     .limit(1);
 
-  return rows[0]?.userId.toString();
+  const account = rows[0];
+  if (!account) {
+    return { status: "none" };
+  }
+
+  const userId = account.userId.toString();
+  if (account.userStatus === "blocked") {
+    return { status: "blocked", userId };
+  }
+
+  if (account.userStatus === "deleted" || account.deletedAt) {
+    return { status: "deleted", userId };
+  }
+
+  return { status: "active", userId };
+}
+
+export async function findUserIdByKakaoId(kakaoId: string) {
+  const state = await getKakaoAccountAuthState(kakaoId);
+  return state.status === "active" ? state.userId : undefined;
 }
 
 export async function registerKakaoUser(input: { kakaoId: string; displayName: string }) {
-  const existingUserId = await findUserIdByKakaoId(input.kakaoId);
-  if (existingUserId) {
-    return existingUserId;
+  const accountState = await getKakaoAccountAuthState(input.kakaoId);
+  if (accountState.status === "active") {
+    return accountState.userId;
+  }
+
+  if (accountState.status === "blocked") {
+    throw new Error("Blocked Kakao account cannot register.");
   }
 
   const userRows = await db
@@ -28,11 +62,18 @@ export async function registerKakaoUser(input: { kakaoId: string; displayName: s
     .returning({ id: users.id });
   const userId = userRows[0].id;
 
-  await db.insert(oauthAccounts).values({
-    userId,
-    provider: "kakao",
-    providerUserId: input.kakaoId,
-  });
+  if (accountState.status === "deleted") {
+    await db
+      .update(oauthAccounts)
+      .set({ userId })
+      .where(and(eq(oauthAccounts.provider, "kakao"), eq(oauthAccounts.providerUserId, input.kakaoId)));
+  } else {
+    await db.insert(oauthAccounts).values({
+      userId,
+      provider: "kakao",
+      providerUserId: input.kakaoId,
+    });
+  }
 
   const avatarStorageKey = await saveUserAvatarSvg(userId.toString()).catch(() => undefined);
   if (avatarStorageKey) {
