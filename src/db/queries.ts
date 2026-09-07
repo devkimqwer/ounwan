@@ -26,7 +26,7 @@ import { getCurrentGroupIdForUser, requireCurrentUserId } from "@/auth/session";
 import { isInviteTokenFormat } from "@/invites/tokens";
 import type { OunwanAppData } from "@/domain/app-data";
 import { db } from "./client";
-import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError } from "./errors";
+import { CurrentUserMembershipNotFoundError } from "./errors";
 import {
   bankAccounts,
   bankBalanceRecords,
@@ -66,17 +66,17 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
     getGroupSeasons(group.id),
     getSeasonParticipants(group.id),
     isAdmin ? getAdminGroupMembers({ status: "all" }) : Promise.resolve([]),
-    getWorkoutPosts(group.id, season.id, currentUser.id),
-    getLatestSettlement(group.id, season.id),
+    season ? getWorkoutPosts(group.id, season.id, currentUser.id) : Promise.resolve([]),
+    season ? getLatestSettlement(group.id, season.id) : Promise.resolve(undefined),
     getBankRecords(group.id),
     getAccountInfo(group.id),
   ]);
-  const settlementRows = settlement.id ? await getSettlementRows(settlement.id) : [];
+  const settlementRows = settlement?.id ? await getSettlementRows(settlement.id) : [];
 
   return {
     currentUserId: currentUser.id,
     currentGroupId: group.id,
-    currentSeasonId: season.id,
+    currentSeasonId: season?.id,
     currentUser,
     approvedGroups,
     adminGroupMembers,
@@ -401,18 +401,14 @@ async function getGroup(groupId: string): Promise<Group> {
   };
 }
 
-async function getActiveSeason(groupId: string): Promise<Season> {
+async function getActiveSeason(groupId: string): Promise<Season | undefined> {
   const rows = await db
     .select()
     .from(seasons)
     .where(and(eq(seasons.groupId, BigInt(groupId)), eq(seasons.status, "active")))
     .limit(1);
 
-  if (!rows[0]) {
-    throw new ActiveSeasonNotFoundError();
-  }
-
-  return toSeason(rows[0]);
+  return rows[0] ? toSeason(rows[0]) : undefined;
 }
 
 async function getGroupSeasons(groupId: string): Promise<Season[]> {

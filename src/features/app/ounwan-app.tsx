@@ -48,6 +48,13 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const isTreasurer = roles.includes("treasurer");
   const validPostCount = posts.filter((post) => !post.isInvalid).length;
   const selectedPost = posts.find((post) => post.id === selectedPostId);
+  const pendingSeason = seasons.find((item) => item.status === "pending");
+  const hasActiveSeason = Boolean(season);
+  const seasonStatusText = season
+    ? `${season.name} 진행중`
+    : pendingSeason
+      ? `${pendingSeason.name} ${formatDate(pendingSeason.startDate)} 시작 예정`
+      : "진행중 시즌 없음";
 
   const restoreListScroll = () => {
     requestAnimationFrame(() => {
@@ -205,6 +212,11 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
     moveToTab("more");
     openMorePage(page);
+  };
+
+  const openAdminSeasonManagement = () => {
+    moveToTab("more");
+    openMorePage("season-management");
   };
 
   const selectTab = (tabId: TabId) => {
@@ -380,7 +392,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
         <div className="z-40 flex h-9 shrink-0 items-center justify-center border-b border-slate-200 bg-white">
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold leading-none text-slate-500">
-            {season.name} 진행중
+            {seasonStatusText}
           </span>
         </div>
 
@@ -395,7 +407,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
             />
           ) : (
             <>
-              {activeTab === "home" && (
+              {activeTab === "home" && season && settlement && (
                 <HomeView
                   userName={currentUser.name}
                   currentUserId={currentUserId}
@@ -410,7 +422,10 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                   users={users}
                 />
               )}
-              {activeTab === "feed" && (
+              {activeTab === "home" && !hasActiveSeason && (
+                <NoActiveSeasonInApp groupName={group.name} isAdmin={isAdmin} pendingSeasonName={pendingSeason?.name} onOpenSeasonManagement={openAdminSeasonManagement} />
+              )}
+              {activeTab === "feed" && hasActiveSeason && (
                 <FeedView
                   isAdmin={isAdmin}
                   posts={posts}
@@ -419,9 +434,16 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                   onPostOpen={openPostDetail}
                 />
               )}
-              {activeTab === "cert" && <CertView onPostCreated={handlePostCreated} />}
-              {activeTab === "calendar" && (
-                <PageNotReadyView />
+              {activeTab === "feed" && !hasActiveSeason && (
+                <NoActiveSeasonInApp groupName={group.name} isAdmin={isAdmin} pendingSeasonName={pendingSeason?.name} onOpenSeasonManagement={openAdminSeasonManagement} />
+              )}
+              {activeTab === "cert" && hasActiveSeason && <CertView onPostCreated={handlePostCreated} />}
+              {activeTab === "cert" && !hasActiveSeason && (
+                <NoActiveSeasonInApp groupName={group.name} isAdmin={isAdmin} pendingSeasonName={pendingSeason?.name} onOpenSeasonManagement={openAdminSeasonManagement} />
+              )}
+              {activeTab === "calendar" && hasActiveSeason && <PageNotReadyView />}
+              {activeTab === "calendar" && !hasActiveSeason && (
+                <NoActiveSeasonInApp groupName={group.name} isAdmin={isAdmin} pendingSeasonName={pendingSeason?.name} onOpenSeasonManagement={openAdminSeasonManagement} />
               )}
               {activeTab === "more" && (
                 <MoreView
@@ -464,4 +486,48 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
       </section>
     </main>
   );
+}
+
+function NoActiveSeasonInApp({
+  groupName,
+  isAdmin,
+  pendingSeasonName,
+  onOpenSeasonManagement,
+}: {
+  groupName: string;
+  isAdmin: boolean;
+  pendingSeasonName?: string;
+  onOpenSeasonManagement: () => void;
+}) {
+  return (
+    <div className="flex min-h-full items-center justify-center p-4">
+      <section className="w-full rounded-2xl border border-slate-200 bg-white p-5 text-center">
+        <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#F7F5FF] text-[#51438f]">
+          <svg aria-hidden="true" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 2v4" />
+            <path d="M16 2v4" />
+            <rect width="18" height="18" x="3" y="4" rx="2" />
+            <path d="M3 10h18" />
+          </svg>
+        </span>
+        <h2 className="mt-4 text-base font-extrabold text-slate-950">진행중인 시즌이 없습니다</h2>
+        <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
+          {pendingSeasonName ? `${groupName}에는 ${pendingSeasonName} 시즌이 대기중입니다.` : `${groupName}에는 아직 시작된 시즌이 없습니다.`}
+        </p>
+        {isAdmin && (
+          <button
+            type="button"
+            className="mt-4 min-h-11 w-full rounded-xl bg-slate-950 px-4 text-sm font-extrabold text-white active:bg-slate-800"
+            onClick={onOpenSeasonManagement}
+          >
+            시즌 관리로 이동
+          </button>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function formatDate(date: string) {
+  return date.replaceAll("-", ".");
 }

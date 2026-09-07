@@ -16,18 +16,18 @@ import type {
 export interface OunwanAppData {
   currentUserId: string;
   currentGroupId: string;
-  currentSeasonId: string;
+  currentSeasonId?: string;
   currentUser: User;
   approvedGroups: UserGroupMembership[];
   adminGroupMembers: AdminGroupMember[];
   users: User[];
   group: Group;
   membership: GroupMembership;
-  season: Season;
+  season?: Season;
   seasons: Season[];
   seasonParticipants: SeasonParticipant[];
   posts: WorkoutPost[];
-  settlement: Settlement;
+  settlement?: Settlement;
   settlementRows: SettlementRow[];
   bankRecords: BankRecord[];
   accountInfo: AccountInfo;
