@@ -23,12 +23,10 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
   const router = useRouter();
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
   const [selectedParticipant, setSelectedParticipant] = useState<SeasonParticipantMember | null>(null);
-  const [participantMenu, setParticipantMenu] = useState<SeasonParticipantMember | null>(null);
   const [createSeasonDialogOpen, setCreateSeasonDialogOpen] = useState(false);
   const [closeSeasonDialogOpen, setCloseSeasonDialogOpen] = useState(false);
   const [activatePendingSeasonDialogOpen, setActivatePendingSeasonDialogOpen] = useState(false);
   const [deletePendingSeasonDialogOpen, setDeletePendingSeasonDialogOpen] = useState(false);
-  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const seasonDetailHistoryActiveRef = useRef(false);
   const selectedSeasonIdRef = useRef<string | null>(null);
 
@@ -107,33 +105,6 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
             </div>
             <SeasonStatusBadge status={selectedSeason.status} />
           </div>
-
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-extrabold text-slate-500">카카오 공유 초대링크</p>
-            <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
-              <svg
-                aria-hidden="true"
-                className="h-4 w-4 shrink-0 text-slate-400"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-              </svg>
-              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-500">ounwan.app/join/s-{selectedSeason.id}</span>
-              <button
-                type="button"
-                className="shrink-0 rounded-full bg-[#F2F0FA] px-3 py-1.5 text-xs font-extrabold text-[#51438f]"
-                onClick={() => setInviteDialogOpen(true)}
-              >
-                카카오 공유
-              </button>
-            </div>
-          </div>
         </section>
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -147,7 +118,6 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
                 key={participant.user.id}
                 participant={participant}
                 onOpen={() => setSelectedParticipant(participant)}
-                onOpenMenu={() => setParticipantMenu(participant)}
               />
             ))}
             {participants.length === 0 && <p className="px-4 py-8 text-center text-sm font-semibold text-slate-400">참가자가 없습니다.</p>}
@@ -188,17 +158,7 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
             </button>
           </div>
         )}
-
-        <AppDialog
-          open={inviteDialogOpen}
-          title="카카오 공유"
-          description="초대 링크 공유 기능은 준비중입니다."
-          onClose={() => setInviteDialogOpen(false)}
-          dismissOnBackdrop
-          actions={[{ label: "확인", onClick: () => setInviteDialogOpen(false) }]}
-        />
         <ParticipantDetailDialog participant={selectedParticipant} onClose={() => setSelectedParticipant(null)} />
-        <ParticipantMenuDialog participant={participantMenu} onClose={() => setParticipantMenu(null)} />
         <SeasonCloseDialog
           open={closeSeasonDialogOpen}
           season={selectedSeason}
@@ -311,11 +271,9 @@ function SeasonStatusBadge({ status }: { status: Season["status"] }) {
 function SeasonParticipantRow({
   participant,
   onOpen,
-  onOpenMenu,
 }: {
   participant: SeasonParticipantMember;
   onOpen: () => void;
-  onOpenMenu: () => void;
 }) {
   return (
     <div className="flex items-center gap-3 px-4 py-3">
@@ -332,26 +290,6 @@ function SeasonParticipantRow({
           </div>
         </div>
       </button>
-      <button
-        type="button"
-        className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-500 active:bg-slate-100"
-        aria-label={`${participant.user.name} 참가자 설정`}
-        onClick={onOpenMenu}
-      >
-        <svg
-          aria-hidden="true"
-          className="h-5 w-5"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.72l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
-      </button>
     </div>
   );
 }
@@ -363,17 +301,6 @@ function ParticipantDetailDialog({ participant, onClose }: { participant: Season
         <SeasonMetric label="총 인증 횟수" value="추후 제공" />
         <SeasonMetric label="총 벌금" value="추후 제공" />
       </div>
-    </AppDialog>
-  );
-}
-
-function ParticipantMenuDialog({ participant, onClose }: { participant: SeasonParticipantMember | null; onClose: () => void }) {
-  return (
-    <AppDialog open={Boolean(participant)} title={participant?.user.name ?? "참가자 설정"} onClose={onClose} dismissOnBackdrop footer={null}>
-      <button type="button" className="flex min-h-11 w-full items-center justify-between rounded-xl px-3 text-sm font-extrabold text-slate-950 active:bg-slate-100" onClick={onClose}>
-        <span>추방하기</span>
-        <span className="text-xs font-bold text-slate-400">준비중</span>
-      </button>
     </AppDialog>
   );
 }
