@@ -1,6 +1,6 @@
 import { getCurrentUserId } from "@/auth/session";
 import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError } from "@/db/errors";
-import { getCurrentUserPendingGroupJoinRequests, getOunwanAppData } from "@/db/queries";
+import { getCurrentUserGroupSwitchOptions, getCurrentUserPendingGroupJoinRequests, getOunwanAppData } from "@/db/queries";
 import { LoginPage, NoActiveSeasonPage, NoGroupPage, PendingGroupJoinPage } from "@/features/auth/auth-pages";
 import { OunwanApp } from "@/features/app/ounwan-app";
 
@@ -27,7 +27,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ a
     }
 
     if (error instanceof ActiveSeasonNotFoundError) {
-      return <NoActiveSeasonPage />;
+      const groupSwitchOptions = await getCurrentUserGroupSwitchOptions();
+      return <NoActiveSeasonPage groups={groupSwitchOptions} />;
     }
 
     throw error;

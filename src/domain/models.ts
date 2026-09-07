@@ -44,6 +44,13 @@ export interface AdminGroupMember {
 }
 
 
+
+export interface AuthGroupSwitchOption {
+  group: Group;
+  membership: GroupMembership;
+  hasActiveSeason: boolean;
+  isCurrent: boolean;
+}
 export interface PendingGroupJoinRequest {
   id: string;
   group: Group;

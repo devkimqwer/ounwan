@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
 import Image from "next/image";
 
-import type { PendingGroupJoinRequest } from "@/domain/models";
+import type { AuthGroupSwitchOption, PendingGroupJoinRequest } from "@/domain/models";
 import { isDevAuthEnabled } from "@/dev/auth";
 import { CreateGroupForm } from "./create-group-form";
+import { SeasonlessGroupSwitchSelect } from "./seasonless-group-switch-select";
 
 export function LoginPage({ authBlocked = false, devLoginFailed = false }: { authBlocked?: boolean; devLoginFailed?: boolean }) {
   const showDevLogin = isDevAuthEnabled();
@@ -89,14 +90,15 @@ export function NoGroupPage() {
   );
 }
 
-export function NoActiveSeasonPage() {
+export function NoActiveSeasonPage({ groups }: { groups: AuthGroupSwitchOption[] }) {
   return (
     <AuthStatusShell title="시즌이 아직 없습니다">
       <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">
-        그룹 생성이 완료됐습니다.
-        <br />
-        운동 인증을 시작하려면 시즌 생성 기능을 이어서 준비해야 합니다.
+        현재 그룹에는 진행 중인 시즌이 없습니다.
+        <br/>
+        참여중인 다른 그룹이 있다면 그룹으로 전환하여 서비스를 이용할 수 있습니다.
       </p>
+      <SeasonlessGroupSwitchSelect groups={groups} />
       <LogoutForm />
     </AuthStatusShell>
   );
@@ -114,6 +116,7 @@ function AuthStatusShell({ title, children }: { title: string; children: ReactNo
     </main>
   );
 }
+
 
 function LogoutForm() {
   return (

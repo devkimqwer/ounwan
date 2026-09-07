@@ -5,6 +5,7 @@ import { and, count, desc, eq, gt, ilike, inArray, isNull, or, sql } from "drizz
 import type {
   AdminGroupMember,
   AdminGroupMemberStatusFilter,
+  AuthGroupSwitchOption,
   AccountInfo,
   BankRecord,
   Group,
@@ -124,6 +125,36 @@ export async function getAdminGroupMembers(input: GetAdminGroupMembersInput = {}
 }
 
 
+
+export async function getCurrentUserGroupSwitchOptions(): Promise<AuthGroupSwitchOption[]> {
+  const currentUserId = await requireCurrentUserId();
+  const selectedGroupId = await getCurrentGroupIdForUser(currentUserId);
+  const rows = await db
+    .select({ group: groups, member: groupMembers, activeSeasonId: seasons.id })
+    .from(groupMembers)
+    .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+    .leftJoin(seasons, and(eq(seasons.groupId, groups.id), eq(seasons.status, "active")))
+    .where(and(eq(groupMembers.userId, BigInt(currentUserId)), isNull(groupMembers.leftAt), isNull(groups.deletedAt)))
+    .orderBy(desc(groupMembers.updatedAt), desc(groups.id));
+
+  return rows.map(({ group, member, activeSeasonId }) => ({
+    group: {
+      id: group.id.toString(),
+      name: group.name,
+      visibility: group.visibility,
+      ownerUserId: group.ownerUserId.toString(),
+    },
+    membership: {
+      groupId: member.groupId.toString(),
+      userId: member.userId.toString(),
+      roles: member.roles,
+      joinedAt: member.joinedAt,
+      leftAt: member.leftAt ?? undefined,
+    },
+    hasActiveSeason: Boolean(activeSeasonId),
+    isCurrent: group.id.toString() === selectedGroupId,
+  }));
+}
 export async function getCurrentUserPendingGroupJoinRequests(): Promise<PendingGroupJoinRequest[]> {
   const currentUserId = await requireCurrentUserId();
   const rows = await db

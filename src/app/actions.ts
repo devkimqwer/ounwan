@@ -137,6 +137,7 @@ export async function reviewGroupJoinRequestAction(formData: FormData) {
   await reviewGroupJoinRequest(requestId, decision);
   revalidatePath("/");
 }
+
 export async function createPostCommentAction(
   _previousState: CreatePostCommentState,
   formData: FormData,
