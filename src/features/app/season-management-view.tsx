@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { closeSeasonAction, deletePendingSeasonAction } from "@/app/actions";
+import { activatePendingSeasonAction, closeSeasonAction, deletePendingSeasonAction } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
 import type { Season, SeasonParticipant } from "@/domain/models";
 import { SeasonCreateForm } from "./season-create-form";
@@ -26,6 +26,7 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
   const [participantMenu, setParticipantMenu] = useState<SeasonParticipantMember | null>(null);
   const [createSeasonDialogOpen, setCreateSeasonDialogOpen] = useState(false);
   const [closeSeasonDialogOpen, setCloseSeasonDialogOpen] = useState(false);
+  const [activatePendingSeasonDialogOpen, setActivatePendingSeasonDialogOpen] = useState(false);
   const [deletePendingSeasonDialogOpen, setDeletePendingSeasonDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const seasonDetailHistoryActiveRef = useRef(false);
@@ -76,6 +77,11 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
   const handlePendingSeasonDeleted = () => {
     setDeletePendingSeasonDialogOpen(false);
     closeSeasonDetail();
+    router.refresh();
+  };
+
+  const handlePendingSeasonActivated = () => {
+    setActivatePendingSeasonDialogOpen(false);
     router.refresh();
   };
 
@@ -159,13 +165,28 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
         )}
 
         {selectedSeason.status === "pending" && (
-          <button
-            type="button"
-            className="min-h-12 w-full rounded-2xl border border-red-200 bg-white text-sm font-extrabold text-red-500 active:bg-red-50"
-            onClick={() => setDeletePendingSeasonDialogOpen(true)}
-          >
-            대기중 시즌 삭제
-          </button>
+          <div className="space-y-2">
+            <button
+              type="button"
+              className="min-h-12 w-full rounded-2xl bg-slate-950 px-4 text-sm font-extrabold text-white active:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400"
+              disabled={Boolean(activeSeason)}
+              onClick={() => setActivatePendingSeasonDialogOpen(true)}
+            >
+              시즌 시작하기
+            </button>
+            {activeSeason && (
+              <p className="rounded-2xl bg-slate-50 px-4 py-3 text-xs font-bold leading-5 text-slate-500">
+                진행중인 시즌을 먼저 종료해야 대기중 시즌을 시작할 수 있습니다.
+              </p>
+            )}
+            <button
+              type="button"
+              className="min-h-12 w-full rounded-2xl border border-red-200 bg-white text-sm font-extrabold text-red-500 active:bg-red-50"
+              onClick={() => setDeletePendingSeasonDialogOpen(true)}
+            >
+              대기중 시즌 삭제
+            </button>
+          </div>
         )}
 
         <AppDialog
@@ -193,6 +214,12 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
           season={selectedSeason}
           onClose={() => setDeletePendingSeasonDialogOpen(false)}
           onDeleted={handlePendingSeasonDeleted}
+        />
+        <PendingSeasonActivateDialog
+          open={activatePendingSeasonDialogOpen}
+          season={selectedSeason}
+          onClose={() => setActivatePendingSeasonDialogOpen(false)}
+          onActivated={handlePendingSeasonActivated}
         />
       </div>
     );
@@ -431,6 +458,58 @@ function SeasonCloseDialog({
   );
 }
 
+function PendingSeasonActivateDialog({
+  open,
+  season,
+  onClose,
+  onActivated,
+}: {
+  open: boolean;
+  season: Season;
+  onClose: () => void;
+  onActivated: () => void;
+}) {
+  const [isPending, startTransition] = useTransition();
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const handleActivate = () => {
+    setErrorMessage("");
+
+    startTransition(async () => {
+      const result = await activatePendingSeasonAction();
+      if (result.status === "error") {
+        setErrorMessage(result.message);
+        return;
+      }
+
+      onActivated();
+    });
+  };
+
+  return (
+    <AppDialog
+      open={open}
+      title="대기중 시즌 시작"
+      description={`${season.name} 시즌을 지금 시작할까요? 시작일은 오늘 날짜로 갱신됩니다.`}
+      onClose={onClose}
+      dismissOnBackdrop={false}
+      role="alertdialog"
+      footer={
+        <div className="flex w-full flex-col gap-2">
+          {errorMessage && <p className="text-sm font-bold text-red-600">{errorMessage}</p>}
+          <div className="flex justify-end gap-2">
+            <button type="button" className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-950 disabled:bg-slate-200 disabled:text-slate-400" disabled={isPending} onClick={onClose}>
+              취소
+            </button>
+            <button type="button" className="min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-extrabold text-white disabled:bg-slate-200 disabled:text-slate-400" disabled={isPending} onClick={handleActivate}>
+              시작
+            </button>
+          </div>
+        </div>
+      }
+    />
+  );
+}
 function PendingSeasonDeleteDialog({
   open,
   season,
