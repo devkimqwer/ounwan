@@ -3,6 +3,7 @@ import Image from "next/image";
 
 import type { AuthGroupSwitchOption, PendingGroupJoinRequest } from "@/domain/models";
 import { isDevAuthEnabled } from "@/dev/auth";
+import { SeasonCreateForm } from "@/features/app/season-create-form";
 import { CreateGroupForm } from "./create-group-form";
 import { SeasonlessGroupSwitchSelect } from "./seasonless-group-switch-select";
 
@@ -95,10 +96,11 @@ export function NoActiveSeasonPage({ groups }: { groups: AuthGroupSwitchOption[]
     <AuthStatusShell title="시즌이 아직 없습니다">
       <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">
         현재 그룹에는 진행 중인 시즌이 없습니다.
-        <br/>
-        참여중인 다른 그룹이 있다면 그룹으로 전환하여 서비스를 이용할 수 있습니다.
+        <br />
+        참여중인 다른 그룹이 있다면, 그룹을 전환하여 서비스를 이용할 수 있습니다.
       </p>
       <SeasonlessGroupSwitchSelect groups={groups} />
+      <SeasonlessSeasonCreateSection groups={groups} />
       <LogoutForm />
     </AuthStatusShell>
   );
@@ -117,6 +119,23 @@ function AuthStatusShell({ title, children }: { title: string; children: ReactNo
   );
 }
 
+function SeasonlessSeasonCreateSection({ groups }: { groups: AuthGroupSwitchOption[] }) {
+  const currentGroup = groups.find((group) => group.isCurrent);
+  const canCreateSeason = currentGroup?.membership.roles.includes("admin");
+
+  if (!canCreateSeason) {
+    return null;
+  }
+
+  return (
+    <section className="mt-5 border-t border-slate-100 pt-5">
+      <h2 className="text-sm font-extrabold text-slate-950">현재 그룹에 시즌 만들기</h2>
+      <div className="mt-3">
+        <SeasonCreateForm />
+      </div>
+    </section>
+  );
+}
 
 function LogoutForm() {
   return (

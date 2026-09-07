@@ -71,11 +71,7 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
     getBankRecords(group.id),
     getAccountInfo(group.id),
   ]);
-  const settlementRows = settlement ? await getSettlementRows(settlement.id) : [];
-
-  if (!settlement) {
-    throw new Error("No settlement found. Run npm run db:seed:local first.");
-  }
+  const settlementRows = settlement.id ? await getSettlementRows(settlement.id) : [];
 
   return {
     currentUserId: currentUser.id,
@@ -596,7 +592,7 @@ async function getWorkoutPosts(groupId: string, seasonId: string, currentUserId:
   });
 }
 
-async function getLatestSettlement(groupId: string, seasonId: string): Promise<Settlement | undefined> {
+async function getLatestSettlement(groupId: string, seasonId: string): Promise<Settlement> {
   const rows = await db
     .select()
     .from(weeklySettlements)
@@ -604,18 +600,28 @@ async function getLatestSettlement(groupId: string, seasonId: string): Promise<S
     .orderBy(desc(weeklySettlements.weekStartDate))
     .limit(1);
 
-  return rows[0]
-    ? {
-        id: rows[0].id.toString(),
-        groupId: rows[0].groupId.toString(),
-        seasonId: rows[0].seasonId.toString(),
-        weekStartDate: rows[0].weekStartDate,
-        weekEndDate: rows[0].weekEndDate,
-        status: rows[0].status,
-        confirmedAt: rows[0].confirmedAt?.toISOString(),
-        comment: rows[0].comment ?? undefined,
-      }
-    : undefined;
+  if (rows[0]) {
+    return {
+      id: rows[0].id.toString(),
+      groupId: rows[0].groupId.toString(),
+      seasonId: rows[0].seasonId.toString(),
+      weekStartDate: rows[0].weekStartDate,
+      weekEndDate: rows[0].weekEndDate,
+      status: rows[0].status,
+      confirmedAt: rows[0].confirmedAt?.toISOString(),
+      comment: rows[0].comment ?? undefined,
+    };
+  }
+
+  const weekRange = getKoreanWeekRange();
+  return {
+    id: "",
+    groupId,
+    seasonId,
+    weekStartDate: weekRange.weekStartDate,
+    weekEndDate: weekRange.weekEndDate,
+    status: "draft",
+  };
 }
 
 async function getSettlementRows(settlementId: string): Promise<SettlementRow[]> {
@@ -655,7 +661,12 @@ async function getAccountInfo(groupId: string): Promise<AccountInfo> {
   const rows = await db.select().from(bankAccounts).where(eq(bankAccounts.groupId, BigInt(groupId))).limit(1);
 
   if (!rows[0]) {
-    throw new Error("Bank account not found. Run npm run db:seed:local first.");
+    return {
+      groupId,
+      bankName: "미등록",
+      accountNumber: "미등록",
+      holderName: "미등록",
+    };
   }
 
   return {
@@ -663,5 +674,26 @@ async function getAccountInfo(groupId: string): Promise<AccountInfo> {
     bankName: rows[0].bankName,
     accountNumber: rows[0].accountNumber,
     holderName: rows[0].holderName,
+  };
+}
+function getKoreanWeekRange(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const partMap = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const baseDate = new Date(Date.UTC(Number(partMap.year), Number(partMap.month) - 1, Number(partMap.day)));
+  const day = baseDate.getUTCDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  baseDate.setUTCDate(baseDate.getUTCDate() + mondayOffset);
+
+  const endDate = new Date(baseDate);
+  endDate.setUTCDate(baseDate.getUTCDate() + 6);
+
+  return {
+    weekStartDate: baseDate.toISOString().slice(0, 10),
+    weekEndDate: endDate.toISOString().slice(0, 10),
   };
 }

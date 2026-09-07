@@ -3,13 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { createGroup, createPostComment, createWorkoutPost, deletePostComment, deleteWorkoutPost, getOrCreateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
+import { createGroup, createPostComment, createSeason, createWorkoutPost, deletePostComment, deleteWorkoutPost, getOrCreateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
+import { ActiveSeasonAlreadyExistsError } from "@/db/errors";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
 const MAX_WORKOUT_POST_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_POST_COMMENT_LENGTH = 500;
 const MAX_DISPLAY_NAME_LENGTH = 20;
 const MAX_GROUP_NAME_LENGTH = 30;
+const MAX_SEASON_NAME_LENGTH = 30;
 
 export type CreateGroupState = {
   status: "idle" | "error";
@@ -31,6 +33,10 @@ export type CreateWorkoutPostState = {
   postId?: string;
 };
 
+export type CreateSeasonState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
 export type CreateGroupInviteState = {
   status: "idle" | "success" | "error";
   message: string;
@@ -38,12 +44,10 @@ export type CreateGroupInviteState = {
   expiresAt?: string;
 };
 
-
 export type CreatePostCommentState = {
   status: "idle" | "success" | "error";
   message: string;
 };
-
 
 export async function createGroupAction(
   _previousState: CreateGroupState,
@@ -62,6 +66,48 @@ export async function createGroupAction(
   await createGroup(groupName);
   revalidatePath("/");
   redirect("/");
+}
+
+export async function createSeasonAction(
+  _previousState: CreateSeasonState,
+  formData: FormData,
+): Promise<CreateSeasonState> {
+  const name = String(formData.get("name") ?? "").trim();
+  const startDate = String(formData.get("startDate") ?? "").trim();
+  const targetWorkoutCountPerWeek = Number(formData.get("targetWorkoutCountPerWeek"));
+  const finePerMiss = Number(formData.get("finePerMiss"));
+
+  if (!name) {
+    return { status: "error", message: "시즌명을 입력해주세요." };
+  }
+
+  if (name.length > MAX_SEASON_NAME_LENGTH) {
+    return { status: "error", message: `시즌명은 ${MAX_SEASON_NAME_LENGTH}자 이내로 입력해주세요.` };
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+    return { status: "error", message: "시작일을 선택해주세요." };
+  }
+
+  if (!Number.isInteger(targetWorkoutCountPerWeek) || targetWorkoutCountPerWeek < 1 || targetWorkoutCountPerWeek > 7) {
+    return { status: "error", message: "주간 목표는 1~7회로 입력해주세요." };
+  }
+
+  if (!Number.isInteger(finePerMiss) || finePerMiss < 0) {
+    return { status: "error", message: "벌금은 0원 이상으로 입력해주세요." };
+  }
+
+  try {
+    await createSeason({ name, startDate, targetWorkoutCountPerWeek, finePerMiss });
+    revalidatePath("/");
+    return { status: "success", message: "시즌이 생성됐습니다." };
+  } catch (error) {
+    if (error instanceof ActiveSeasonAlreadyExistsError) {
+      return { status: "error", message: "진행 중인 시즌을 먼저 종료해주세요." };
+    }
+
+    return { status: "error", message: "시즌을 생성할 수 없습니다." };
+  }
 }
 export async function createGroupInviteAction(): Promise<CreateGroupInviteState> {
   try {

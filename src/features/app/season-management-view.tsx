@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AppDialog } from "@/components/ui/app-dialog";
 import type { Season, SeasonParticipant } from "@/domain/models";
+import { SeasonCreateForm } from "./season-create-form";
 import { Avatar } from "./shared-ui";
 
 type SeasonManagementViewProps = {
@@ -21,6 +22,7 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
   const [selectedParticipant, setSelectedParticipant] = useState<SeasonParticipantMember | null>(null);
   const [participantMenu, setParticipantMenu] = useState<SeasonParticipantMember | null>(null);
   const [createSeasonDialogOpen, setCreateSeasonDialogOpen] = useState(false);
+  const [closeSeasonDialogOpen, setCloseSeasonDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const seasonDetailHistoryActiveRef = useRef(false);
   const selectedSeasonIdRef = useRef<string | null>(null);
@@ -138,7 +140,7 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
           <button
             type="button"
             className="min-h-12 w-full rounded-2xl border border-red-200 bg-white text-sm font-extrabold text-red-500 active:bg-red-50"
-            onClick={() => setCreateSeasonDialogOpen(true)}
+            onClick={() => setCloseSeasonDialogOpen(true)}
           >
             시즌 종료
           </button>
@@ -154,7 +156,7 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
         />
         <ParticipantDetailDialog participant={selectedParticipant} onClose={() => setSelectedParticipant(null)} />
         <ParticipantMenuDialog participant={participantMenu} onClose={() => setParticipantMenu(null)} />
-        <SeasonActionNotReadyDialog open={createSeasonDialogOpen} title="시즌 종료" onClose={() => setCreateSeasonDialogOpen(false)} />
+        <SeasonActionNotReadyDialog open={closeSeasonDialogOpen} title="시즌 종료" onClose={() => setCloseSeasonDialogOpen(false)} />
       </div>
     );
   }
@@ -165,7 +167,8 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
 
       <button
         type="button"
-        className="flex min-h-12 w-full items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-extrabold text-white active:bg-slate-800"
+        className="flex min-h-12 w-full items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-extrabold text-white active:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400"
+        disabled={Boolean(activeSeason)}
         onClick={() => setCreateSeasonDialogOpen(true)}
       >
         새 시즌 추가
@@ -203,7 +206,7 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
         })}
       </div>
 
-      <SeasonActionNotReadyDialog open={createSeasonDialogOpen} title="새 시즌 추가" onClose={() => setCreateSeasonDialogOpen(false)} />
+      <CreateSeasonDialog open={createSeasonDialogOpen} onClose={() => setCreateSeasonDialogOpen(false)} />
     </div>
   );
 }
@@ -318,6 +321,14 @@ function SeasonMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
+
+function CreateSeasonDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <AppDialog open={open} title="새 시즌 추가" onClose={onClose} dismissOnBackdrop footer={null}>
+      <SeasonCreateForm onCreated={onClose} />
+    </AppDialog>
+  );
+}
 function SeasonActionNotReadyDialog({ open, title, onClose }: { open: boolean; title: string; onClose: () => void }) {
   return (
     <AppDialog open={open} title={title} description="이 기능은 다음 단계에서 구현할 예정입니다." onClose={onClose} dismissOnBackdrop actions={[{ label: "확인", onClick: onClose }]} />

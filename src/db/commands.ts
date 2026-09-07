@@ -7,8 +7,8 @@ import { generateInviteToken, isInviteTokenFormat } from "@/invites/tokens";
 import { deleteLocalMediaFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/local";
 
 import { db } from "./client";
-import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError } from "./errors";
-import { groupInvites, groupJoinRequests, groupMembers, groups, postComments, postLikes, postMedia, seasons, seasonParticipantPeriods, users, workoutPosts } from "./schema";
+import { ActiveSeasonAlreadyExistsError, ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError } from "./errors";
+import { groupInvites, groupJoinRequests, groupMembers, groups, postComments, postLikes, postMedia, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
 
 const GROUP_INVITE_EXPIRES_HOURS = 72;
 
@@ -52,6 +52,13 @@ export async function createGroup(name: string) {
   await setCurrentGroupIdForUser(userId, group.id);
   return group;
 }
+
+type CreateSeasonInput = {
+  name: string;
+  startDate: string;
+  targetWorkoutCountPerWeek: number;
+  finePerMiss: number;
+};
 type CreateWorkoutPostInput = {
   workoutType?: string;
   content?: string;
@@ -395,6 +402,84 @@ export async function reviewGroupJoinRequest(requestId: string, decision: "appro
     return { id: rows[0].id.toString(), status: "approved" as const };
   });
 }
+
+export async function createSeason(input: CreateSeasonInput) {
+  const context = await getCurrentGroupAdminContext();
+  const seasonName = input.name.trim();
+
+  if (!seasonName) {
+    throw new Error("Season name is required.");
+  }
+
+  return db.transaction(async (tx) => {
+    const activeSeasonRows = await tx
+      .select({ id: seasons.id })
+      .from(seasons)
+      .where(and(eq(seasons.groupId, BigInt(context.groupId)), eq(seasons.status, "active")))
+      .limit(1);
+
+    if (activeSeasonRows[0]) {
+      throw new ActiveSeasonAlreadyExistsError();
+    }
+
+    const seasonRows = await tx
+      .insert(seasons)
+      .values({
+        groupId: BigInt(context.groupId),
+        name: seasonName,
+        startDate: input.startDate,
+        targetWorkoutCountPerWeek: input.targetWorkoutCountPerWeek,
+        finePerMiss: input.finePerMiss,
+        status: "active",
+      })
+      .returning({ id: seasons.id });
+
+    const seasonId = seasonRows[0].id;
+    const memberRows = await tx
+      .select({ userId: groupMembers.userId })
+      .from(groupMembers)
+      .where(and(eq(groupMembers.groupId, BigInt(context.groupId)), isNull(groupMembers.leftAt)));
+
+    if (memberRows.length > 0) {
+      await tx.insert(seasonParticipantPeriods).values(
+        memberRows.map((member) => ({
+          seasonId,
+          userId: member.userId,
+          startDate: input.startDate,
+        })),
+      );
+    }
+
+    const weekRange = getKoreanWeekRange(new Date(`${input.startDate}T00:00:00+09:00`));
+    const settlementRows = await tx
+      .insert(weeklySettlements)
+      .values({
+        groupId: BigInt(context.groupId),
+        seasonId,
+        weekStartDate: weekRange.weekStartDate,
+        weekEndDate: weekRange.weekEndDate,
+        status: "draft",
+      })
+      .onConflictDoNothing()
+      .returning({ id: weeklySettlements.id });
+
+    const settlementId = settlementRows[0]?.id;
+    if (settlementId && memberRows.length > 0) {
+      await tx.insert(weeklySettlementRows).values(
+        memberRows.map((member) => ({
+          settlementId,
+          userId: member.userId,
+          validWorkoutCount: 0,
+          missedCount: 0,
+          autoFineAmount: 0,
+          finalFineAmount: 0,
+        })),
+      );
+    }
+
+    return { id: seasonId.toString() };
+  });
+}
 export async function createWorkoutPost(input: CreateWorkoutPostInput) {
   const context = await getCurrentSeedContext();
   const postRows = await db
@@ -690,4 +775,26 @@ function getKoreanDate(now = new Date()) {
     month: "2-digit",
     day: "2-digit",
   }).format(now);
+}
+function getKoreanWeekRange(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  }).formatToParts(date);
+  const partMap = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const baseDate = new Date(Date.UTC(Number(partMap.year), Number(partMap.month) - 1, Number(partMap.day)));
+  const day = baseDate.getUTCDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  baseDate.setUTCDate(baseDate.getUTCDate() + mondayOffset);
+
+  const endDate = new Date(baseDate);
+  endDate.setUTCDate(baseDate.getUTCDate() + 6);
+
+  return {
+    weekStartDate: baseDate.toISOString().slice(0, 10),
+    weekEndDate: endDate.toISOString().slice(0, 10),
+  };
 }
