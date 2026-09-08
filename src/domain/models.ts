@@ -27,6 +27,7 @@ export interface GroupMembership {
 export interface UserGroupMembership {
   group: Group;
   membership: GroupMembership;
+  leaveDelegateCandidates?: User[];
 }
 
 export type AdminGroupMemberStatus = "approved" | "pending";

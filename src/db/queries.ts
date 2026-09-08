@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, desc, eq, gt, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 import type {
   AdminGroupMember,
@@ -368,6 +368,23 @@ async function getApprovedGroupMemberships(currentUserId: string): Promise<UserG
     .innerJoin(groups, eq(groupMembers.groupId, groups.id))
     .where(and(eq(groupMembers.userId, BigInt(currentUserId)), isNull(groupMembers.leftAt), isNull(groups.deletedAt)))
     .orderBy(desc(groupMembers.updatedAt), desc(groups.id));
+  const adminGroupIds = rows.filter(({ member }) => member.roles.includes("admin")).map(({ group }) => group.id);
+  const delegateRows = adminGroupIds.length
+    ? await db
+        .select({ groupId: groupMembers.groupId, user: users, kakaoId: oauthAccounts.providerUserId })
+        .from(groupMembers)
+        .innerJoin(users, eq(groupMembers.userId, users.id))
+        .leftJoin(oauthAccounts, and(eq(oauthAccounts.userId, users.id), eq(oauthAccounts.provider, "kakao")))
+        .where(and(inArray(groupMembers.groupId, adminGroupIds), isNull(groupMembers.leftAt), eq(users.status, "active"), isNull(users.deletedAt), ne(groupMembers.userId, BigInt(currentUserId))))
+        .orderBy(groupMembers.joinedAt, users.displayName, users.id)
+    : [];
+  const delegatesByGroupId = new Map<string, User[]>();
+  delegateRows.forEach(({ groupId, user, kakaoId }) => {
+    const key = groupId.toString();
+    const list = delegatesByGroupId.get(key) ?? [];
+    list.push(toUser(user, kakaoId));
+    delegatesByGroupId.set(key, list);
+  });
 
   return rows.map(({ group, member }) => ({
     group: {
@@ -383,6 +400,7 @@ async function getApprovedGroupMemberships(currentUserId: string): Promise<UserG
       joinedAt: member.joinedAt,
       leftAt: member.leftAt ?? undefined,
     },
+    leaveDelegateCandidates: delegatesByGroupId.get(group.id.toString()) ?? [],
   }));
 }
 

@@ -1,13 +1,13 @@
 import "server-only";
 
-import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, ne, or, sql } from "drizzle-orm";
 
-import { getCurrentGroupIdForUser, requireCurrentUserId, setCurrentGroupIdForUser } from "@/auth/session";
+import { clearCurrentGroupId, getCurrentGroupIdForUser, requireCurrentUserId, setCurrentGroupIdForUser } from "@/auth/session";
 import { generateInviteToken, isInviteTokenFormat } from "@/invites/tokens";
 import { deleteLocalMediaFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/local";
 
 import { db } from "./client";
-import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "./errors";
+import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError, GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "./errors";
 import { groupInvites, groupJoinRequests, groupMembers, groups, postComments, postLikes, postMedia, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
 
 const GROUP_INVITE_EXPIRES_HOURS = 72;
@@ -97,6 +97,111 @@ export async function refreshCurrentUserAvatar() {
   return { id: rows[0].id.toString() };
 }
 
+type LeaveGroupInput = {
+  groupId: string;
+  delegateUserId?: string;
+};
+
+export async function leaveGroup(input: LeaveGroupInput) {
+  const userId = await requireCurrentUserId();
+  if (!/^\d+$/.test(input.groupId)) {
+    throw new Error("Invalid group id.");
+  }
+
+  const selectedGroupId = await getCurrentGroupIdForUser(userId);
+  const now = new Date();
+  const leftAt = getKoreanDate(now);
+
+  const result = await db.transaction(async (tx) => {
+    const membershipRows = await tx
+      .select({ group: groups, member: groupMembers })
+      .from(groupMembers)
+      .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+      .where(and(eq(groupMembers.userId, BigInt(userId)), isNull(groupMembers.leftAt), isNull(groups.deletedAt)))
+      .orderBy(desc(groupMembers.updatedAt), desc(groups.id));
+    const membership = membershipRows.find((row) => row.group.id.toString() === input.groupId);
+
+    if (!membership) {
+      throw new CurrentUserMembershipNotFoundError();
+    }
+
+    const groupId = membership.group.id;
+    const selectedActiveGroupId = selectedGroupId && membershipRows.some((row) => row.group.id.toString() === selectedGroupId)
+      ? selectedGroupId
+      : membershipRows[0]?.group.id.toString();
+    const isAdmin = membership.member.roles.includes("admin");
+
+    if (isAdmin) {
+      const delegateUserId = input.delegateUserId?.trim();
+      if (!delegateUserId || !/^\d+$/.test(delegateUserId) || delegateUserId === userId) {
+        throw new GroupLeaveRequiresDelegationError();
+      }
+
+      const delegateRows = await tx
+        .select({ roles: groupMembers.roles })
+        .from(groupMembers)
+        .innerJoin(users, eq(groupMembers.userId, users.id))
+        .where(
+          and(
+            eq(groupMembers.groupId, groupId),
+            eq(groupMembers.userId, BigInt(delegateUserId)),
+            isNull(groupMembers.leftAt),
+            eq(users.status, "active"),
+            isNull(users.deletedAt),
+          ),
+        )
+        .limit(1);
+      const delegate = delegateRows[0];
+
+      if (!delegate) {
+        throw new GroupLeaveDelegateNotFoundError();
+      }
+
+      const delegatedRoles = delegate.roles.includes("admin") ? delegate.roles : [...delegate.roles, "admin" as const];
+      await tx
+        .update(groupMembers)
+        .set({ roles: delegatedRoles, updatedAt: now })
+        .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, BigInt(delegateUserId))));
+
+      await tx.update(groups).set({ ownerUserId: BigInt(delegateUserId), updatedAt: now }).where(eq(groups.id, groupId));
+    }
+
+    await tx
+      .update(groupMembers)
+      .set({ leftAt, updatedAt: now })
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, BigInt(userId)), isNull(groupMembers.leftAt)));
+
+    const activeSeasonRows = await tx.select({ id: seasons.id }).from(seasons).where(and(eq(seasons.groupId, groupId), eq(seasons.status, "active"))).limit(1);
+    const activeSeason = activeSeasonRows[0];
+    if (activeSeason) {
+      await tx
+        .update(seasonParticipantPeriods)
+        .set({ endDate: leftAt })
+        .where(and(eq(seasonParticipantPeriods.seasonId, activeSeason.id), eq(seasonParticipantPeriods.userId, BigInt(userId)), isNull(seasonParticipantPeriods.endDate)));
+    }
+
+    const nextMembershipRows = await tx
+      .select({ groupId: groupMembers.groupId })
+      .from(groupMembers)
+      .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+      .where(and(eq(groupMembers.userId, BigInt(userId)), ne(groupMembers.groupId, groupId), isNull(groupMembers.leftAt), isNull(groups.deletedAt)))
+      .orderBy(desc(groupMembers.updatedAt), desc(groups.id))
+      .limit(1);
+
+    const leftGroupId = groupId.toString();
+    const nextGroupId = leftGroupId === selectedActiveGroupId ? nextMembershipRows[0]?.groupId.toString() : selectedActiveGroupId;
+
+    return { leftGroupId, nextGroupId };
+  });
+
+  if (result.nextGroupId) {
+    await setCurrentGroupIdForUser(userId, result.nextGroupId);
+  } else {
+    await clearCurrentGroupId();
+  }
+
+  return result;
+}
 export async function switchCurrentGroup(groupId: string) {
   const userId = await requireCurrentUserId();
   if (!/^\d+$/.test(groupId)) {

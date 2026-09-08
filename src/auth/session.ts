@@ -79,6 +79,11 @@ export async function setCurrentGroupIdForUser(userId: string, groupId: string) 
   );
 }
 
+export async function clearCurrentGroupId() {
+  const cookieStore = await cookies();
+  cookieStore.delete(currentGroupCookieName);
+}
+
 export async function createOAuthState(returnTo?: string) {
   const state = randomBytes(24).toString("base64url");
   const cookieStore = await cookies();

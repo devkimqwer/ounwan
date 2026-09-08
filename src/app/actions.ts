@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deletePendingSeason, deletePostComment, deleteWorkoutPost, getOrCreateCurrentGroupInvite, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
-import { PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
+import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deletePendingSeason, deletePostComment, deleteWorkoutPost, getOrCreateCurrentGroupInvite, leaveGroup, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
+import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
 const MAX_WORKOUT_POST_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -268,6 +268,36 @@ export async function switchCurrentGroupAction(formData: FormData) {
 
   await switchCurrentGroup(groupId);
   revalidatePath("/");
+}
+
+export type LeaveGroupState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
+export async function leaveGroupAction(formData: FormData): Promise<LeaveGroupState> {
+  const groupId = String(formData.get("groupId") ?? "").trim();
+  const delegateUserId = String(formData.get("delegateUserId") ?? "").trim() || undefined;
+
+  if (!groupId) {
+    return { status: "error", message: "그룹 정보를 확인할 수 없습니다." };
+  }
+
+  try {
+    await leaveGroup({ groupId, delegateUserId });
+    revalidatePath("/");
+    return { status: "success", message: "그룹에서 나갔습니다." };
+  } catch (error) {
+    if (error instanceof GroupLeaveRequiresDelegationError) {
+      return { status: "error", message: "관리자는 다른 멤버에게 권한을 위임해야 그룹에서 나갈 수 있습니다." };
+    }
+
+    if (error instanceof GroupLeaveDelegateNotFoundError) {
+      return { status: "error", message: "위임할 멤버를 확인할 수 없습니다." };
+    }
+
+    return { status: "error", message: "그룹에서 나갈 수 없습니다." };
+  }
 }
 
 export async function reviewGroupJoinRequestAction(formData: FormData) {

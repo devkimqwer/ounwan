@@ -31,3 +31,16 @@ export class PendingSeasonNotFoundError extends Error {
     this.name = "PendingSeasonNotFoundError";
   }
 }
+export class GroupLeaveRequiresDelegationError extends Error {
+  constructor() {
+    super("Group leave requires delegation.");
+    this.name = "GroupLeaveRequiresDelegationError";
+  }
+}
+
+export class GroupLeaveDelegateNotFoundError extends Error {
+  constructor() {
+    super("Group leave delegate not found.");
+    this.name = "GroupLeaveDelegateNotFoundError";
+  }
+}

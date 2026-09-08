@@ -1,8 +1,8 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { createGroupInAppAction, refreshCurrentUserAvatarAction, switchCurrentGroupAction, updateCurrentUserProfileAction } from "@/app/actions";
-import type { CreateGroupState, RefreshCurrentUserAvatarState, UpdateCurrentUserProfileState } from "@/app/actions";
+import { createGroupInAppAction, leaveGroupAction, refreshCurrentUserAvatarAction, switchCurrentGroupAction, updateCurrentUserProfileAction } from "@/app/actions";
+import type { CreateGroupState, LeaveGroupState, RefreshCurrentUserAvatarState, UpdateCurrentUserProfileState } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
 import type { AccountInfo, AdminGroupMember, Group, Season, SeasonParticipant, User, UserGroupMembership } from "@/domain/models";
 import { TextLogoutButton } from "@/features/auth/logout-controls";
@@ -42,11 +42,18 @@ export function MoreView({
   const profileInitialState: UpdateCurrentUserProfileState = { status: "idle", message: "" };
   const avatarInitialState: RefreshCurrentUserAvatarState = { status: "idle", message: "" };
   const groupCreateInitialState: CreateGroupState = { status: "idle", message: "" };
+  const leaveGroupInitialState: LeaveGroupState = { status: "idle", message: "" };
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [groupCreateOpen, setGroupCreateOpen] = useState(false);
   const [groupCreateName, setGroupCreateName] = useState("");
   const [groupCreateState, setGroupCreateState] = useState<CreateGroupState>(groupCreateInitialState);
   const [isGroupCreating, setIsGroupCreating] = useState(false);
+  const [groupActionTarget, setGroupActionTarget] = useState<UserGroupMembership | null>(null);
+  const [leaveGroupTarget, setLeaveGroupTarget] = useState<UserGroupMembership | null>(null);
+  const [leaveGroupDialogOpen, setLeaveGroupDialogOpen] = useState(false);
+  const [leaveDelegateUserId, setLeaveDelegateUserId] = useState("");
+  const [leaveGroupState, setLeaveGroupState] = useState<LeaveGroupState>(leaveGroupInitialState);
+  const [isLeavingGroup, setIsLeavingGroup] = useState(false);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [profileName, setProfileName] = useState(currentUser.name);
   const [profileState, setProfileState] = useState<UpdateCurrentUserProfileState>(profileInitialState);
@@ -147,6 +154,53 @@ export function MoreView({
       setGroupCreateState({ status: "error", message: "그룹을 생성할 수 없습니다." });
     } finally {
       setIsGroupCreating(false);
+    }
+  };
+
+  const openLeaveGroupDialog = (target: UserGroupMembership) => {
+    setGroupActionTarget(null);
+    setLeaveGroupTarget(target);
+    setLeaveGroupState(leaveGroupInitialState);
+    setLeaveDelegateUserId(target.leaveDelegateCandidates?.[0]?.id ?? "");
+    setLeaveGroupDialogOpen(true);
+  };
+
+  const handleLeaveGroupSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isLeavingGroup) {
+      return;
+    }
+
+    const target = leaveGroupTarget;
+    if (!target) {
+      setLeaveGroupState({ status: "error", message: "그룹 정보를 확인할 수 없습니다." });
+      return;
+    }
+
+    const isTargetAdmin = target.membership.roles.includes("admin");
+    if (isTargetAdmin && !leaveDelegateUserId) {
+      setLeaveGroupState({ status: "error", message: "위임할 멤버를 선택해주세요." });
+      return;
+    }
+
+    const formData = new FormData(event.currentTarget);
+    formData.set("groupId", target.group.id);
+    setLeaveGroupState(leaveGroupInitialState);
+    setIsLeavingGroup(true);
+
+    try {
+      const result = await leaveGroupAction(formData);
+      setLeaveGroupState(result);
+      if (result.status === "success") {
+        setLeaveGroupDialogOpen(false);
+        setLeaveGroupTarget(null);
+        setGroupDialogOpen(false);
+        router.refresh();
+      }
+    } catch {
+      setLeaveGroupState({ status: "error", message: "그룹에서 나갈 수 없습니다." });
+    } finally {
+      setIsLeavingGroup(false);
     }
   };
 
@@ -272,31 +326,49 @@ export function MoreView({
         actions={[{ label: "닫기", onClick: () => setGroupDialogOpen(false) }]}
       >
         <div className="space-y-2">
-          {approvedGroups.map(({ group, membership }) => {
+          {approvedGroups.map((membershipItem) => {
+            const { group, membership } = membershipItem;
             const selected = group.id === currentGroup.id;
             return (
-              <button
+              <div
                 key={group.id}
-                type="button"
-                disabled={Boolean(switchingGroupId) || isGroupCreating}
-                className={`flex min-h-12 w-full items-center justify-between rounded-2xl border px-4 text-left text-sm font-extrabold ${
+                className={`flex min-h-14 items-center gap-2 rounded-2xl border px-3 py-2 ${
                   selected ? "border-[#DDD8F1] bg-[#F7F5FF] text-[#51438f]" : "border-slate-200 bg-white text-slate-800"
-                } disabled:opacity-60`}
-                onClick={() => handleGroupSwitch(group.id)}
+                }`}
               >
-                <span className="truncate">{group.name}</span>
-                <span className="ml-3 flex shrink-0 items-center gap-1.5">
-                  {membership.roles.map((role) => (
-                    <span key={role} className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-500">
-                      {getRoleLabel(role)}
-                    </span>
-                  ))}
-                </span>
-              </button>
+                <button
+                  type="button"
+                  disabled={Boolean(switchingGroupId) || isGroupCreating || isLeavingGroup}
+                  className="min-w-0 flex-1 text-left disabled:opacity-60"
+                  onClick={() => handleGroupSwitch(group.id)}
+                >
+                  <span className="block truncate text-sm font-extrabold">{group.name}</span>
+                  <span className="mt-1 flex flex-wrap gap-1.5">
+                    {membership.roles.map((role) => (
+                      <span key={role} className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-500">
+                        {getRoleLabel(role)}
+                      </span>
+                    ))}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(switchingGroupId) || isGroupCreating || isLeavingGroup}
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-500 active:bg-slate-100 disabled:opacity-40"
+                  aria-label={`${group.name} 그룹 메뉴 열기`}
+                  onClick={() => setGroupActionTarget(membershipItem)}
+                >
+                  <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="1" />
+                    <circle cx="19" cy="12" r="1" />
+                    <circle cx="5" cy="12" r="1" />
+                  </svg>
+                </button>
+              </div>
             );
           })}
 
-          <div className="border-t border-slate-100 pt-3">
+          <div className="space-y-3 border-t border-slate-100 pt-3">
             {groupCreateOpen ? (
               <form className="space-y-3" onSubmit={handleGroupCreateSubmit}>
                 <label className="block text-xs font-extrabold text-slate-500" htmlFor="more-group-name">
@@ -354,6 +426,24 @@ export function MoreView({
         </div>
       </AppDialog>
 
+      <GroupActionMenuDialog
+        target={groupActionTarget}
+        onLeave={openLeaveGroupDialog}
+        onClose={() => setGroupActionTarget(null)}
+      />
+      <LeaveGroupDialog
+        open={leaveGroupDialogOpen}
+        target={leaveGroupTarget}
+        delegateUserId={leaveDelegateUserId}
+        state={leaveGroupState}
+        submitting={isLeavingGroup}
+        onDelegateChange={setLeaveDelegateUserId}
+        onSubmit={handleLeaveGroupSubmit}
+        onClose={() => {
+          setLeaveGroupDialogOpen(false);
+          setLeaveGroupTarget(null);
+        }}
+      />
       <AppDialog
         open={profileDialogOpen}
         title="계정 설정"
@@ -400,6 +490,146 @@ export function MoreView({
         </div>
       </AppDialog>
     </div>
+  );
+}
+function GroupActionMenuDialog({
+  target,
+  onLeave,
+  onClose,
+}: {
+  target: UserGroupMembership | null;
+  onLeave: (target: UserGroupMembership) => void;
+  onClose: () => void;
+}) {
+  const isAdmin = target?.membership.roles.includes("admin") ?? false;
+
+  return (
+    <AppDialog
+      open={Boolean(target)}
+      title={target?.group.name ?? "그룹 메뉴"}
+      onClose={onClose}
+      dismissOnBackdrop
+      footer={null}
+    >
+      {target && (
+        <div className="space-y-2">
+          <button
+            type="button"
+            className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-extrabold text-slate-900 active:bg-slate-50"
+            onClick={() => onLeave(target)}
+          >
+            <svg aria-hidden="true" className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <path d="m16 17 5-5-5-5" />
+              <path d="M21 12H9" />
+            </svg>
+            그룹 나가기
+          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-extrabold text-slate-400"
+              onClick={onClose}
+            >
+              <svg aria-hidden="true" className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18" />
+                <path d="M8 6V4h8v2" />
+                <path d="M19 6l-1 14H6L5 6" />
+              </svg>
+              그룹 삭제 준비중
+            </button>
+          )}
+        </div>
+      )}
+    </AppDialog>
+  );
+}
+
+function LeaveGroupDialog({
+  open,
+  target,
+  delegateUserId,
+  state,
+  submitting,
+  onDelegateChange,
+  onSubmit,
+  onClose,
+}: {
+  open: boolean;
+  target: UserGroupMembership | null;
+  delegateUserId: string;
+  state: LeaveGroupState;
+  submitting: boolean;
+  onDelegateChange: (userId: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onClose: () => void;
+}) {
+  const isAdmin = target?.membership.roles.includes("admin") ?? false;
+  const delegateCandidates = target?.leaveDelegateCandidates ?? [];
+  const canLeave = Boolean(target) && (!isAdmin || delegateCandidates.length > 0);
+
+  return (
+    <AppDialog
+      open={open}
+      title="그룹 나가기"
+      description={target ? `${target.group.name} 그룹에서 나가시겠습니까?` : undefined}
+      onClose={onClose}
+      dismissOnBackdrop={!submitting}
+      role="alertdialog"
+      footer={null}
+    >
+      <form className="space-y-3" onSubmit={onSubmit}>
+        <input type="hidden" name="groupId" value={target?.group.id ?? ""} />
+        {isAdmin && (
+          <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3">
+            <p className="text-sm font-bold leading-5 text-amber-800">
+              관리자는 다른 멤버에게 관리자 권한을 위임해야 그룹에서 나갈 수 있습니다.
+            </p>
+            {delegateCandidates.length > 0 ? (
+              <label className="mt-3 block text-xs font-extrabold text-amber-800" htmlFor="leave-delegate-user-id">
+                위임할 멤버
+                <select
+                  id="leave-delegate-user-id"
+                  name="delegateUserId"
+                  value={delegateUserId}
+                  onChange={(event) => onDelegateChange(event.target.value)}
+                  className="mt-2 min-h-11 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none"
+                  required
+                >
+                  {delegateCandidates.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name} (@{user.id})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <p className="mt-2 text-xs font-bold leading-5 text-amber-800">
+                위임할 멤버가 없어 그룹에서 나갈 수 없습니다. 그룹 삭제 기능이 필요합니다.
+              </p>
+            )}
+          </div>
+        )}
+        {state.message && <p className={`text-sm font-bold ${state.status === "error" ? "text-red-600" : "text-slate-500"}`}>{state.message}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            disabled={submitting}
+            className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-950 disabled:bg-slate-100 disabled:text-slate-400"
+            onClick={onClose}
+          >
+            취소
+          </button>
+          <button
+            type="submit"
+            disabled={submitting || !canLeave}
+            className="min-h-11 rounded-xl bg-red-500 px-4 text-sm font-extrabold text-white disabled:bg-slate-200 disabled:text-slate-400"
+          >
+            {submitting ? "처리 중" : "나가기"}
+          </button>
+        </div>
+      </form>
+    </AppDialog>
   );
 }
 function MoreInfoRow({ label, value }: { label: string; value: string }) {
