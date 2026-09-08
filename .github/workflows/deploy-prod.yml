@@ -31,6 +31,7 @@ jobs:
             --instance-ids "i-0d3bfe71aae852f9c" \
             --document-name "AWS-RunShellScript" \
             --parameters 'commands=[
+              "set -e",
               "cd /opt/ounwan",
               "aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 789748176137.dkr.ecr.ap-northeast-2.amazonaws.com",
               "docker compose --env-file .env.production.local -f compose.prod.yaml pull",
