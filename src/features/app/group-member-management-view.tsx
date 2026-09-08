@@ -37,6 +37,8 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
   const [regenerateInviteDialogOpen, setRegenerateInviteDialogOpen] = useState(false);
   const [isInviteLoading, setIsInviteLoading] = useState(false);
 
+  const pendingMemberCount = useMemo(() => members.filter((member) => member.status === "pending").length, [members]);
+
   const filteredMembers = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
 
@@ -177,10 +179,14 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
               <button
                 key={option.value}
                 type="button"
-                className={`min-h-10 rounded-xl text-sm font-extrabold ${selected ? "bg-white text-[#51438f] shadow-sm" : "text-slate-500"}`}
+                className={`relative min-h-10 rounded-xl text-sm font-extrabold ${selected ? "bg-white text-[#51438f] shadow-sm" : "text-slate-500"}`}
+                aria-label={option.value === "pending" && pendingMemberCount > 0 ? `${option.label} ${pendingMemberCount}건` : option.label}
                 onClick={() => setStatusFilter(option.value)}
               >
-                {option.label}
+                <span className="inline-flex items-center gap-1.5">
+                  {option.label}
+                  {option.value === "pending" && pendingMemberCount > 0 && <span className="h-1.5 w-1.5 rounded-full bg-red-500" aria-hidden="true" />}
+                </span>
               </button>
             );
           })}

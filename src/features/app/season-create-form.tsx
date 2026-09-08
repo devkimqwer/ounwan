@@ -65,7 +65,7 @@ export function SeasonCreateForm({ onCreated }: { onCreated?: () => void }) {
             type="number"
             name="finePerMiss"
             min={0}
-            step={1000}
+            step={100}
             className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
             required
           />
