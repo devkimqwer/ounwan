@@ -7,6 +7,7 @@ export function MainMenuPanel({
   open,
   userName,
   isAdmin,
+  isTreasurer,
   onClose,
   onSelect,
   onOpenMorePage,
@@ -14,6 +15,7 @@ export function MainMenuPanel({
   open: boolean;
   userName: string;
   isAdmin: boolean;
+  isTreasurer: boolean;
   onClose: () => void;
   onSelect: (tabId: TabId) => void;
   onOpenMorePage: (page: Exclude<MoreSubPage, "main">) => void;
@@ -72,13 +74,15 @@ export function MainMenuPanel({
             ]}
           />
 
-          <MainMenuSection
-            title="총무"
-            rows={[
-              { label: "계좌 정보 관리", onClick: () => onSelect("more") },
-              { label: "잔고 등록", onClick: () => onSelect("more") },
-            ]}
-          />
+          {isTreasurer && (
+            <MainMenuSection
+              title="총무"
+              rows={[
+                { label: "계좌 정보 관리", onClick: () => onSelect("more") },
+                { label: "잔고 등록", onClick: () => onSelect("more") },
+              ]}
+            />
+          )}
 
           {isAdmin && (
             <MainMenuSection
