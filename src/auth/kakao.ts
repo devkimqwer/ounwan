@@ -72,6 +72,11 @@ function getKakaoClientId() {
   return clientId;
 }
 
+export function getAppOrigin(request: NextRequest) {
+  const configuredOrigin = process.env.OUNWAN_APP_ORIGIN?.trim();
+  return configuredOrigin || request.nextUrl.origin;
+}
+
 function getKakaoRedirectUri(request: NextRequest) {
-  return process.env.KAKAO_REDIRECT_URI ?? new URL("/api/auth/kakao/callback", request.nextUrl.origin).toString();
+  return process.env.KAKAO_REDIRECT_URI ?? new URL("/api/auth/kakao/callback", getAppOrigin(request)).toString();
 }
