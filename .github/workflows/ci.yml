@@ -3,9 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - main
-  pull_request:
-    branches:
+      - dev
       - main
 
 permissions:
@@ -20,13 +18,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # [AWS] 자격 증명 발급
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::789748176137:role/OunwanGitHubActionsRole
-          aws-region: ap-northeast-2
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -38,13 +29,13 @@ jobs:
 
       - name: Build
         env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: "5432"
-          POSTGRES_USER: ci
-          POSTGRES_PASSWORD: ci
-          POSTGRES_DB: ci
-          KAKAO_REST_API_KEY: dummy
-          KAKAO_CLIENT_SECRET: dummy
+          POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+          POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
         run: npm run build
 
       - name: Create build env file
@@ -63,4 +54,28 @@ jobs:
         run: |
           docker build \
             --secret id=env,src=.env.production.local \
-            -t ounwan:ci .
+            -t ounwan:ci \
+            .
+
+      # [AWS] 자격 증명 발급
+      - name: Configure AWS credentials
+        if: github.ref == 'refs/heads/main'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::789748176137:role/OunwanGitHubActionsRole
+          aws-region: ap-northeast-2
+
+      # [AWS] ECR 로그인
+      - name: Login to Amazon ECR
+        if: github.ref == 'refs/heads/main'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # [AWS] ECR Push
+      - name: Push Docker image
+        if: github.ref == 'refs/heads/main'
+        run: |
+          docker tag ounwan:ci 789748176137.dkr.ecr.ap-northeast-2.amazonaws.com/ounwan-app:${{ github.sha }}
+          docker tag ounwan:ci 789748176137.dkr.ecr.ap-northeast-2.amazonaws.com/ounwan-app:latest
+
+          docker push 789748176137.dkr.ecr.ap-northeast-2.amazonaws.com/ounwan-app:${{ github.sha }}
+          docker push 789748176137.dkr.ecr.ap-northeast-2.amazonaws.com/ounwan-app:latest
