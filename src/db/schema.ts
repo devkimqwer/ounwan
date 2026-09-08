@@ -30,7 +30,6 @@ export const joinRequestStatusEnum = pgEnum("join_request_status", [
   "cancelled",
 ]);
 export const mediaTypeEnum = pgEnum("media_type", ["image", "video"]);
-export const storageProviderEnum = pgEnum("storage_provider", ["local", "s3", "oci"]);
 export const settlementStatusEnum = pgEnum("settlement_status", ["draft", "confirmed"]);
 
 const timestamps = {
@@ -239,7 +238,6 @@ export const postMedia = pgTable(
       .notNull()
       .references(() => workoutPosts.id, { onDelete: "cascade" }),
     mediaType: mediaTypeEnum("media_type").notNull(),
-    storageProvider: storageProviderEnum("storage_provider").notNull().default("local"),
     storageKey: text("storage_key").notNull(),
     url: text("url"),
     thumbnailUrl: text("thumbnail_url"),
@@ -363,7 +361,6 @@ export const bankBalanceRecords = pgTable(
       .notNull()
       .references(() => users.id),
     memo: text("memo"),
-    imageStorageProvider: storageProviderEnum("image_storage_provider").notNull().default("local"),
     imageStorageKey: text("image_storage_key").notNull(),
     imageUrl: text("image_url"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

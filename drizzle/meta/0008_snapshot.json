@@ -1,6 +1,6 @@
 {
-  "id": "317fadbb-0e39-4893-bc72-2ff5e03fc020",
-  "prevId": "9f3fbaf3-fec7-4e3d-9bc1-d3a2044ae76e",
+  "id": "b8db8c85-4b82-44b6-a8b1-a0954adab63f",
+  "prevId": "afb07b81-e036-4bfa-8fe8-174de484897d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -166,14 +166,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "image_storage_provider": {
-          "name": "image_storage_provider",
-          "type": "storage_provider",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'local'"
         },
         "image_storage_key": {
           "name": "image_storage_key",
@@ -975,14 +967,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "storage_provider": {
-          "name": "storage_provider",
-          "type": "storage_provider",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'local'"
-        },
         "storage_key": {
           "name": "storage_key",
           "type": "text",
@@ -1267,6 +1251,28 @@
           ],
           "isUnique": true,
           "where": "\"seasons\".\"status\" = 'active'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ux_seasons_one_open_status_per_group": {
+          "name": "ux_seasons_one_open_status_per_group",
+          "columns": [
+            {
+              "expression": "group_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"seasons\".\"status\" <> 'closed'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1917,15 +1923,6 @@
       "values": [
         "draft",
         "confirmed"
-      ]
-    },
-    "public.storage_provider": {
-      "name": "storage_provider",
-      "schema": "public",
-      "values": [
-        "local",
-        "s3",
-        "oci"
       ]
     },
     "public.user_status": {

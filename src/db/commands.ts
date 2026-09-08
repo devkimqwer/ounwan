@@ -4,7 +4,7 @@ import { and, desc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 import { clearCurrentGroupId, getCurrentGroupIdForUser, requireCurrentUserId, setCurrentGroupIdForUser } from "@/auth/session";
 import { generateInviteToken, isInviteTokenFormat } from "@/invites/tokens";
-import { deleteLocalMediaFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/local";
+import { deleteStorageFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/service";
 
 import { db } from "./client";
 import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError, GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "./errors";
@@ -802,7 +802,6 @@ export async function createWorkoutPost(input: CreateWorkoutPostInput) {
       storedMediaFiles.map((file, index) => ({
         postId,
         mediaType: file.mediaType,
-        storageProvider: "local" as const,
         storageKey: file.storageKey,
         fileSizeBytes: file.fileSizeBytes,
         contentType: file.contentType,
@@ -811,7 +810,7 @@ export async function createWorkoutPost(input: CreateWorkoutPostInput) {
       })),
     );
   } catch (error) {
-    await deleteLocalMediaFiles(storedMediaFiles.flatMap((file) => [file.storageKey, file.thumbnailStorageKey]));
+    await deleteStorageFiles(storedMediaFiles.flatMap((file) => [file.storageKey, file.thumbnailStorageKey]));
     await db.delete(workoutPosts).where(eq(workoutPosts.id, postId));
     throw error;
   }

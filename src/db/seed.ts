@@ -248,7 +248,6 @@ async function main() {
       await tx.insert(postMedia).values({
         postId: post.id,
         mediaType: "image",
-        storageProvider: "local",
         storageKey: `seed/posts/${post.id.toString()}/image-1.jpg`,
         url: seedPost.mediaUrl,
         sortOrder: 1,
@@ -303,7 +302,6 @@ async function main() {
       groupId,
       createdByUserId: ownerUserId,
       memo: "8월 2주차 결산 후 잔고 업데이트",
-      imageStorageProvider: "local",
       imageStorageKey: "seed/bank/bank-1.jpg",
       imageUrl: "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&h=400&fit=crop&auto=format",
       createdAt: new Date("2026-08-18T14:30:00+09:00"),

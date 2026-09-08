@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/db/client";
 import { postMedia, users } from "@/db/schema";
-import { readLocalMediaFile } from "@/storage/local";
+import { readStorageFile } from "@/storage/service";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
@@ -37,10 +37,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pat
   }
 
   try {
-    const file = await readLocalMediaFile(storageKey);
-    return new Response(file, {
+    const file = await readStorageFile(storageKey);
+    return new Response(new Uint8Array(file.body), {
       headers: {
-        "Content-Type": contentType,
+        "Content-Type": file.contentType ?? contentType,
         "Cache-Control": "private, max-age=3600",
       },
     });

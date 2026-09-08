@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import { oauthAccounts, users } from "@/db/schema";
-import { saveUserAvatarSvg } from "@/storage/local";
+import { saveUserAvatarSvg } from "@/storage/service";
 
 export type KakaoAccountAuthState =
   | { status: "active"; userId: string }
