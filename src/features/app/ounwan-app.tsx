@@ -383,6 +383,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
           open={menuOpen}
           userName={currentUser.name}
           isAdmin={isAdmin}
+          isTreasurer={isTreasurer}
           onClose={closeMenu}
           onSelect={(tabId) => {
             selectTab(tabId);

@@ -329,13 +329,15 @@ export function MoreView({
         ]}
       />
 
-      <MenuBlock
-        title="총무"
-        rows={[
-          <MoreMenuRow key="account-management" label="계좌 정보 관리" onClick={() => openNotReadyDialog("계좌 정보 관리")} />,
-          <MoreMenuRow key="balance-registration" label="잔고 등록" onClick={() => openNotReadyDialog("잔고 등록")} />,
-        ]}
-      />
+      {isTreasurer && (
+        <MenuBlock
+          title="총무"
+          rows={[
+            <MoreMenuRow key="account-management" label="계좌 정보 관리" onClick={() => openNotReadyDialog("계좌 정보 관리")} />,
+            <MoreMenuRow key="balance-registration" label="잔고 등록" onClick={() => openNotReadyDialog("잔고 등록")} />,
+          ]}
+        />
+      )}
 
       {isAdmin && (
         <MenuBlock
