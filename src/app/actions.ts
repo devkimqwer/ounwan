@@ -14,7 +14,7 @@ const MAX_GROUP_NAME_LENGTH = 30;
 const MAX_SEASON_NAME_LENGTH = 30;
 
 export type CreateGroupState = {
-  status: "idle" | "error";
+  status: "idle" | "success" | "error";
   message: string;
 };
 export type UpdateCurrentUserProfileState = {
@@ -58,19 +58,43 @@ export async function createGroupAction(
   _previousState: CreateGroupState,
   formData: FormData,
 ): Promise<CreateGroupState> {
+  const validation = validateGroupName(formData);
+  if (!validation.ok) {
+    return validation.state;
+  }
+
+  await createGroup(validation.groupName);
+  revalidatePath("/");
+  redirect("/");
+}
+
+export async function createGroupInAppAction(formData: FormData): Promise<CreateGroupState> {
+  const validation = validateGroupName(formData);
+  if (!validation.ok) {
+    return validation.state;
+  }
+
+  try {
+    await createGroup(validation.groupName);
+    revalidatePath("/");
+    return { status: "success", message: "그룹이 생성됐습니다." };
+  } catch {
+    return { status: "error", message: "그룹을 생성할 수 없습니다." };
+  }
+}
+
+function validateGroupName(formData: FormData): { ok: true; groupName: string } | { ok: false; state: CreateGroupState } {
   const groupName = String(formData.get("groupName") ?? "").trim();
 
   if (!groupName) {
-    return { status: "error", message: "그룹명을 입력해주세요." };
+    return { ok: false, state: { status: "error", message: "그룹명을 입력해주세요." } };
   }
 
   if (groupName.length > MAX_GROUP_NAME_LENGTH) {
-    return { status: "error", message: `그룹명은 ${MAX_GROUP_NAME_LENGTH}자 이내로 입력해주세요.` };
+    return { ok: false, state: { status: "error", message: `그룹명은 ${MAX_GROUP_NAME_LENGTH}자 이내로 입력해주세요.` } };
   }
 
-  await createGroup(groupName);
-  revalidatePath("/");
-  redirect("/");
+  return { ok: true, groupName };
 }
 
 export async function createSeasonAction(

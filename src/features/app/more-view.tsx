@@ -1,8 +1,8 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { refreshCurrentUserAvatarAction, switchCurrentGroupAction, updateCurrentUserProfileAction } from "@/app/actions";
-import type { RefreshCurrentUserAvatarState, UpdateCurrentUserProfileState } from "@/app/actions";
+import { createGroupInAppAction, refreshCurrentUserAvatarAction, switchCurrentGroupAction, updateCurrentUserProfileAction } from "@/app/actions";
+import type { CreateGroupState, RefreshCurrentUserAvatarState, UpdateCurrentUserProfileState } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
 import type { AccountInfo, AdminGroupMember, Group, Season, SeasonParticipant, User, UserGroupMembership } from "@/domain/models";
 import { TextLogoutButton } from "@/features/auth/logout-controls";
@@ -41,7 +41,12 @@ export function MoreView({
   const router = useRouter();
   const profileInitialState: UpdateCurrentUserProfileState = { status: "idle", message: "" };
   const avatarInitialState: RefreshCurrentUserAvatarState = { status: "idle", message: "" };
+  const groupCreateInitialState: CreateGroupState = { status: "idle", message: "" };
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [groupCreateOpen, setGroupCreateOpen] = useState(false);
+  const [groupCreateName, setGroupCreateName] = useState("");
+  const [groupCreateState, setGroupCreateState] = useState<CreateGroupState>(groupCreateInitialState);
+  const [isGroupCreating, setIsGroupCreating] = useState(false);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [profileName, setProfileName] = useState(currentUser.name);
   const [profileState, setProfileState] = useState<UpdateCurrentUserProfileState>(profileInitialState);
@@ -119,6 +124,32 @@ export function MoreView({
     }
   };
 
+  const handleGroupCreateSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isGroupCreating) {
+      return;
+    }
+
+    const formData = new FormData(event.currentTarget);
+    setGroupCreateState(groupCreateInitialState);
+    setIsGroupCreating(true);
+
+    try {
+      const result = await createGroupInAppAction(formData);
+      setGroupCreateState(result);
+      if (result.status === "success") {
+        setGroupCreateName("");
+        setGroupCreateOpen(false);
+        setGroupDialogOpen(false);
+        router.refresh();
+      }
+    } catch {
+      setGroupCreateState({ status: "error", message: "그룹을 생성할 수 없습니다." });
+    } finally {
+      setIsGroupCreating(false);
+    }
+  };
+
   const openNotReadyDialog = (title: string) => {
     setNotReadyTitle(title);
   };
@@ -164,7 +195,11 @@ export function MoreView({
             <button
               type="button"
               className="mt-3 inline-flex max-w-full items-center gap-2 rounded-xl px-0 py-1 text-left text-base font-extrabold text-slate-950"
-              onClick={() => setGroupDialogOpen(true)}
+              onClick={() => {
+                setGroupCreateState(groupCreateInitialState);
+                setGroupCreateOpen(false);
+                setGroupDialogOpen(true);
+              }}
             >
               <svg aria-hidden="true" className="h-5 w-5 shrink-0 text-slate-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -243,7 +278,7 @@ export function MoreView({
               <button
                 key={group.id}
                 type="button"
-                disabled={Boolean(switchingGroupId)}
+                disabled={Boolean(switchingGroupId) || isGroupCreating}
                 className={`flex min-h-12 w-full items-center justify-between rounded-2xl border px-4 text-left text-sm font-extrabold ${
                   selected ? "border-[#DDD8F1] bg-[#F7F5FF] text-[#51438f]" : "border-slate-200 bg-white text-slate-800"
                 } disabled:opacity-60`}
@@ -260,6 +295,62 @@ export function MoreView({
               </button>
             );
           })}
+
+          <div className="border-t border-slate-100 pt-3">
+            {groupCreateOpen ? (
+              <form className="space-y-3" onSubmit={handleGroupCreateSubmit}>
+                <label className="block text-xs font-extrabold text-slate-500" htmlFor="more-group-name">
+                  새 그룹명
+                </label>
+                <input
+                  id="more-group-name"
+                  name="groupName"
+                  value={groupCreateName}
+                  maxLength={30}
+                  onChange={(event) => setGroupCreateName(event.target.value)}
+                  className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold outline-none focus:border-[#5e4ea5]"
+                  placeholder="예: 아침 운동 모임"
+                  required
+                />
+                {groupCreateState.status === "error" && <p className="text-xs font-bold text-red-600">{groupCreateState.message}</p>}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={isGroupCreating}
+                    className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-950 disabled:bg-slate-100 disabled:text-slate-400"
+                    onClick={() => {
+                      setGroupCreateOpen(false);
+                      setGroupCreateState(groupCreateInitialState);
+                    }}
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isGroupCreating || !groupCreateName.trim()}
+                    className="min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-extrabold text-white disabled:bg-slate-200 disabled:text-slate-400"
+                  >
+                    {isGroupCreating ? "생성 중" : "그룹 생성"}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <button
+                type="button"
+                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 active:bg-slate-50"
+                onClick={() => {
+                  setGroupCreateState(groupCreateInitialState);
+                  setGroupCreateOpen(true);
+                }}
+              >
+                <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14" />
+                  <path d="M5 12h14" />
+                </svg>
+                새 그룹 만들기
+              </button>
+            )}
+          </div>
         </div>
       </AppDialog>
 
