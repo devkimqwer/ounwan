@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deletePendingSeason, deletePostComment, deleteWorkoutPost, getOrCreateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
+import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deletePendingSeason, deletePostComment, deleteWorkoutPost, getOrCreateCurrentGroupInvite, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
 import { PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
@@ -184,6 +184,22 @@ export async function createGroupInviteAction(): Promise<CreateGroupInviteState>
     };
   } catch {
     return { status: "error", message: "초대 링크를 생성할 수 없습니다." };
+  }
+}
+
+export async function regenerateGroupInviteAction(): Promise<CreateGroupInviteState> {
+  try {
+    const invite = await regenerateCurrentGroupInvite();
+    revalidatePath("/");
+
+    return {
+      status: "success",
+      message: "새 초대 링크가 발급됐습니다.",
+      invitePath: invite.invitePath,
+      expiresAt: invite.expiresAt,
+    };
+  } catch {
+    return { status: "error", message: "초대 링크를 새로 발급할 수 없습니다." };
   }
 }
 

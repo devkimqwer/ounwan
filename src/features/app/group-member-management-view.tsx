@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { createGroupInviteAction, reviewGroupJoinRequestAction } from "@/app/actions";
+import { createGroupInviteAction, regenerateGroupInviteAction, reviewGroupJoinRequestAction } from "@/app/actions";
 import type { AdminGroupMember, AdminGroupMemberStatus, AdminGroupMemberStatusFilter } from "@/domain/models";
 import { AppDialog } from "@/components/ui/app-dialog";
 import { Avatar, Badge, getRoleBadgeTone, getRoleLabel } from "./shared-ui";
@@ -34,6 +34,7 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
   const [inviteExpiresAt, setInviteExpiresAt] = useState<string | undefined>();
   const [inviteError, setInviteError] = useState("");
   const [inviteCopied, setInviteCopied] = useState(false);
+  const [regenerateInviteDialogOpen, setRegenerateInviteDialogOpen] = useState(false);
   const [isInviteLoading, setIsInviteLoading] = useState(false);
 
   const filteredMembers = useMemo(() => {
@@ -91,6 +92,32 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
       setInviteCopied(true);
     } catch {
       setInviteError("복사에 실패했습니다. 링크를 직접 선택해서 복사해주세요.");
+    }
+  };
+
+  const handleInviteRegenerate = async () => {
+    if (isInviteLoading) {
+      return;
+    }
+
+    setIsInviteLoading(true);
+    setInviteError("");
+    setInviteCopied(false);
+
+    try {
+      const result = await regenerateGroupInviteAction();
+      if (result.status !== "success" || !result.invitePath) {
+        setInviteError(result.message);
+        return;
+      }
+
+      setInviteLink(`${window.location.origin}${result.invitePath}`);
+      setInviteExpiresAt(result.expiresAt);
+      setRegenerateInviteDialogOpen(false);
+    } catch {
+      setInviteError("초대 링크를 새로 발급할 수 없습니다.");
+    } finally {
+      setIsInviteLoading(false);
     }
   };
 
@@ -195,7 +222,15 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
         copied={inviteCopied}
         loading={isInviteLoading}
         onCopy={handleInviteCopy}
+        onRegenerate={() => setRegenerateInviteDialogOpen(true)}
         onClose={() => setInviteDialogOpen(false)}
+      />
+      <RegenerateInviteDialog
+        open={regenerateInviteDialogOpen}
+        submitting={isInviteLoading}
+        error={inviteError}
+        onConfirm={handleInviteRegenerate}
+        onClose={() => setRegenerateInviteDialogOpen(false)}
       />
       <MemberDetailDialog member={selectedMember} onClose={() => setSelectedMember(null)} />
       <MemberMenuDialog member={memberMenu} onReview={handleReviewOpen} onClose={() => setMemberMenu(null)} />
@@ -273,6 +308,7 @@ function InviteDialog({
   copied,
   loading,
   onCopy,
+  onRegenerate,
   onClose,
 }: {
   open: boolean;
@@ -282,6 +318,7 @@ function InviteDialog({
   copied: boolean;
   loading: boolean;
   onCopy: () => void;
+  onRegenerate: () => void;
   onClose: () => void;
 }) {
   return (
@@ -295,19 +332,75 @@ function InviteDialog({
         </div>
         {error && <p className="text-sm font-bold text-red-500">{error}</p>}
         {copied && <p className="text-sm font-bold text-[#51438f]">복사됐습니다.</p>}
-        <button
-          type="button"
-          disabled={!inviteLink || loading}
-          className="min-h-11 w-full rounded-xl bg-slate-950 px-4 text-sm font-extrabold text-white disabled:bg-slate-200 disabled:text-slate-400"
-          onClick={onCopy}
-        >
-          링크 복사
-        </button>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            disabled={!inviteLink || loading}
+            className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-950 disabled:bg-slate-100 disabled:text-slate-400"
+            onClick={onRegenerate}
+          >
+            새 링크 발급
+          </button>
+          <button
+            type="button"
+            disabled={!inviteLink || loading}
+            className="min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-extrabold text-white disabled:bg-slate-200 disabled:text-slate-400"
+            onClick={onCopy}
+          >
+            링크 복사
+          </button>
+        </div>
       </div>
     </AppDialog>
   );
 }
 
+function RegenerateInviteDialog({
+  open,
+  submitting,
+  error,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  submitting: boolean;
+  error: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <AppDialog
+      open={open}
+      title="초대 링크 새로 발급"
+      description="기존 초대 링크는 즉시 만료되고 새 링크가 발급됩니다. 계속할까요?"
+      onClose={onClose}
+      dismissOnBackdrop={!submitting}
+      role="alertdialog"
+      footer={
+        <>
+          <button
+            type="button"
+            disabled={submitting}
+            className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-950 disabled:bg-slate-100 disabled:text-slate-400"
+            onClick={onClose}
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            disabled={submitting}
+            className="min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-extrabold text-white disabled:bg-slate-200 disabled:text-slate-400"
+            onClick={onConfirm}
+          >
+            {submitting ? "발급 중" : "새로 발급"}
+          </button>
+        </>
+      }
+    >
+      {error && <p className="text-sm font-bold text-red-500">{error}</p>}
+    </AppDialog>
+  );
+}
 function MemberDetailDialog({ member, onClose }: { member: AdminGroupMember | null; onClose: () => void }) {
   return (
     <AppDialog open={Boolean(member)} title={member?.user.name ?? "멤버 상세"} onClose={onClose} dismissOnBackdrop actions={[{ label: "닫기", onClick: onClose }]}>

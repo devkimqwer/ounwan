@@ -127,8 +127,8 @@ export async function switchCurrentGroup(groupId: string) {
 
 export async function getOrCreateCurrentGroupInvite() {
   const context = await getCurrentGroupAdminContext();
-
   const now = new Date();
+
   const reusableRows = await db
     .select({
       id: groupInvites.id,
@@ -154,11 +154,36 @@ export async function getOrCreateCurrentGroupInvite() {
     return toGroupInviteResult(reusableRows[0]);
   }
 
+  return createCurrentGroupInvite(context);
+}
+
+export async function regenerateCurrentGroupInvite() {
+  const context = await getCurrentGroupAdminContext();
+  const now = new Date();
+
+  return db.transaction(async (tx) => {
+    await tx
+      .update(groupInvites)
+      .set({ status: "expired", expiresAt: now })
+      .where(and(eq(groupInvites.groupId, BigInt(context.groupId)), eq(groupInvites.status, "active")));
+
+    return createCurrentGroupInvite(context, tx, now);
+  });
+}
+
+type CurrentGroupInviteContext = {
+  groupId: string;
+  userId: string;
+};
+
+type GroupInviteExecutor = Pick<typeof db, "insert">;
+
+async function createCurrentGroupInvite(context: CurrentGroupInviteContext, executor: GroupInviteExecutor = db, now = new Date()) {
   const expiresAt = new Date(now);
   expiresAt.setHours(expiresAt.getHours() + GROUP_INVITE_EXPIRES_HOURS);
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const rows = await db
+    const rows = await executor
       .insert(groupInvites)
       .values({
         groupId: BigInt(context.groupId),
