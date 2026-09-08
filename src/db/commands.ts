@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, gt, isNull, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 import { clearCurrentGroupId, getCurrentGroupIdForUser, requireCurrentUserId, setCurrentGroupIdForUser } from "@/auth/session";
 import { generateInviteToken, isInviteTokenFormat } from "@/invites/tokens";
@@ -192,6 +192,85 @@ export async function leaveGroup(input: LeaveGroupInput) {
     const nextGroupId = leftGroupId === selectedActiveGroupId ? nextMembershipRows[0]?.groupId.toString() : selectedActiveGroupId;
 
     return { leftGroupId, nextGroupId };
+  });
+
+  if (result.nextGroupId) {
+    await setCurrentGroupIdForUser(userId, result.nextGroupId);
+  } else {
+    await clearCurrentGroupId();
+  }
+
+  return result;
+}
+
+type DeleteGroupInput = {
+  groupId: string;
+};
+
+export async function deleteGroup(input: DeleteGroupInput) {
+  const userId = await requireCurrentUserId();
+  if (!/^\d+$/.test(input.groupId)) {
+    throw new Error("Invalid group id.");
+  }
+
+  const selectedGroupId = await getCurrentGroupIdForUser(userId);
+  const now = new Date();
+  const leftAt = getKoreanDate(now);
+
+  const result = await db.transaction(async (tx) => {
+    const membershipRows = await tx
+      .select({ group: groups, member: groupMembers })
+      .from(groupMembers)
+      .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+      .where(and(eq(groupMembers.userId, BigInt(userId)), isNull(groupMembers.leftAt), isNull(groups.deletedAt)))
+      .orderBy(desc(groupMembers.updatedAt), desc(groups.id));
+    const membership = membershipRows.find((row) => row.group.id.toString() === input.groupId);
+
+    if (!membership) {
+      throw new CurrentUserMembershipNotFoundError();
+    }
+
+    if (!membership.member.roles.includes("admin")) {
+      throw new Error("Only admins can delete groups.");
+    }
+
+    const groupId = membership.group.id;
+    const selectedActiveGroupId = selectedGroupId && membershipRows.some((row) => row.group.id.toString() === selectedGroupId)
+      ? selectedGroupId
+      : membershipRows[0]?.group.id.toString();
+
+    await tx.update(groups).set({ deletedAt: now, updatedAt: now }).where(and(eq(groups.id, groupId), isNull(groups.deletedAt)));
+    await tx.update(groupMembers).set({ leftAt, updatedAt: now }).where(and(eq(groupMembers.groupId, groupId), isNull(groupMembers.leftAt)));
+    await tx
+      .update(seasonParticipantPeriods)
+      .set({ endDate: leftAt })
+      .where(
+        and(
+          inArray(
+            seasonParticipantPeriods.seasonId,
+            tx.select({ id: seasons.id }).from(seasons).where(eq(seasons.groupId, groupId)),
+          ),
+          isNull(seasonParticipantPeriods.endDate),
+        ),
+      );
+    await tx.update(groupInvites).set({ status: "expired", expiresAt: now }).where(and(eq(groupInvites.groupId, groupId), eq(groupInvites.status, "active")));
+    await tx
+      .update(groupJoinRequests)
+      .set({ status: "rejected", reviewedByUserId: BigInt(userId), reviewedAt: now })
+      .where(and(eq(groupJoinRequests.groupId, groupId), eq(groupJoinRequests.status, "pending")));
+
+    const nextMembershipRows = await tx
+      .select({ groupId: groupMembers.groupId })
+      .from(groupMembers)
+      .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+      .where(and(eq(groupMembers.userId, BigInt(userId)), ne(groupMembers.groupId, groupId), isNull(groupMembers.leftAt), isNull(groups.deletedAt)))
+      .orderBy(desc(groupMembers.updatedAt), desc(groups.id))
+      .limit(1);
+
+    const deletedGroupId = groupId.toString();
+    const nextGroupId = deletedGroupId === selectedActiveGroupId ? nextMembershipRows[0]?.groupId.toString() : selectedActiveGroupId;
+
+    return { deletedGroupId, nextGroupId };
   });
 
   if (result.nextGroupId) {

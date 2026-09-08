@@ -1,8 +1,8 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { createGroupInAppAction, leaveGroupAction, refreshCurrentUserAvatarAction, switchCurrentGroupAction, updateCurrentUserProfileAction } from "@/app/actions";
-import type { CreateGroupState, LeaveGroupState, RefreshCurrentUserAvatarState, UpdateCurrentUserProfileState } from "@/app/actions";
+import { createGroupInAppAction, deleteGroupAction, leaveGroupAction, refreshCurrentUserAvatarAction, switchCurrentGroupAction, updateCurrentUserProfileAction } from "@/app/actions";
+import type { CreateGroupState, DeleteGroupState, LeaveGroupState, RefreshCurrentUserAvatarState, UpdateCurrentUserProfileState } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
 import type { AccountInfo, AdminGroupMember, Group, Season, SeasonParticipant, User, UserGroupMembership } from "@/domain/models";
 import { TextLogoutButton } from "@/features/auth/logout-controls";
@@ -43,6 +43,7 @@ export function MoreView({
   const avatarInitialState: RefreshCurrentUserAvatarState = { status: "idle", message: "" };
   const groupCreateInitialState: CreateGroupState = { status: "idle", message: "" };
   const leaveGroupInitialState: LeaveGroupState = { status: "idle", message: "" };
+  const deleteGroupInitialState: DeleteGroupState = { status: "idle", message: "" };
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [groupCreateOpen, setGroupCreateOpen] = useState(false);
   const [groupCreateName, setGroupCreateName] = useState("");
@@ -50,10 +51,13 @@ export function MoreView({
   const [isGroupCreating, setIsGroupCreating] = useState(false);
   const [groupActionTarget, setGroupActionTarget] = useState<UserGroupMembership | null>(null);
   const [leaveGroupTarget, setLeaveGroupTarget] = useState<UserGroupMembership | null>(null);
+  const [deleteGroupTarget, setDeleteGroupTarget] = useState<UserGroupMembership | null>(null);
   const [leaveGroupDialogOpen, setLeaveGroupDialogOpen] = useState(false);
   const [leaveDelegateUserId, setLeaveDelegateUserId] = useState("");
   const [leaveGroupState, setLeaveGroupState] = useState<LeaveGroupState>(leaveGroupInitialState);
   const [isLeavingGroup, setIsLeavingGroup] = useState(false);
+  const [deleteGroupState, setDeleteGroupState] = useState<DeleteGroupState>(deleteGroupInitialState);
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [profileName, setProfileName] = useState(currentUser.name);
   const [profileState, setProfileState] = useState<UpdateCurrentUserProfileState>(profileInitialState);
@@ -165,6 +169,12 @@ export function MoreView({
     setLeaveGroupDialogOpen(true);
   };
 
+
+  const openDeleteGroupDialog = (target: UserGroupMembership) => {
+    setGroupActionTarget(null);
+    setDeleteGroupTarget(target);
+    setDeleteGroupState(deleteGroupInitialState);
+  };
   const handleLeaveGroupSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (isLeavingGroup) {
@@ -204,6 +214,38 @@ export function MoreView({
     }
   };
 
+
+  const handleDeleteGroupSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isDeletingGroup) {
+      return;
+    }
+
+    const target = deleteGroupTarget;
+    if (!target) {
+      setDeleteGroupState({ status: "error", message: "그룹 정보를 확인할 수 없습니다." });
+      return;
+    }
+
+    const formData = new FormData(event.currentTarget);
+    formData.set("groupId", target.group.id);
+    setDeleteGroupState(deleteGroupInitialState);
+    setIsDeletingGroup(true);
+
+    try {
+      const result = await deleteGroupAction(formData);
+      setDeleteGroupState(result);
+      if (result.status === "success") {
+        setDeleteGroupTarget(null);
+        setGroupDialogOpen(false);
+        router.refresh();
+      }
+    } catch {
+      setDeleteGroupState({ status: "error", message: "그룹을 삭제할 수 없습니다." });
+    } finally {
+      setIsDeletingGroup(false);
+    }
+  };
   const openNotReadyDialog = (title: string) => {
     setNotReadyTitle(title);
   };
@@ -338,7 +380,7 @@ export function MoreView({
               >
                 <button
                   type="button"
-                  disabled={Boolean(switchingGroupId) || isGroupCreating || isLeavingGroup}
+                  disabled={Boolean(switchingGroupId) || isGroupCreating || isLeavingGroup || isDeletingGroup}
                   className="min-w-0 flex-1 text-left disabled:opacity-60"
                   onClick={() => handleGroupSwitch(group.id)}
                 >
@@ -353,7 +395,7 @@ export function MoreView({
                 </button>
                 <button
                   type="button"
-                  disabled={Boolean(switchingGroupId) || isGroupCreating || isLeavingGroup}
+                  disabled={Boolean(switchingGroupId) || isGroupCreating || isLeavingGroup || isDeletingGroup}
                   className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-500 active:bg-slate-100 disabled:opacity-40"
                   aria-label={`${group.name} 그룹 메뉴 열기`}
                   onClick={() => setGroupActionTarget(membershipItem)}
@@ -429,7 +471,15 @@ export function MoreView({
       <GroupActionMenuDialog
         target={groupActionTarget}
         onLeave={openLeaveGroupDialog}
+        onDelete={openDeleteGroupDialog}
         onClose={() => setGroupActionTarget(null)}
+      />
+      <DeleteGroupDialog
+        target={deleteGroupTarget}
+        state={deleteGroupState}
+        submitting={isDeletingGroup}
+        onSubmit={handleDeleteGroupSubmit}
+        onClose={() => setDeleteGroupTarget(null)}
       />
       <LeaveGroupDialog
         open={leaveGroupDialogOpen}
@@ -495,10 +545,12 @@ export function MoreView({
 function GroupActionMenuDialog({
   target,
   onLeave,
+  onDelete,
   onClose,
 }: {
   target: UserGroupMembership | null;
   onLeave: (target: UserGroupMembership) => void;
+  onDelete: (target: UserGroupMembership) => void;
   onClose: () => void;
 }) {
   const isAdmin = target?.membership.roles.includes("admin") ?? false;
@@ -528,15 +580,15 @@ function GroupActionMenuDialog({
           {isAdmin && (
             <button
               type="button"
-              className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-extrabold text-slate-400"
-              onClick={onClose}
+              className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-extrabold text-slate-900 active:bg-slate-50"
+              onClick={() => onDelete(target)}
             >
               <svg aria-hidden="true" className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 6h18" />
                 <path d="M8 6V4h8v2" />
                 <path d="M19 6l-1 14H6L5 6" />
               </svg>
-              그룹 삭제 준비중
+              그룹 삭제
             </button>
           )}
         </div>
@@ -545,6 +597,58 @@ function GroupActionMenuDialog({
   );
 }
 
+function DeleteGroupDialog({
+  target,
+  state,
+  submitting,
+  onSubmit,
+  onClose,
+}: {
+  target: UserGroupMembership | null;
+  state: DeleteGroupState;
+  submitting: boolean;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onClose: () => void;
+}) {
+  return (
+    <AppDialog
+      open={Boolean(target)}
+      title="그룹 삭제"
+      description={target ? `${target.group.name} 그룹을 삭제하시겠습니까?` : undefined}
+      onClose={onClose}
+      dismissOnBackdrop={!submitting}
+      role="alertdialog"
+      footer={null}
+    >
+      <form className="space-y-3" onSubmit={onSubmit}>
+        <input type="hidden" name="groupId" value={target?.group.id ?? ""} />
+        <div className="rounded-2xl border border-red-100 bg-red-50 p-3">
+          <p className="text-sm font-bold leading-5 text-red-700">
+            삭제된 그룹은 목록에서 사라지고 기존 초대 링크와 대기 요청은 더 이상 사용할 수 없습니다.
+          </p>
+        </div>
+        {state.message && <p className={`text-sm font-bold ${state.status === "error" ? "text-red-600" : "text-slate-500"}`}>{state.message}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            disabled={submitting}
+            className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-950 disabled:bg-slate-100 disabled:text-slate-400"
+            onClick={onClose}
+          >
+            취소
+          </button>
+          <button
+            type="submit"
+            disabled={submitting || !target}
+            className="min-h-11 rounded-xl bg-red-500 px-4 text-sm font-extrabold text-white disabled:bg-slate-200 disabled:text-slate-400"
+          >
+            {submitting ? "처리 중" : "삭제"}
+          </button>
+        </div>
+      </form>
+    </AppDialog>
+  );
+}
 function LeaveGroupDialog({
   open,
   target,

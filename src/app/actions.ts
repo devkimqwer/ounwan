@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deletePendingSeason, deletePostComment, deleteWorkoutPost, getOrCreateCurrentGroupInvite, leaveGroup, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
+import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, getOrCreateCurrentGroupInvite, leaveGroup, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
 import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
@@ -300,6 +300,27 @@ export async function leaveGroupAction(formData: FormData): Promise<LeaveGroupSt
   }
 }
 
+
+export type DeleteGroupState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
+export async function deleteGroupAction(formData: FormData): Promise<DeleteGroupState> {
+  const groupId = String(formData.get("groupId") ?? "").trim();
+
+  if (!groupId) {
+    return { status: "error", message: "그룹 정보를 확인할 수 없습니다." };
+  }
+
+  try {
+    await deleteGroup({ groupId });
+    revalidatePath("/");
+    return { status: "success", message: "그룹이 삭제됐습니다." };
+  } catch {
+    return { status: "error", message: "그룹을 삭제할 수 없습니다." };
+  }
+}
 export async function reviewGroupJoinRequestAction(formData: FormData) {
   const requestId = String(formData.get("requestId") ?? "").trim();
   const decision = String(formData.get("decision") ?? "").trim();
