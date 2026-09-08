@@ -57,6 +57,13 @@
       "when": 1788761721659,
       "tag": "0007_pending_season_index",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788854758000,
+      "tag": "0008_drop_storage_provider_columns",
+      "breakpoints": true
     }
   ]
 }
