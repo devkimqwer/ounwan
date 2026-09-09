@@ -144,7 +144,15 @@ export interface SettlementRow {
   autoFineAmount: number;
   finalFineAmount: number;
 }
-
+export interface WeeklyUserWorkoutStatus {
+  weekStartDate: string;
+  weekEndDate: string;
+  targetWorkoutCount: number;
+  validWorkoutCount: number;
+  missedCount: number;
+  finePerMiss: number;
+  estimatedFineAmount: number;
+}
 export interface BankRecord {
   id: string;
   groupId: string;
