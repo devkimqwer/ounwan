@@ -226,6 +226,29 @@ export const notifications = pgTable(
   ],
 );
 
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: bigserial("id", { mode: "bigint" }).primaryKey(),
+    userId: bigint("user_id", { mode: "bigint" })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    disabledAt: timestamp("disabled_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("ux_push_subscriptions_endpoint").on(table.endpoint),
+    index("idx_push_subscriptions_user_active")
+      .on(table.userId, table.updatedAt.desc())
+      .where(sql`${table.disabledAt} IS NULL`),
+  ],
+);
+
 export const workoutPosts = pgTable(
   "workout_posts",
   {

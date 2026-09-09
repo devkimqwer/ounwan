@@ -71,6 +71,13 @@
       "when": 1788933436680,
       "tag": "0009_condemned_stryfe",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788936422837,
+      "tag": "0010_exotic_nemesis",
+      "breakpoints": true
     }
   ]
 }

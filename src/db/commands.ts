@@ -4,11 +4,12 @@ import { and, desc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 import { clearCurrentGroupId, getCurrentGroupIdForUser, requireCurrentUserId, setCurrentGroupIdForUser } from "@/auth/session";
 import { generateInviteToken, isInviteTokenFormat } from "@/invites/tokens";
+import { sendPushForNotifications } from "@/push-service";
 import { deleteStorageFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/service";
 
 import { db } from "./client";
 import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError, GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "./errors";
-import { groupInvites, groupJoinRequests, groupMembers, groups, notifications, postComments, postLikes, postMedia, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
+import { groupInvites, groupJoinRequests, groupMembers, groups, notifications, postComments, postLikes, postMedia, pushSubscriptions, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
 
 const GROUP_INVITE_EXPIRES_HOURS = 72;
 
@@ -63,6 +64,13 @@ type CreateWorkoutPostInput = {
   workoutType?: string;
   content?: string;
   mediaFiles: File[];
+};
+
+type SavePushSubscriptionInput = {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  userAgent?: string;
 };
 
 
@@ -1082,6 +1090,95 @@ export async function deleteNotification(notificationId: string) {
 
   return { id: rows[0].id.toString() };
 }
+
+export async function saveCurrentUserPushSubscription(input: SavePushSubscriptionInput) {
+  const userId = await requireCurrentUserId();
+  const endpoint = input.endpoint.trim();
+  const p256dh = input.p256dh.trim();
+  const auth = input.auth.trim();
+  const userAgent = input.userAgent?.trim();
+
+  if (!endpoint || !p256dh || !auth) {
+    throw new Error("Invalid push subscription.");
+  }
+
+  const rows = await db
+    .insert(pushSubscriptions)
+    .values({
+      userId: BigInt(userId),
+      endpoint,
+      p256dh,
+      auth,
+      userAgent: userAgent || null,
+    })
+    .onConflictDoUpdate({
+      target: pushSubscriptions.endpoint,
+      set: {
+        userId: BigInt(userId),
+        p256dh,
+        auth,
+        userAgent: userAgent || null,
+        updatedAt: new Date(),
+        disabledAt: null,
+      },
+    })
+    .returning({ id: pushSubscriptions.id });
+
+  return { id: rows[0].id.toString() };
+}
+
+export async function deleteCurrentUserPushSubscription(endpoint: string) {
+  const userId = await requireCurrentUserId();
+  const trimmedEndpoint = endpoint.trim();
+
+  if (!trimmedEndpoint) {
+    throw new Error("Invalid push subscription endpoint.");
+  }
+
+  await db
+    .update(pushSubscriptions)
+    .set({ disabledAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(pushSubscriptions.userId, BigInt(userId)), eq(pushSubscriptions.endpoint, trimmedEndpoint), isNull(pushSubscriptions.disabledAt)));
+
+  return { endpoint: trimmedEndpoint };
+}
+
+export async function notifyWeeklySettlementCompleted(settlementId: string) {
+  if (!/^\d+$/.test(settlementId)) {
+    throw new Error("Invalid settlement id.");
+  }
+
+  await db.transaction(async (tx) => {
+    const settlementRows = await tx
+      .select({ id: weeklySettlements.id, groupId: weeklySettlements.groupId })
+      .from(weeklySettlements)
+      .where(eq(weeklySettlements.id, BigInt(settlementId)))
+      .limit(1);
+    const settlement = settlementRows[0];
+
+    if (!settlement) {
+      throw new Error("Weekly settlement not found.");
+    }
+
+    const rowUsers = await tx
+      .select({ userId: weeklySettlementRows.userId })
+      .from(weeklySettlementRows)
+      .where(eq(weeklySettlementRows.settlementId, settlement.id));
+
+    await createNotifications(
+      tx,
+      rowUsers.map((row) => ({
+        recipientUserId: row.userId,
+        groupId: settlement.groupId,
+        type: "weekly_settlement_completed",
+        message: "지난 주 결산이 도착했어요.",
+        actionType: "settlement_detail",
+        actionTargetId: settlement.id.toString(),
+      })),
+    );
+  });
+}
+
 async function getCurrentGroupAdminContext() {
   const userId = await requireCurrentUserId();
   const selectedGroupId = await getCurrentGroupIdForUser(userId);
@@ -1155,24 +1252,9 @@ type CreateNotificationInput = {
 };
 
 async function createNotification(executor: NotificationExecutor, input: CreateNotificationInput) {
-  await executor.insert(notifications).values({
-    recipientUserId: input.recipientUserId,
-    actorUserId: input.actorUserId ?? null,
-    groupId: input.groupId ?? null,
-    type: input.type,
-    message: input.message,
-    actionType: input.actionType ?? null,
-    actionTargetId: input.actionTargetId ?? null,
-  });
-}
-
-async function createNotifications(executor: NotificationExecutor, inputs: CreateNotificationInput[]) {
-  if (inputs.length === 0) {
-    return;
-  }
-
-  await executor.insert(notifications).values(
-    inputs.map((input) => ({
+  const rows = await executor
+    .insert(notifications)
+    .values({
       recipientUserId: input.recipientUserId,
       actorUserId: input.actorUserId ?? null,
       groupId: input.groupId ?? null,
@@ -1180,8 +1262,45 @@ async function createNotifications(executor: NotificationExecutor, inputs: Creat
       message: input.message,
       actionType: input.actionType ?? null,
       actionTargetId: input.actionTargetId ?? null,
-    })),
-  );
+    })
+    .returning({
+      notificationId: notifications.id,
+      recipientUserId: notifications.recipientUserId,
+      message: notifications.message,
+      actionType: notifications.actionType,
+      actionTargetId: notifications.actionTargetId,
+    });
+
+  await sendPushForNotifications(rows);
+}
+
+async function createNotifications(executor: NotificationExecutor, inputs: CreateNotificationInput[]) {
+  if (inputs.length === 0) {
+    return;
+  }
+
+  const rows = await executor
+    .insert(notifications)
+    .values(
+      inputs.map((input) => ({
+        recipientUserId: input.recipientUserId,
+        actorUserId: input.actorUserId ?? null,
+        groupId: input.groupId ?? null,
+        type: input.type,
+        message: input.message,
+        actionType: input.actionType ?? null,
+        actionTargetId: input.actionTargetId ?? null,
+      })),
+    )
+    .returning({
+      notificationId: notifications.id,
+      recipientUserId: notifications.recipientUserId,
+      message: notifications.message,
+      actionType: notifications.actionType,
+      actionTargetId: notifications.actionTargetId,
+    });
+
+  await sendPushForNotifications(rows);
 }
 
 async function notifyGroupAdmins(
