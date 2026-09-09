@@ -10,6 +10,7 @@ import type {
   Settlement,
   SettlementRow,
   User,
+  WeeklyUserWorkoutStatus,
   WorkoutPost,
 } from "./models";
 
@@ -27,6 +28,7 @@ export interface OunwanAppData {
   seasons: Season[];
   seasonParticipants: SeasonParticipant[];
   posts: WorkoutPost[];
+  weeklyUserWorkoutStatus?: WeeklyUserWorkoutStatus;
   settlement?: Settlement;
   settlementRows: SettlementRow[];
   bankRecords: BankRecord[];

@@ -1,36 +1,35 @@
-import type { Settlement, User, WorkoutPost } from "@/domain/models";
+import type { User, WeeklyUserWorkoutStatus, WorkoutPost } from "@/domain/models";
 import { PostCard } from "./post-card";
 
 export function HomeView({
   userName,
   currentUserId,
-  validPostCount,
-  targetCount,
+  weeklyStatus,
   onCert,
   onFeed,
   onPostOpen,
   isAdmin,
   posts,
-  settlement,
   users,
 }: {
   userName: string;
   currentUserId: string;
-  validPostCount: number;
-  targetCount: number;
+  weeklyStatus: WeeklyUserWorkoutStatus;
   onCert: () => void;
   onFeed: () => void;
   onPostOpen: (postId: string) => void;
   isAdmin: boolean;
   posts: WorkoutPost[];
-  settlement: Settlement;
   users: User[];
 }) {
   const recentPosts = posts.filter((post) => !post.isInvalid).slice(0, 2);
-  const completedCount = Math.min(validPostCount, targetCount);
-  const remainingCount = Math.max(targetCount - completedCount, 0);
+  const targetCount = weeklyStatus.targetWorkoutCount;
+  const completedCount = Math.min(weeklyStatus.validWorkoutCount, targetCount);
+  const remainingCount = weeklyStatus.missedCount;
   const progressPercent = targetCount > 0 ? (completedCount / targetCount) * 100 : 0;
-  const weekRange = `${formatShortDate(settlement.weekStartDate)} ~ ${formatShortDate(settlement.weekEndDate)}`;
+  const weekRange = `${formatShortDate(weeklyStatus.weekStartDate)} ~ ${formatShortDate(weeklyStatus.weekEndDate)}`;
+  const finePerMissText = formatCurrency(weeklyStatus.finePerMiss);
+  const estimatedFineText = formatCurrency(weeklyStatus.estimatedFineAmount);
 
   return (
     <div className="space-y-4 p-4">
@@ -66,9 +65,9 @@ export function HomeView({
       </button>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-[15px] font-extrabold text-slate-900">이번 주 나의 현황</h2>
-          <span className="text-xs font-bold text-slate-400">{weekRange}</span>
+          <span className="shrink-0 text-xs font-bold text-slate-400">{weekRange}</span>
         </div>
         <div className="mt-5 flex items-center gap-3">
           <div className="flex flex-1 gap-2">
@@ -95,9 +94,19 @@ export function HomeView({
         </div>
         <p className="mt-3 text-[13px] font-bold text-slate-400">
           {remainingCount > 0
-            ? `이번 주 ${remainingCount}회 더 인증하면 벌금이 없어요!`
+            ? `이번 주 ${remainingCount}번만 더 인증하면 돼요.`
             : "이번 주 목표를 달성했어요!"}
         </p>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-center">
+            <span className="block text-[11px] font-bold text-slate-400">1회 미달 벌금</span>
+            <span className="mt-1 block text-sm font-extrabold text-slate-900">{finePerMissText}</span>
+          </div>
+          <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-center">
+            <span className="block text-[11px] font-bold text-slate-400">현재 예상 벌금</span>
+            <span className="mt-1 block text-sm font-extrabold text-[#5e4ea5]">{estimatedFineText}</span>
+          </div>
+        </div>
       </section>
 
       <section>
@@ -120,4 +129,8 @@ export function HomeView({
 function formatShortDate(value: string) {
   const date = new Date(value);
   return `${date.getMonth() + 1}.${date.getDate()}`;
+}
+
+function formatCurrency(value: number) {
+  return `${value.toLocaleString("ko-KR")}원`;
 }

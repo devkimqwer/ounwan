@@ -42,11 +42,10 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const selectedPostIdRef = useRef(selectedPostId);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTopRef = useRef(0);
-  const { accountInfo, adminGroupMembers, approvedGroups, currentUser, currentUserId, group, membership, posts, season, seasonParticipants, seasons, settlement, users } = appData;
+  const { accountInfo, adminGroupMembers, approvedGroups, currentUser, currentUserId, group, membership, posts, season, seasonParticipants, seasons, users, weeklyUserWorkoutStatus } = appData;
   const roles = membership.roles;
   const isAdmin = roles.includes("admin");
   const isTreasurer = roles.includes("treasurer");
-  const validPostCount = posts.filter((post) => !post.isInvalid).length;
   const selectedPost = posts.find((post) => post.id === selectedPostId);
   const pendingSeason = seasons.find((item) => item.status === "pending");
   const hasActiveSeason = Boolean(season);
@@ -408,18 +407,16 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
             />
           ) : (
             <>
-              {activeTab === "home" && season && settlement && (
+              {activeTab === "home" && season && weeklyUserWorkoutStatus && (
                 <HomeView
                   userName={currentUser.name}
                   currentUserId={currentUserId}
-                  validPostCount={validPostCount}
-                  targetCount={season.targetWorkoutCountPerWeek}
+                  weeklyStatus={weeklyUserWorkoutStatus}
                   onCert={() => selectTab("cert")}
                   onFeed={() => selectTab("feed")}
                   onPostOpen={openPostDetail}
                   isAdmin={isAdmin}
                   posts={posts}
-                  settlement={settlement}
                   users={users}
                 />
               )}

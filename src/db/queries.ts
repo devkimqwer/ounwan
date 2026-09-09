@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, desc, eq, gt, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, ilike, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 
 import type {
   AdminGroupMember,
@@ -20,6 +20,7 @@ import type {
   SettlementRow,
   User,
   UserGroupMembership,
+  WeeklyUserWorkoutStatus,
   WorkoutPost,
 } from "@/domain/models";
 import { getCurrentGroupIdForUser, requireCurrentUserId } from "@/auth/session";
@@ -61,12 +62,13 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
   const membership = selectedGroup.membership;
   const season = await getActiveSeason(group.id);
   const isAdmin = membership.roles.includes("admin");
-  const [appUsers, groupSeasons, seasonParticipants, adminGroupMembers, posts, settlement, bankRecords, accountInfo] = await Promise.all([
+  const [appUsers, groupSeasons, seasonParticipants, adminGroupMembers, posts, weeklyUserWorkoutStatus, settlement, bankRecords, accountInfo] = await Promise.all([
     getGroupUsers(group.id),
     getGroupSeasons(group.id),
     getSeasonParticipants(group.id),
     isAdmin ? getAdminGroupMembers({ status: "all" }) : Promise.resolve([]),
     season ? getWorkoutPosts(group.id, season.id, currentUser.id) : Promise.resolve([]),
+    season ? getWeeklyUserWorkoutStatus(group.id, season, currentUser.id) : Promise.resolve(undefined),
     season ? getLatestSettlement(group.id, season.id) : Promise.resolve(undefined),
     getBankRecords(group.id),
     getAccountInfo(group.id),
@@ -87,6 +89,7 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
     seasons: groupSeasons,
     seasonParticipants,
     posts,
+    weeklyUserWorkoutStatus,
     settlement,
     settlementRows,
     bankRecords,
@@ -644,6 +647,36 @@ async function getLatestSettlement(groupId: string, seasonId: string): Promise<S
     weekStartDate: weekRange.weekStartDate,
     weekEndDate: weekRange.weekEndDate,
     status: "draft",
+  };
+}
+
+async function getWeeklyUserWorkoutStatus(groupId: string, season: Season, userId: string): Promise<WeeklyUserWorkoutStatus> {
+  const weekRange = getKoreanWeekRange();
+  const rows = await db
+    .select({ workoutDate: workoutPosts.workoutDate })
+    .from(workoutPosts)
+    .where(
+      and(
+        eq(workoutPosts.groupId, BigInt(groupId)),
+        eq(workoutPosts.seasonId, BigInt(season.id)),
+        eq(workoutPosts.userId, BigInt(userId)),
+        eq(workoutPosts.isInvalid, false),
+        isNull(workoutPosts.deletedAt),
+        gte(workoutPosts.workoutDate, weekRange.weekStartDate),
+        lte(workoutPosts.workoutDate, weekRange.weekEndDate),
+      ),
+    );
+  const validWorkoutCount = new Set(rows.map((row) => row.workoutDate)).size;
+  const missedCount = Math.max(season.targetWorkoutCountPerWeek - validWorkoutCount, 0);
+
+  return {
+    weekStartDate: weekRange.weekStartDate,
+    weekEndDate: weekRange.weekEndDate,
+    targetWorkoutCount: season.targetWorkoutCountPerWeek,
+    validWorkoutCount,
+    missedCount,
+    finePerMiss: season.finePerMiss,
+    estimatedFineAmount: missedCount * season.finePerMiss,
   };
 }
 
