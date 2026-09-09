@@ -78,6 +78,13 @@
       "when": 1788936422837,
       "tag": "0010_exotic_nemesis",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788941822739,
+      "tag": "0011_add-table-comments",
+      "breakpoints": true
     }
   ]
 }

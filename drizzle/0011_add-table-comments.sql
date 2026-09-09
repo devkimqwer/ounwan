@@ -1,0 +1,20 @@
+-- Custom SQL migration file, put your code below! --
+COMMENT ON TABLE app_settings IS '앱 전역 설정';
+COMMENT ON TABLE bank_accounts IS '그룹 정산 계좌 정보';
+COMMENT ON TABLE bank_balance_records IS '계좌 잔고 기록';
+COMMENT ON TABLE group_invites IS '그룹 초대 정보';
+COMMENT ON TABLE group_join_requests IS '그룹 가입 요청';
+COMMENT ON TABLE group_members IS '그룹 구성원 정보';
+COMMENT ON TABLE groups IS '그룹 정보';
+COMMENT ON TABLE notifications IS '사용자 알림 정보';
+COMMENT ON TABLE oauth_accounts IS 'OAuth 계정 연동 정보';
+COMMENT ON TABLE post_comments IS '게시글 댓글';
+COMMENT ON TABLE post_likes IS '게시글 좋아요';
+COMMENT ON TABLE post_media IS '게시글 첨부 미디어';
+COMMENT ON TABLE push_subscriptions IS '웹 푸시 구독 정보';
+COMMENT ON TABLE season_participant_periods IS '시즌 참여 기간';
+COMMENT ON TABLE seasons IS '그룹 시즌 정보';
+COMMENT ON TABLE users IS '사용자 정보';
+COMMENT ON TABLE weekly_settlement_rows IS '사용자별 주간 결산 내역';
+COMMENT ON TABLE weekly_settlements IS '주간 결산 정보';
+COMMENT ON TABLE workout_posts IS '운동 인증 게시글';
