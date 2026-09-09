@@ -52,9 +52,9 @@ function configureWebPush() {
 
   const publicKey = process.env.OUNWAN_VAPID_PUBLIC_KEY?.trim();
   const privateKey = process.env.OUNWAN_VAPID_PRIVATE_KEY?.trim();
-  const subject = process.env.OUNWAN_VAPID_SUBJECT?.trim() || process.env.OUNWAN_APP_ORIGIN?.trim() || "mailto:admin@ounwan.net";
+  const subject = normalizeVapidSubject(process.env.OUNWAN_VAPID_SUBJECT) ?? normalizeVapidSubject(process.env.OUNWAN_APP_ORIGIN);
 
-  if (!publicKey || !privateKey) {
+  if (isLocalPushDisabled() || !publicKey || !privateKey || !subject) {
     return false;
   }
 
@@ -112,6 +112,24 @@ function getNotificationActionUrl(notification: NotificationPushPayload) {
   }
 
   return "/";
+}
+
+function normalizeVapidSubject(value?: string) {
+  const subject = value?.trim();
+  if (!subject) {
+    return undefined;
+  }
+
+  if (subject.startsWith("https:")) {
+    return subject;
+  }
+
+  return undefined;
+}
+
+function isLocalPushDisabled() {
+  const origin = process.env.OUNWAN_APP_ORIGIN?.trim();
+  return !origin || origin.startsWith("http://localhost") || origin.startsWith("http://127.0.0.1");
 }
 
 function isExpiredSubscriptionError(error: unknown) {
