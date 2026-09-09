@@ -425,6 +425,10 @@ export async function deletePushSubscriptionAction(endpoint: string) {
   await deleteCurrentUserPushSubscription(endpoint);
 }
 
+export async function getPushNotificationPublicKeyAction() {
+  return process.env.OUNWAN_VAPID_PUBLIC_KEY?.trim() ?? "";
+}
+
 export async function toggleWorkoutPostInvalidAction(formData: FormData) {
   const postId = String(formData.get("postId") ?? "").trim();
 

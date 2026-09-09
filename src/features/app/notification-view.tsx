@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { deleteNotificationAction, loadNotificationsAction, markNotificationsReadAction } from "@/app/actions";
+import { deleteNotificationAction, deletePushSubscriptionAction, getPushNotificationPublicKeyAction, loadNotificationsAction, markNotificationsReadAction, savePushSubscriptionAction } from "@/app/actions";
 import type { AppNotification, NotificationPage } from "@/domain/models";
 import { formatSystemDateTime } from "@/lib/date-format";
 
@@ -22,6 +22,10 @@ export function NotificationView({
   const [loadingMore, setLoadingMore] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushProcessing, setPushProcessing] = useState(false);
+  const [pushMessage, setPushMessage] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
 
   const selectedUnreadCount = notifications.filter((notification) => selectedIds.includes(notification.id) && !notification.readAt).length;
@@ -48,6 +52,39 @@ export function NotificationView({
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [openMenuId]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const syncPushStatus = async () => {
+      const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+      if (!mounted) {
+        return;
+      }
+
+      setPushSupported(supported);
+      if (!supported) {
+        setPushMessage("이 브라우저는 푸시 알림을 지원하지 않습니다.");
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.getRegistration("/sw.js");
+      const subscription = await registration?.pushManager.getSubscription();
+      if (mounted) {
+        setPushEnabled(Boolean(subscription));
+      }
+    };
+
+    syncPushStatus().catch(() => {
+      if (mounted) {
+        setPushMessage("푸시 알림 상태를 확인할 수 없습니다.");
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const updateUnreadCount = (nextCount: number) => {
     setUnreadCount(nextCount);
@@ -134,6 +171,54 @@ export function NotificationView({
     onOpenNotification(notification);
   };
 
+  const handleTogglePush = async () => {
+    if (!pushSupported || pushProcessing) {
+      return;
+    }
+
+    setPushProcessing(true);
+    setPushMessage("");
+
+    try {
+      const registration = await navigator.serviceWorker.register("/sw.js");
+      const currentSubscription = await registration.pushManager.getSubscription();
+
+      if (currentSubscription) {
+        await deletePushSubscriptionAction(currentSubscription.endpoint);
+        await currentSubscription.unsubscribe();
+        setPushEnabled(false);
+        setPushMessage("푸시 알림을 껐습니다.");
+        return;
+      }
+
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setPushEnabled(false);
+        setPushMessage("브라우저 알림 권한이 필요합니다.");
+        return;
+      }
+
+      const publicKey = await getPushNotificationPublicKeyAction();
+      if (!publicKey) {
+        setPushMessage("푸시 알림 공개키가 설정되지 않았습니다.");
+        return;
+      }
+
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+
+      await savePushSubscriptionAction(subscription.toJSON(), navigator.userAgent);
+      setPushEnabled(true);
+      setPushMessage("푸시 알림을 켰습니다.");
+    } catch {
+      setPushMessage("푸시 알림 설정 중 문제가 발생했습니다.");
+    } finally {
+      setPushProcessing(false);
+    }
+  };
+
   return (
     <div className="space-y-3 p-4">
       <div className="flex items-center justify-between gap-3 px-1">
@@ -168,6 +253,25 @@ export function NotificationView({
           읽음 처리
         </button>
       </div>
+
+      <section className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="min-w-0">
+          <p className="text-sm font-extrabold text-slate-950">푸시 알림</p>
+          <p className="mt-1 text-xs font-semibold text-slate-400">
+            {pushMessage || (pushEnabled ? "현재 브라우저에서 켜져 있습니다." : "현재 브라우저에서 꺼져 있습니다.")}
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={!pushSupported || pushProcessing}
+          className={`min-h-9 shrink-0 rounded-xl px-3 text-xs font-extrabold ${
+            pushEnabled ? "bg-slate-100 text-slate-700" : "bg-[#5e4ea5] text-white"
+          } disabled:bg-slate-100 disabled:text-slate-300`}
+          onClick={handleTogglePush}
+        >
+          {pushProcessing ? "처리 중" : pushEnabled ? "끄기" : "켜기"}
+        </button>
+      </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white">
         {notifications.length > 0 ? (
@@ -252,4 +356,11 @@ export function NotificationView({
       )}
     </div>
   );
+}
+
+function urlBase64ToUint8Array(value: string) {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = `${value}${padding}`.replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
 }
