@@ -53,6 +53,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const menuOpenRef = useRef(menuOpen);
   const selectedPostIdRef = useRef(selectedPostId);
   const notificationOpenRef = useRef(notificationOpen);
+  const initialUrlHandledRef = useRef(false);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTopRef = useRef(0);
   const { accountInfo, adminGroupMembers, approvedGroups, currentUser, currentUserId, group, membership, posts, season, seasonParticipants, seasons, users, weeklyUserWorkoutStatus } = appData;
@@ -350,6 +351,40 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   useEffect(() => {
     selectedPostIdRef.current = selectedPostId;
   }, [selectedPostId]);
+
+  useEffect(() => {
+    notificationOpenRef.current = notificationOpen;
+  }, [notificationOpen]);
+
+  useEffect(() => {
+    setUnreadNotificationCount(appData.notifications.unreadCount);
+  }, [appData.notifications.unreadCount]);
+
+  useEffect(() => {
+    if (initialUrlHandledRef.current) {
+      return;
+    }
+
+    initialUrlHandledRef.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const postId = params.get("postId");
+    const morePage = params.get("more");
+
+    if (postId) {
+      const targetPost = posts.find((post) => post.id === postId);
+      if (targetPost) {
+        openPostDetail(targetPost.id);
+      } else {
+        setPendingCreatedPostId(postId);
+      }
+      return;
+    }
+
+    if (morePage === "group-member-management") {
+      moveToTab("more", { refreshOnEnter: true });
+      openMorePage("group-member-management", { refreshOnEnter: true });
+    }
+  }, []);
 
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {

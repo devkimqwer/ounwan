@@ -4,6 +4,7 @@ import { and, desc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 import { clearCurrentGroupId, getCurrentGroupIdForUser, requireCurrentUserId, setCurrentGroupIdForUser } from "@/auth/session";
 import { generateInviteToken, isInviteTokenFormat } from "@/invites/tokens";
+import { sendPushForNotifications } from "@/push-service";
 import { deleteStorageFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/service";
 
 import { db } from "./client";
@@ -1215,24 +1216,9 @@ type CreateNotificationInput = {
 };
 
 async function createNotification(executor: NotificationExecutor, input: CreateNotificationInput) {
-  await executor.insert(notifications).values({
-    recipientUserId: input.recipientUserId,
-    actorUserId: input.actorUserId ?? null,
-    groupId: input.groupId ?? null,
-    type: input.type,
-    message: input.message,
-    actionType: input.actionType ?? null,
-    actionTargetId: input.actionTargetId ?? null,
-  });
-}
-
-async function createNotifications(executor: NotificationExecutor, inputs: CreateNotificationInput[]) {
-  if (inputs.length === 0) {
-    return;
-  }
-
-  await executor.insert(notifications).values(
-    inputs.map((input) => ({
+  const rows = await executor
+    .insert(notifications)
+    .values({
       recipientUserId: input.recipientUserId,
       actorUserId: input.actorUserId ?? null,
       groupId: input.groupId ?? null,
@@ -1240,8 +1226,45 @@ async function createNotifications(executor: NotificationExecutor, inputs: Creat
       message: input.message,
       actionType: input.actionType ?? null,
       actionTargetId: input.actionTargetId ?? null,
-    })),
-  );
+    })
+    .returning({
+      notificationId: notifications.id,
+      recipientUserId: notifications.recipientUserId,
+      message: notifications.message,
+      actionType: notifications.actionType,
+      actionTargetId: notifications.actionTargetId,
+    });
+
+  await sendPushForNotifications(rows);
+}
+
+async function createNotifications(executor: NotificationExecutor, inputs: CreateNotificationInput[]) {
+  if (inputs.length === 0) {
+    return;
+  }
+
+  const rows = await executor
+    .insert(notifications)
+    .values(
+      inputs.map((input) => ({
+        recipientUserId: input.recipientUserId,
+        actorUserId: input.actorUserId ?? null,
+        groupId: input.groupId ?? null,
+        type: input.type,
+        message: input.message,
+        actionType: input.actionType ?? null,
+        actionTargetId: input.actionTargetId ?? null,
+      })),
+    )
+    .returning({
+      notificationId: notifications.id,
+      recipientUserId: notifications.recipientUserId,
+      message: notifications.message,
+      actionType: notifications.actionType,
+      actionTargetId: notifications.actionTargetId,
+    });
+
+  await sendPushForNotifications(rows);
 }
 
 async function notifyGroupAdmins(
