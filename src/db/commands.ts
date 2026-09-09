@@ -8,7 +8,7 @@ import { deleteStorageFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from
 
 import { db } from "./client";
 import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError, GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "./errors";
-import { groupInvites, groupJoinRequests, groupMembers, groups, notifications, postComments, postLikes, postMedia, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
+import { groupInvites, groupJoinRequests, groupMembers, groups, notifications, postComments, postLikes, postMedia, pushSubscriptions, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
 
 const GROUP_INVITE_EXPIRES_HOURS = 72;
 
@@ -63,6 +63,13 @@ type CreateWorkoutPostInput = {
   workoutType?: string;
   content?: string;
   mediaFiles: File[];
+};
+
+type SavePushSubscriptionInput = {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  userAgent?: string;
 };
 
 
@@ -1082,6 +1089,59 @@ export async function deleteNotification(notificationId: string) {
 
   return { id: rows[0].id.toString() };
 }
+
+export async function saveCurrentUserPushSubscription(input: SavePushSubscriptionInput) {
+  const userId = await requireCurrentUserId();
+  const endpoint = input.endpoint.trim();
+  const p256dh = input.p256dh.trim();
+  const auth = input.auth.trim();
+  const userAgent = input.userAgent?.trim();
+
+  if (!endpoint || !p256dh || !auth) {
+    throw new Error("Invalid push subscription.");
+  }
+
+  const rows = await db
+    .insert(pushSubscriptions)
+    .values({
+      userId: BigInt(userId),
+      endpoint,
+      p256dh,
+      auth,
+      userAgent: userAgent || null,
+    })
+    .onConflictDoUpdate({
+      target: pushSubscriptions.endpoint,
+      set: {
+        userId: BigInt(userId),
+        p256dh,
+        auth,
+        userAgent: userAgent || null,
+        updatedAt: new Date(),
+        disabledAt: null,
+      },
+    })
+    .returning({ id: pushSubscriptions.id });
+
+  return { id: rows[0].id.toString() };
+}
+
+export async function deleteCurrentUserPushSubscription(endpoint: string) {
+  const userId = await requireCurrentUserId();
+  const trimmedEndpoint = endpoint.trim();
+
+  if (!trimmedEndpoint) {
+    throw new Error("Invalid push subscription endpoint.");
+  }
+
+  await db
+    .update(pushSubscriptions)
+    .set({ disabledAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(pushSubscriptions.userId, BigInt(userId)), eq(pushSubscriptions.endpoint, trimmedEndpoint), isNull(pushSubscriptions.disabledAt)));
+
+  return { endpoint: trimmedEndpoint };
+}
+
 async function getCurrentGroupAdminContext() {
   const userId = await requireCurrentUserId();
   const selectedGroupId = await getCurrentGroupIdForUser(userId);

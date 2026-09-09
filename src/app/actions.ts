@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { getCurrentUserNotificationPage } from "@/db/queries";
-import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, getOrCreateCurrentGroupInvite, leaveGroup, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
+import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, getOrCreateCurrentGroupInvite, leaveGroup, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
 import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
@@ -399,6 +399,32 @@ export async function deleteNotificationAction(notificationId: string) {
   await deleteNotification(notificationId);
   revalidatePath("/");
 }
+
+type BrowserPushSubscription = {
+  endpoint?: unknown;
+  keys?: {
+    p256dh?: unknown;
+    auth?: unknown;
+  };
+};
+
+export async function savePushSubscriptionAction(subscription: BrowserPushSubscription, userAgent?: string) {
+  const endpoint = typeof subscription.endpoint === "string" ? subscription.endpoint : "";
+  const p256dh = typeof subscription.keys?.p256dh === "string" ? subscription.keys.p256dh : "";
+  const auth = typeof subscription.keys?.auth === "string" ? subscription.keys.auth : "";
+
+  await saveCurrentUserPushSubscription({
+    endpoint,
+    p256dh,
+    auth,
+    userAgent,
+  });
+}
+
+export async function deletePushSubscriptionAction(endpoint: string) {
+  await deleteCurrentUserPushSubscription(endpoint);
+}
+
 export async function toggleWorkoutPostInvalidAction(formData: FormData) {
   const postId = String(formData.get("postId") ?? "").trim();
 
