@@ -15,6 +15,10 @@ import { PostDetailView } from "./post-detail-view";
 import { TabIcon } from "./tab-icon";
 import { PageNotReadyView } from "./page-not-ready-view";
 
+type RefreshOnEnterOptions = {
+  refreshOnEnter?: boolean;
+};
+
 const tabs: Array<{ id: TabId; label: string }> = [
   { id: "home", label: "홈" },
   { id: "feed", label: "피드" },
@@ -35,7 +39,9 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const morePageHistoryActiveRef = useRef(false);
   const suppressNextPopRef = useRef(false);
   const pendingMenuSelectionRef = useRef<TabId | null>(null);
+  const pendingMenuSelectionRefreshRef = useRef(false);
   const pendingMenuMorePageRef = useRef<Exclude<MoreSubPage, "main"> | null>(null);
+  const pendingMenuMorePageRefreshRef = useRef(false);
   const activeTabRef = useRef(activeTab);
   const activeMorePageRef = useRef(activeMorePage);
   const menuOpenRef = useRef(menuOpen);
@@ -133,8 +139,20 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     closeMorePageFromHistory();
   };
 
-  const openMorePage = (page: Exclude<MoreSubPage, "main">) => {
+  const refreshEnteredRoute = (options: RefreshOnEnterOptions) => {
+    if (!options.refreshOnEnter) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      contentScrollRef.current?.scrollTo({ top: 0 });
+    });
+    router.refresh();
+  };
+
+  const openMorePage = (page: Exclude<MoreSubPage, "main">, options: RefreshOnEnterOptions = {}) => {
     if (activeMorePageRef.current === page) {
+      refreshEnteredRoute(options);
       return;
     }
 
@@ -145,9 +163,20 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     requestAnimationFrame(() => {
       contentScrollRef.current?.scrollTo({ top: 0 });
     });
+    refreshEnteredRoute(options);
   };
 
-  const moveToTab = (tabId: TabId) => {
+  const shouldRefreshOnEnter = (tabId: TabId) => tabId !== "cert";
+
+  const refreshEnteredTab = (tabId: TabId, options: RefreshOnEnterOptions) => {
+    if (!shouldRefreshOnEnter(tabId)) {
+      return;
+    }
+
+    refreshEnteredRoute(options);
+  };
+
+  const moveToTab = (tabId: TabId, options: RefreshOnEnterOptions = {}) => {
     selectedPostIdRef.current = null;
     setSelectedPostId(null);
     if (activeMorePageRef.current !== "main") {
@@ -166,6 +195,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
       requestAnimationFrame(() => {
         contentScrollRef.current?.scrollTo({ top: 0 });
       });
+      refreshEnteredTab(tabId, options);
       return;
     }
 
@@ -178,6 +208,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
     activeTabRef.current = tabId;
     setActiveTab(tabId);
+    refreshEnteredTab(tabId, options);
   };
 
   const handlePostCreated = (postId: string) => {
@@ -202,6 +233,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const openMorePageFromMenu = (page: Exclude<MoreSubPage, "main">) => {
     if (menuHistoryActiveRef.current) {
       pendingMenuMorePageRef.current = page;
+      pendingMenuMorePageRefreshRef.current = true;
       menuHistoryActiveRef.current = false;
       window.history.back();
       menuOpenRef.current = false;
@@ -210,17 +242,18 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     }
 
     moveToTab("more");
-    openMorePage(page);
+    openMorePage(page, { refreshOnEnter: true });
   };
 
   const openAdminSeasonManagement = () => {
     moveToTab("more");
-    openMorePage("season-management");
+    openMorePage("season-management", { refreshOnEnter: true });
   };
 
-  const selectTab = (tabId: TabId) => {
+  const selectTab = (tabId: TabId, options: RefreshOnEnterOptions = {}) => {
     if (menuHistoryActiveRef.current) {
       pendingMenuSelectionRef.current = tabId;
+      pendingMenuSelectionRefreshRef.current = Boolean(options.refreshOnEnter);
       menuHistoryActiveRef.current = false;
       window.history.back();
       menuOpenRef.current = false;
@@ -234,7 +267,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
       window.history.back();
     }
 
-    moveToTab(tabId);
+    moveToTab(tabId, options);
   };
 
   useEffect(() => {
@@ -258,17 +291,21 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
       const pendingMenuSelection = pendingMenuSelectionRef.current;
       if (pendingMenuSelection) {
         pendingMenuSelectionRef.current = null;
+        const refreshOnEnter = pendingMenuSelectionRefreshRef.current;
+        pendingMenuSelectionRefreshRef.current = false;
         closeMenuFromHistory();
-        moveToTab(pendingMenuSelection);
+        moveToTab(pendingMenuSelection, { refreshOnEnter });
         return;
       }
 
       const pendingMenuMorePage = pendingMenuMorePageRef.current;
       if (pendingMenuMorePage) {
         pendingMenuMorePageRef.current = null;
+        const refreshOnEnter = pendingMenuMorePageRefreshRef.current;
+        pendingMenuMorePageRefreshRef.current = false;
         closeMenuFromHistory();
         moveToTab("more");
-        openMorePage(pendingMenuMorePage);
+        openMorePage(pendingMenuMorePage, { refreshOnEnter });
         return;
       }
 
@@ -385,7 +422,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
           isTreasurer={isTreasurer}
           onClose={closeMenu}
           onSelect={(tabId) => {
-            selectTab(tabId);
+            selectTab(tabId, { refreshOnEnter: true });
           }}
           onOpenMorePage={openMorePageFromMenu}
         />
@@ -413,7 +450,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                   currentUserId={currentUserId}
                   weeklyStatus={weeklyUserWorkoutStatus}
                   onCert={() => selectTab("cert")}
-                  onFeed={() => selectTab("feed")}
+                  onFeed={() => selectTab("feed", { refreshOnEnter: true })}
                   onPostOpen={openPostDetail}
                   isAdmin={isAdmin}
                   posts={posts}
@@ -455,7 +492,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                   seasons={seasons}
                   seasonParticipants={seasonParticipants}
                   activeMorePage={activeMorePage}
-                  onOpenMorePage={openMorePage}
+                  onOpenMorePage={(page) => openMorePage(page, { refreshOnEnter: true })}
                   onCloseMorePage={closeMorePage}
                 />
               )}
@@ -473,7 +510,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                 className={`flex min-h-14 flex-col items-center justify-center gap-1 px-1 py-2 font-semibold ${
                   selected ? "text-[#5e4ea5]" : "text-slate-400"
                 }`}
-                onClick={() => selectTab(tab.id)}
+                onClick={() => selectTab(tab.id, { refreshOnEnter: true })}
               >
                 <TabIcon tabId={tab.id} />
                 <span className="text-xs leading-none">{tab.label}</span>
