@@ -198,6 +198,34 @@ export const groupJoinRequests = pgTable(
   ],
 );
 
+
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: bigserial("id", { mode: "bigint" }).primaryKey(),
+    recipientUserId: bigint("recipient_user_id", { mode: "bigint" })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    actorUserId: bigint("actor_user_id", { mode: "bigint" }).references(() => users.id, { onDelete: "set null" }),
+    groupId: bigint("group_id", { mode: "bigint" }).references(() => groups.id, { onDelete: "cascade" }),
+    type: varchar("type", { length: 80 }).notNull(),
+    message: text("message").notNull(),
+    actionType: varchar("action_type", { length: 80 }),
+    actionTargetId: varchar("action_target_id", { length: 120 }),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("idx_notifications_recipient_created")
+      .on(table.recipientUserId, table.createdAt.desc(), table.id.desc())
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("idx_notifications_recipient_unread")
+      .on(table.recipientUserId, table.createdAt.desc())
+      .where(sql`${table.deletedAt} IS NULL AND ${table.readAt} IS NULL`),
+  ],
+);
+
 export const workoutPosts = pgTable(
   "workout_posts",
   {

@@ -7,10 +7,13 @@ import type {
   AdminGroupMemberStatusFilter,
   AuthGroupSwitchOption,
   AccountInfo,
+  AppNotification,
   BankRecord,
   Group,
   GroupInvite,
   GroupMembership,
+  NotificationActionType,
+  NotificationPage,
   PostMedia,
   PostComment,
   PendingGroupJoinRequest,
@@ -35,6 +38,7 @@ import {
   groupJoinRequests,
   groupMembers,
   groups,
+  notifications,
   oauthAccounts,
   postComments,
   postLikes,
@@ -62,7 +66,7 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
   const membership = selectedGroup.membership;
   const season = await getActiveSeason(group.id);
   const isAdmin = membership.roles.includes("admin");
-  const [appUsers, groupSeasons, seasonParticipants, adminGroupMembers, posts, weeklyUserWorkoutStatus, settlement, bankRecords, accountInfo] = await Promise.all([
+  const [appUsers, groupSeasons, seasonParticipants, adminGroupMembers, posts, weeklyUserWorkoutStatus, settlement, bankRecords, accountInfo, notificationPage] = await Promise.all([
     getGroupUsers(group.id),
     getGroupSeasons(group.id),
     getSeasonParticipants(group.id),
@@ -72,6 +76,7 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
     season ? getLatestSettlement(group.id, season.id) : Promise.resolve(undefined),
     getBankRecords(group.id),
     getAccountInfo(group.id),
+    getCurrentUserNotificationPage(),
   ]);
   const settlementRows = settlement?.id ? await getSettlementRows(settlement.id) : [];
 
@@ -94,6 +99,7 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
     settlementRows,
     bankRecords,
     accountInfo,
+    notifications: notificationPage,
   };
 }
 
@@ -248,6 +254,50 @@ export async function getValidGroupInviteByToken(inviteToken: string): Promise<G
   };
 }
 
+const NOTIFICATION_PAGE_SIZE = 10;
+const notificationActionTypes = new Set<NotificationActionType>(["post_detail", "group_member_management", "settlement_detail"]);
+
+export async function getCurrentUserNotificationPage(offset = 0): Promise<NotificationPage> {
+  const currentUserId = await requireCurrentUserId();
+  const safeOffset = Math.max(0, Math.trunc(offset));
+
+  const [notificationRows, unreadRows] = await Promise.all([
+    db
+      .select()
+      .from(notifications)
+      .where(and(eq(notifications.recipientUserId, BigInt(currentUserId)), isNull(notifications.deletedAt)))
+      .orderBy(desc(notifications.createdAt), desc(notifications.id))
+      .limit(NOTIFICATION_PAGE_SIZE + 1)
+      .offset(safeOffset),
+    db
+      .select({ value: count() })
+      .from(notifications)
+      .where(and(eq(notifications.recipientUserId, BigInt(currentUserId)), isNull(notifications.deletedAt), isNull(notifications.readAt))),
+  ]);
+
+  const pageRows = notificationRows.slice(0, NOTIFICATION_PAGE_SIZE);
+  return {
+    notifications: pageRows.map(toAppNotification),
+    unreadCount: Number(unreadRows[0]?.value ?? 0),
+    nextOffset: notificationRows.length > NOTIFICATION_PAGE_SIZE ? safeOffset + NOTIFICATION_PAGE_SIZE : undefined,
+  };
+}
+
+function toAppNotification(row: typeof notifications.$inferSelect): AppNotification {
+  return {
+    id: row.id.toString(),
+    type: row.type,
+    message: row.message,
+    actionType: isNotificationActionType(row.actionType) ? row.actionType : undefined,
+    actionTargetId: row.actionTargetId ?? undefined,
+    readAt: row.readAt?.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function isNotificationActionType(value: string | null): value is NotificationActionType {
+  return Boolean(value && notificationActionTypes.has(value as NotificationActionType));
+}
 async function getApprovedGroupMembers(groupId: string, keyword?: string): Promise<AdminGroupMember[]> {
   const conditions = [eq(groupMembers.groupId, BigInt(groupId)), isNull(groupMembers.leftAt), isNull(users.deletedAt)];
   const searchCondition = createUserSearchCondition(keyword);

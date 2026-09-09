@@ -8,7 +8,7 @@ import { deleteStorageFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from
 
 import { db } from "./client";
 import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError, GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "./errors";
-import { groupInvites, groupJoinRequests, groupMembers, groups, postComments, postLikes, postMedia, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
+import { groupInvites, groupJoinRequests, groupMembers, groups, notifications, postComments, postLikes, postMedia, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
 
 const GROUP_INVITE_EXPIRES_HOURS = 72;
 
@@ -426,6 +426,7 @@ export async function requestCurrentUserGroupJoin(inviteToken: string) {
       .select({
         id: groupInvites.id,
         groupId: groupInvites.groupId,
+        groupName: groups.name,
         maxUses: groupInvites.maxUses,
         usedCount: groupInvites.usedCount,
       })
@@ -489,6 +490,20 @@ export async function requestCurrentUserGroupJoin(inviteToken: string) {
       });
     }
 
+    const requesterRows = await tx
+      .select({ displayName: users.displayName })
+      .from(users)
+      .where(eq(users.id, BigInt(userId)))
+      .limit(1);
+
+    await notifyGroupAdmins(tx, {
+      groupId: invite.groupId,
+      actorUserId: BigInt(userId),
+      type: "group_join_requested",
+      message: `${requesterRows[0]?.displayName ?? "사용자"}님이 ${invite.groupName} 가입을 요청했어요.`,
+      actionType: "group_member_management",
+    });
+
     await tx
       .update(groupInvites)
       .set({ usedCount: sql`${groupInvites.usedCount} + 1` })
@@ -516,9 +531,10 @@ export async function reviewGroupJoinRequest(requestId: string, decision: "appro
 
   return db.transaction(async (tx) => {
     const requestRows = await tx
-      .select({ request: groupJoinRequests, userId: users.id })
+      .select({ request: groupJoinRequests, userId: users.id, groupName: groups.name })
       .from(groupJoinRequests)
       .innerJoin(users, eq(groupJoinRequests.userId, users.id))
+      .innerJoin(groups, eq(groupJoinRequests.groupId, groups.id))
       .where(
         and(
           eq(groupJoinRequests.id, BigInt(requestId)),
@@ -545,6 +561,14 @@ export async function reviewGroupJoinRequest(requestId: string, decision: "appro
         })
         .where(eq(groupJoinRequests.id, target.request.id))
         .returning({ id: groupJoinRequests.id });
+
+      await createNotification(tx, {
+        recipientUserId: target.userId,
+        actorUserId: BigInt(context.userId),
+        groupId: target.request.groupId,
+        type: "group_join_rejected",
+        message: `${target.groupName} 가입 요청이 반려되었어요.`,
+      });
 
       return { id: rows[0].id.toString(), status: "rejected" as const };
     }
@@ -608,6 +632,14 @@ export async function reviewGroupJoinRequest(requestId: string, decision: "appro
       .where(eq(groupJoinRequests.id, target.request.id))
       .returning({ id: groupJoinRequests.id });
 
+    await createNotification(tx, {
+      recipientUserId: target.userId,
+      actorUserId: BigInt(context.userId),
+      groupId: target.request.groupId,
+      type: "group_join_approved",
+      message: `${target.groupName} 가입 요청이 승인되었어요.`,
+    });
+
     return { id: rows[0].id.toString(), status: "approved" as const };
   });
 }
@@ -660,6 +692,7 @@ export async function createSeason(input: CreateSeasonInput) {
 
     if (shouldActivateNow) {
       await initializeActiveSeason(tx, seasonId, BigInt(context.groupId), today);
+      await notifySeasonParticipants(tx, seasonId, "season_started");
     }
 
     return { id: seasonId.toString(), status: shouldActivateNow ? "active" as const : "pending" as const };
@@ -731,6 +764,8 @@ export async function closeActiveSeason(input: CloseSeasonInput) {
       .update(seasonParticipantPeriods)
       .set({ endDate: today })
       .where(and(eq(seasonParticipantPeriods.seasonId, closedSeasonRows[0].id), isNull(seasonParticipantPeriods.endDate)));
+
+    await notifySeasonParticipants(tx, closedSeasonRows[0].id, "season_closed");
 
     if (!input.activatePendingSeason) {
       return { closedSeasonId: closedSeasonRows[0].id.toString(), activatedSeasonId: undefined };
@@ -855,7 +890,7 @@ export async function togglePostLike(postId: string) {
 export async function createPostComment(postId: string, content: string) {
   const context = await getCurrentSeedContext();
   const targetPostRows = await db
-    .select({ id: workoutPosts.id })
+    .select({ id: workoutPosts.id, userId: workoutPosts.userId })
     .from(workoutPosts)
     .where(
       and(
@@ -867,22 +902,40 @@ export async function createPostComment(postId: string, content: string) {
     )
     .limit(1);
 
-  if (!targetPostRows[0]) {
+  const targetPost = targetPostRows[0];
+  if (!targetPost) {
     throw new Error("Workout post not found or not allowed to comment.");
   }
 
   const commentRows = await db
     .insert(postComments)
     .values({
-      postId: targetPostRows[0].id,
+      postId: targetPost.id,
       userId: BigInt(context.userId),
       content,
     })
     .returning({ id: postComments.id });
 
+  if (targetPost.userId.toString() !== context.userId) {
+    const actorRows = await db
+      .select({ displayName: users.displayName })
+      .from(users)
+      .where(eq(users.id, BigInt(context.userId)))
+      .limit(1);
+
+    await createNotification(db, {
+      recipientUserId: targetPost.userId,
+      actorUserId: BigInt(context.userId),
+      groupId: BigInt(context.groupId),
+      type: "comment_created",
+      message: `${actorRows[0]?.displayName ?? "사용자"}님이 댓글을 달았어요.`,
+      actionType: "post_detail",
+      actionTargetId: postId,
+    });
+  }
+
   return { id: commentRows[0].id.toString() };
 }
-
 
 export async function deletePostComment(commentId: string) {
   const context = await getCurrentSeedContext();
@@ -926,7 +979,7 @@ export async function toggleWorkoutPostInvalid(postId: string) {
   }
 
   const targetPostRows = await db
-    .select({ id: workoutPosts.id, isInvalid: workoutPosts.isInvalid })
+    .select({ id: workoutPosts.id, userId: workoutPosts.userId, isInvalid: workoutPosts.isInvalid })
     .from(workoutPosts)
     .where(
       and(
@@ -938,11 +991,12 @@ export async function toggleWorkoutPostInvalid(postId: string) {
     )
     .limit(1);
 
-  if (!targetPostRows[0]) {
+  const targetPost = targetPostRows[0];
+  if (!targetPost) {
     throw new Error("Workout post not found or not allowed to invalidate.");
   }
 
-  const nextIsInvalid = !targetPostRows[0].isInvalid;
+  const nextIsInvalid = !targetPost.isInvalid;
   const postRows = await db
     .update(workoutPosts)
     .set({
@@ -951,8 +1005,20 @@ export async function toggleWorkoutPostInvalid(postId: string) {
       invalidatedAt: nextIsInvalid ? new Date() : null,
       updatedAt: new Date(),
     })
-    .where(eq(workoutPosts.id, targetPostRows[0].id))
+    .where(eq(workoutPosts.id, targetPost.id))
     .returning({ id: workoutPosts.id, isInvalid: workoutPosts.isInvalid });
+
+  if (nextIsInvalid) {
+    await createNotification(db, {
+      recipientUserId: targetPost.userId,
+      actorUserId: BigInt(context.userId),
+      groupId: BigInt(context.groupId),
+      type: "post_invalidated",
+      message: "게시글이 무효 처리되었어요.",
+      actionType: "post_detail",
+      actionTargetId: postId,
+    });
+  }
 
   return { id: postRows[0].id.toString(), isInvalid: postRows[0].isInvalid };
 }
@@ -978,6 +1044,43 @@ export async function deleteWorkoutPost(postId: string) {
   }
 
   return { id: postRows[0].id.toString() };
+}
+
+export async function markNotificationsRead(notificationIds: string[]) {
+  const userId = await requireCurrentUserId();
+  const ids = notificationIds.filter((id) => /^\d+$/.test(id)).map((id) => BigInt(id));
+
+  if (ids.length === 0) {
+    return { updatedCount: 0 };
+  }
+
+  const rows = await db
+    .update(notifications)
+    .set({ readAt: new Date() })
+    .where(and(inArray(notifications.id, ids), eq(notifications.recipientUserId, BigInt(userId)), isNull(notifications.deletedAt), isNull(notifications.readAt)))
+    .returning({ id: notifications.id });
+
+  return { updatedCount: rows.length };
+}
+
+export async function deleteNotification(notificationId: string) {
+  const userId = await requireCurrentUserId();
+
+  if (!/^\d+$/.test(notificationId)) {
+    throw new Error("Invalid notification id.");
+  }
+
+  const rows = await db
+    .update(notifications)
+    .set({ deletedAt: new Date() })
+    .where(and(eq(notifications.id, BigInt(notificationId)), eq(notifications.recipientUserId, BigInt(userId)), isNull(notifications.deletedAt)))
+    .returning({ id: notifications.id });
+
+  if (!rows[0]) {
+    throw new Error("Notification not found.");
+  }
+
+  return { id: rows[0].id.toString() };
 }
 async function getCurrentGroupAdminContext() {
   const userId = await requireCurrentUserId();
@@ -1038,6 +1141,96 @@ async function getCurrentSeedContext() {
   };
 }
 
+
+type NotificationExecutor = Pick<typeof db, "insert" | "select">;
+
+type CreateNotificationInput = {
+  recipientUserId: bigint;
+  actorUserId?: bigint;
+  groupId?: bigint;
+  type: string;
+  message: string;
+  actionType?: string;
+  actionTargetId?: string;
+};
+
+async function createNotification(executor: NotificationExecutor, input: CreateNotificationInput) {
+  await executor.insert(notifications).values({
+    recipientUserId: input.recipientUserId,
+    actorUserId: input.actorUserId ?? null,
+    groupId: input.groupId ?? null,
+    type: input.type,
+    message: input.message,
+    actionType: input.actionType ?? null,
+    actionTargetId: input.actionTargetId ?? null,
+  });
+}
+
+async function createNotifications(executor: NotificationExecutor, inputs: CreateNotificationInput[]) {
+  if (inputs.length === 0) {
+    return;
+  }
+
+  await executor.insert(notifications).values(
+    inputs.map((input) => ({
+      recipientUserId: input.recipientUserId,
+      actorUserId: input.actorUserId ?? null,
+      groupId: input.groupId ?? null,
+      type: input.type,
+      message: input.message,
+      actionType: input.actionType ?? null,
+      actionTargetId: input.actionTargetId ?? null,
+    })),
+  );
+}
+
+async function notifyGroupAdmins(
+  executor: NotificationExecutor,
+  input: { groupId: bigint; actorUserId?: bigint; type: string; message: string; actionType?: string; actionTargetId?: string },
+) {
+  const adminRows = await executor
+    .select({ userId: groupMembers.userId })
+    .from(groupMembers)
+    .where(and(eq(groupMembers.groupId, input.groupId), isNull(groupMembers.leftAt), sql`${groupMembers.roles} @> ARRAY['admin']::member_role[]`));
+
+  await createNotifications(
+    executor,
+    adminRows.map((row) => ({
+      recipientUserId: row.userId,
+      actorUserId: input.actorUserId,
+      groupId: input.groupId,
+      type: input.type,
+      message: input.message,
+      actionType: input.actionType,
+      actionTargetId: input.actionTargetId,
+    })),
+  );
+}
+
+async function notifySeasonParticipants(executor: NotificationExecutor, seasonId: bigint, type: "season_started" | "season_closed") {
+  const rows = await executor
+    .select({ userId: seasonParticipantPeriods.userId, seasonName: seasons.name, groupName: groups.name, groupId: seasons.groupId })
+    .from(seasonParticipantPeriods)
+    .innerJoin(seasons, eq(seasonParticipantPeriods.seasonId, seasons.id))
+    .innerJoin(groups, eq(seasons.groupId, groups.id))
+    .where(eq(seasonParticipantPeriods.seasonId, seasonId));
+
+  const first = rows[0];
+  if (!first) {
+    return;
+  }
+
+  const stateText = type === "season_started" ? "시작" : "종료";
+  await createNotifications(
+    executor,
+    rows.map((row) => ({
+      recipientUserId: row.userId,
+      groupId: row.groupId,
+      type,
+      message: `${first.groupName}의 ${first.seasonName}(이)가 ${stateText}되었어요.`,
+    })),
+  );
+}
 function getKoreanWorkoutDate(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
@@ -1095,6 +1288,7 @@ async function activatePendingSeasonForGroup(tx: Parameters<Parameters<typeof db
   }
 
   await initializeActiveSeason(tx, activatedSeason.id, groupId, activationDate);
+  await notifySeasonParticipants(tx, activatedSeason.id, "season_started");
   return activatedSeason;
 }
 
@@ -1133,6 +1327,7 @@ async function activateDuePendingSeasonForGroup(tx: Parameters<Parameters<typeof
   }
 
   await initializeActiveSeason(tx, activatedSeason.id, groupId, activationDate);
+  await notifySeasonParticipants(tx, activatedSeason.id, "season_started");
   return activatedSeason;
 }
 

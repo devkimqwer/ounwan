@@ -64,6 +64,13 @@
       "when": 1788854758000,
       "tag": "0008_drop_storage_provider_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788933436680,
+      "tag": "0009_condemned_stryfe",
+      "breakpoints": true
     }
   ]
 }
