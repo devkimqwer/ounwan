@@ -1,4 +1,5 @@
 import type { User, WeeklyUserWorkoutStatus, WorkoutPost } from "@/domain/models";
+import { formatSystemMonthDay } from "@/lib/date-format";
 import { PostCard } from "./post-card";
 
 export function HomeView({
@@ -27,7 +28,7 @@ export function HomeView({
   const completedCount = Math.min(weeklyStatus.validWorkoutCount, targetCount);
   const remainingCount = weeklyStatus.missedCount;
   const progressPercent = targetCount > 0 ? (completedCount / targetCount) * 100 : 0;
-  const weekRange = `${formatShortDate(weeklyStatus.weekStartDate)} ~ ${formatShortDate(weeklyStatus.weekEndDate)}`;
+  const weekRange = `${formatSystemMonthDay(weeklyStatus.weekStartDate)} ~ ${formatSystemMonthDay(weeklyStatus.weekEndDate)}`;
   const finePerMissText = formatCurrency(weeklyStatus.finePerMiss);
   const estimatedFineText = formatCurrency(weeklyStatus.estimatedFineAmount);
 
@@ -126,10 +127,6 @@ export function HomeView({
   );
 }
 
-function formatShortDate(value: string) {
-  const date = new Date(value);
-  return `${date.getMonth() + 1}.${date.getDate()}`;
-}
 
 function formatCurrency(value: number) {
   return `${value.toLocaleString("ko-KR")}원`;

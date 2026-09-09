@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, getOrCreateCurrentGroupInvite, leaveGroup, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
+import { getCurrentUserNotificationPage } from "@/db/queries";
+import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, getOrCreateCurrentGroupInvite, leaveGroup, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
 import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
@@ -384,6 +385,20 @@ export async function togglePostLikeAction(formData: FormData) {
   revalidatePath("/");
 }
 
+
+export async function loadNotificationsAction(offset: number) {
+  return getCurrentUserNotificationPage(offset);
+}
+
+export async function markNotificationsReadAction(notificationIds: string[]) {
+  await markNotificationsRead(notificationIds);
+  revalidatePath("/");
+}
+
+export async function deleteNotificationAction(notificationId: string) {
+  await deleteNotification(notificationId);
+  revalidatePath("/");
+}
 export async function toggleWorkoutPostInvalidAction(formData: FormData) {
   const postId = String(formData.get("postId") ?? "").trim();
 

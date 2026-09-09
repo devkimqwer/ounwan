@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { activatePendingSeasonAction, closeSeasonAction, deletePendingSeasonAction } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
 import type { Season, SeasonParticipant } from "@/domain/models";
+import { formatSystemDate } from "@/lib/date-format";
 import { SeasonCreateForm } from "./season-create-form";
 import { Avatar } from "./shared-ui";
 
@@ -529,9 +530,5 @@ function comparePeriodByStartDate(a: Pick<SeasonParticipant, "startDate">, b: Pi
 }
 
 function formatDateRange(startDate: string, endDate?: string) {
-  return `${formatDate(startDate)} ~${endDate ? ` ${formatDate(endDate)}` : ""}`;
-}
-
-function formatDate(date: string) {
-  return date.replaceAll("-", ".");
+  return `${formatSystemDate(startDate)} ~${endDate ? ` ${formatSystemDate(endDate)}` : ""}`;
 }

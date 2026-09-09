@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 
 import { createGroupInviteAction, regenerateGroupInviteAction, reviewGroupJoinRequestAction } from "@/app/actions";
 import type { AdminGroupMember, AdminGroupMemberStatus, AdminGroupMemberStatusFilter } from "@/domain/models";
+import { formatSystemDate, formatSystemDateTime } from "@/lib/date-format";
 import { AppDialog } from "@/components/ui/app-dialog";
 import { Avatar, Badge, getRoleBadgeTone, getRoleLabel } from "./shared-ui";
 
@@ -334,7 +335,7 @@ function InviteDialog({
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
           <p className="text-xs font-extrabold text-slate-400">공유 링크</p>
           <p className="mt-2 break-all text-sm font-bold text-slate-800">{loading ? "생성 중입니다." : inviteLink || "링크를 생성할 수 없습니다."}</p>
-          {expiresAt && <p className="mt-2 text-xs font-semibold text-slate-400">만료: {formatDateTime(expiresAt)}</p>}
+          {expiresAt && <p className="mt-2 text-xs font-semibold text-slate-400">만료: {formatSystemDateTime(expiresAt)}</p>}
         </div>
         {error && <p className="text-sm font-bold text-red-500">{error}</p>}
         {copied && <p className="text-sm font-bold text-[#51438f]">복사됐습니다.</p>}
@@ -414,8 +415,8 @@ function MemberDetailDialog({ member, onClose }: { member: AdminGroupMember | nu
         <div className="space-y-3">
           <MemberInfoRow label="ID" value={`@${member.user.id}`} />
           <MemberInfoRow label="상태" value={member.status === "approved" ? "승인된 멤버" : "승인 대기"} />
-          {member.joinedAt && <MemberInfoRow label="가입일" value={formatDate(member.joinedAt)} />}
-          {member.requestedAt && <MemberInfoRow label="요청일" value={formatDateTime(member.requestedAt)} />}
+          {member.joinedAt && <MemberInfoRow label="가입일" value={formatSystemDate(member.joinedAt)} />}
+          {member.requestedAt && <MemberInfoRow label="요청일" value={formatSystemDateTime(member.requestedAt)} />}
         </div>
       )}
     </AppDialog>
@@ -513,17 +514,4 @@ function MemberInfoRow({ label, value }: { label: string; value: string }) {
       <span className="min-w-0 truncate text-sm font-extrabold text-slate-950">{value}</span>
     </div>
   );
-}
-
-function formatDate(date: string) {
-  return date.slice(0, 10).replaceAll("-", ".");
-}
-
-function formatDateTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return `${formatDate(date.toISOString())} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }

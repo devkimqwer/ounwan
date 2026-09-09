@@ -5,12 +5,15 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import type { OunwanAppData } from "@/domain/app-data";
+import type { AppNotification } from "@/domain/models";
+import { formatSystemDate } from "@/lib/date-format";
 import type { MoreSubPage, TabId } from "./app-types";
 import { CertView } from "./cert-view";
 import { FeedView } from "./feed-view";
 import { HomeView } from "./home-view";
 import { MainMenuPanel } from "./main-menu-panel";
 import { MoreView } from "./more-view";
+import { NotificationView } from "./notification-view";
 import { PostDetailView } from "./post-detail-view";
 import { TabIcon } from "./tab-icon";
 import { PageNotReadyView } from "./page-not-ready-view";
@@ -33,10 +36,13 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [pendingCreatedPostId, setPendingCreatedPostId] = useState<string | null>(null);
   const [activeMorePage, setActiveMorePage] = useState<MoreSubPage>("main");
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(appData.notifications.unreadCount);
   const detailHistoryActiveRef = useRef(false);
   const menuHistoryActiveRef = useRef(false);
   const tabHistoryActiveRef = useRef(false);
   const morePageHistoryActiveRef = useRef(false);
+  const notificationHistoryActiveRef = useRef(false);
   const suppressNextPopRef = useRef(false);
   const pendingMenuSelectionRef = useRef<TabId | null>(null);
   const pendingMenuSelectionRefreshRef = useRef(false);
@@ -46,6 +52,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const activeMorePageRef = useRef(activeMorePage);
   const menuOpenRef = useRef(menuOpen);
   const selectedPostIdRef = useRef(selectedPostId);
+  const notificationOpenRef = useRef(notificationOpen);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTopRef = useRef(0);
   const { accountInfo, adminGroupMembers, approvedGroups, currentUser, currentUserId, group, membership, posts, season, seasonParticipants, seasons, users, weeklyUserWorkoutStatus } = appData;
@@ -58,7 +65,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const seasonStatusText = season
     ? `${season.name} 진행중`
     : pendingSeason
-      ? `${pendingSeason.name} ${formatDate(pendingSeason.startDate)} 시작 예정`
+      ? `${pendingSeason.name} ${formatSystemDate(pendingSeason.startDate)} 시작 예정`
       : "진행중 시즌 없음";
 
   const restoreListScroll = () => {
@@ -74,6 +81,60 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     restoreListScroll();
   };
 
+
+  const openNotifications = () => {
+    if (!notificationOpenRef.current) {
+      notificationHistoryActiveRef.current = true;
+      window.history.pushState({ ounwanNotifications: true }, "");
+    }
+
+    selectedPostIdRef.current = null;
+    setSelectedPostId(null);
+    notificationOpenRef.current = true;
+    setNotificationOpen(true);
+    requestAnimationFrame(() => {
+      contentScrollRef.current?.scrollTo({ top: 0 });
+    });
+    router.refresh();
+  };
+
+  const closeNotificationsFromHistory = () => {
+    notificationHistoryActiveRef.current = false;
+    notificationOpenRef.current = false;
+    setNotificationOpen(false);
+  };
+
+  const closeNotifications = () => {
+    if (notificationHistoryActiveRef.current) {
+      notificationHistoryActiveRef.current = false;
+      suppressNextPopRef.current = true;
+      window.history.back();
+    }
+
+    closeNotificationsFromHistory();
+  };
+
+  const openNotificationTarget = (notification: AppNotification) => {
+    if (notification.actionType === "post_detail" && notification.actionTargetId) {
+      closeNotifications();
+
+      const targetPost = posts.find((post) => post.id === notification.actionTargetId);
+      if (targetPost) {
+        openPostDetail(targetPost.id);
+      } else {
+        setPendingCreatedPostId(notification.actionTargetId);
+        router.refresh();
+      }
+      return;
+    }
+
+    if (notification.actionType === "group_member_management") {
+      closeNotifications();
+
+      moveToTab("more", { refreshOnEnter: true });
+      openMorePage("group-member-management", { refreshOnEnter: true });
+    }
+  };
   const closePostDetail = () => {
     if (detailHistoryActiveRef.current) {
       detailHistoryActiveRef.current = false;
@@ -177,6 +238,10 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   };
 
   const moveToTab = (tabId: TabId, options: RefreshOnEnterOptions = {}) => {
+    if (notificationOpenRef.current) {
+      closeNotifications();
+    }
+
     selectedPostIdRef.current = null;
     setSelectedPostId(null);
     if (activeMorePageRef.current !== "main") {
@@ -319,6 +384,11 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
         return;
       }
 
+      if (notificationHistoryActiveRef.current || notificationOpenRef.current) {
+        closeNotificationsFromHistory();
+        return;
+      }
+
       if (menuHistoryActiveRef.current || menuOpenRef.current) {
         closeMenuFromHistory();
         return;
@@ -397,7 +467,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
             priority
             className="h-3 w-auto object-contain"
           />
-          <button type="button" className="relative grid h-10 w-10 place-items-center text-slate-900" aria-label="알림">
+          <button type="button" className="relative grid h-10 w-10 place-items-center text-slate-900" aria-label="알림" onClick={openNotifications}>
             <svg
               aria-hidden="true"
               className="h-6 w-6"
@@ -411,7 +481,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
               <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
               <path d="M13.73 21a2 2 0 0 1-3.46 0" />
             </svg>
-            <span className="absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#FF6B35]" />
+            {unreadNotificationCount > 0 && <span className="absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#FF6B35]" />}
           </button>
         </header>
 
@@ -441,6 +511,13 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
               isAdmin={isAdmin}
               users={users}
               onBack={closePostDetail}
+            />
+          ) : notificationOpen ? (
+            <NotificationView
+              initialPage={appData.notifications}
+              onBack={closeNotifications}
+              onOpenNotification={openNotificationTarget}
+              onUnreadCountChange={setUnreadNotificationCount}
             />
           ) : (
             <>
@@ -561,8 +638,4 @@ function NoActiveSeasonInApp({
       </section>
     </div>
   );
-}
-
-function formatDate(date: string) {
-  return date.replaceAll("-", ".");
 }

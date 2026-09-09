@@ -4,6 +4,7 @@ import type {
   BankRecord,
   Group,
   GroupMembership,
+  NotificationPage,
   UserGroupMembership,
   Season,
   SeasonParticipant,
@@ -33,4 +34,5 @@ export interface OunwanAppData {
   settlementRows: SettlementRow[];
   bankRecords: BankRecord[];
   accountInfo: AccountInfo;
+  notifications: NotificationPage;
 }

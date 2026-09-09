@@ -162,6 +162,25 @@ export interface BankRecord {
   imageUrl: string;
 }
 
+
+export type NotificationActionType = "post_detail" | "group_member_management" | "settlement_detail";
+
+export interface AppNotification {
+  id: string;
+  type: string;
+  message: string;
+  actionType?: NotificationActionType;
+  actionTargetId?: string;
+  readAt?: string;
+  createdAt: string;
+}
+
+export interface NotificationPage {
+  notifications: AppNotification[];
+  unreadCount: number;
+  nextOffset?: number;
+}
+
 export interface AccountInfo {
   groupId: string;
   bankName: string;

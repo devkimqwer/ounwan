@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Image from "next/image";
 
 import type { AuthGroupSwitchOption, PendingGroupJoinRequest } from "@/domain/models";
+import { formatSystemDate } from "@/lib/date-format";
 import { isDevAuthEnabled } from "@/dev/auth";
 import { SeasonCreateForm } from "@/features/app/season-create-form";
 import { CreateGroupForm } from "./create-group-form";
@@ -70,7 +71,7 @@ export function PendingGroupJoinPage({ requests }: { requests: PendingGroupJoinR
               <p className="min-w-0 truncate text-sm font-extrabold text-slate-950">{request.group.name}</p>
               <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-extrabold text-amber-700">대기</span>
             </div>
-            <p className="mt-1 text-xs font-bold text-slate-500">요청일 {formatDate(request.requestedAt)}</p>
+            <p className="mt-1 text-xs font-bold text-slate-500">요청일 {formatSystemDate(request.requestedAt)}</p>
           </div>
         ))}
       </div>
@@ -135,7 +136,7 @@ function SeasonlessSeasonCreateSection({ groups }: { groups: AuthGroupSwitchOpti
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="truncate text-sm font-extrabold text-slate-950">{pendingSeason.name}</p>
-              <p className="mt-1 text-xs font-bold text-[#51438f]">예정일 {formatDate(pendingSeason.startDate)}</p>
+              <p className="mt-1 text-xs font-bold text-[#51438f]">예정일 {formatSystemDate(pendingSeason.startDate)}</p>
             </div>
             <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-extrabold text-[#51438f]">대기중</span>
           </div>
@@ -173,13 +174,4 @@ function LogoutForm() {
       </button>
     </form>
   );
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(value));
 }
