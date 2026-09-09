@@ -426,7 +426,16 @@ export async function deletePushSubscriptionAction(endpoint: string) {
 }
 
 export async function getPushNotificationPublicKeyAction() {
+  if (isLocalPushDisabled()) {
+    return "";
+  }
+
   return process.env.OUNWAN_VAPID_PUBLIC_KEY?.trim() ?? "";
+}
+
+function isLocalPushDisabled() {
+  const origin = process.env.OUNWAN_APP_ORIGIN?.trim();
+  return !origin || origin.startsWith("http://localhost") || origin.startsWith("http://127.0.0.1");
 }
 
 export async function toggleWorkoutPostInvalidAction(formData: FormData) {
