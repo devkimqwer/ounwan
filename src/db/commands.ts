@@ -1143,6 +1143,42 @@ export async function deleteCurrentUserPushSubscription(endpoint: string) {
   return { endpoint: trimmedEndpoint };
 }
 
+export async function notifyWeeklySettlementCompleted(settlementId: string) {
+  if (!/^\d+$/.test(settlementId)) {
+    throw new Error("Invalid settlement id.");
+  }
+
+  await db.transaction(async (tx) => {
+    const settlementRows = await tx
+      .select({ id: weeklySettlements.id, groupId: weeklySettlements.groupId })
+      .from(weeklySettlements)
+      .where(eq(weeklySettlements.id, BigInt(settlementId)))
+      .limit(1);
+    const settlement = settlementRows[0];
+
+    if (!settlement) {
+      throw new Error("Weekly settlement not found.");
+    }
+
+    const rowUsers = await tx
+      .select({ userId: weeklySettlementRows.userId })
+      .from(weeklySettlementRows)
+      .where(eq(weeklySettlementRows.settlementId, settlement.id));
+
+    await createNotifications(
+      tx,
+      rowUsers.map((row) => ({
+        recipientUserId: row.userId,
+        groupId: settlement.groupId,
+        type: "weekly_settlement_completed",
+        message: "지난 주 결산이 도착했어요.",
+        actionType: "settlement_detail",
+        actionTargetId: settlement.id.toString(),
+      })),
+    );
+  });
+}
+
 async function getCurrentGroupAdminContext() {
   const userId = await requireCurrentUserId();
   const selectedGroupId = await getCurrentGroupIdForUser(userId);
