@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { type FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { createGroupInviteAction, regenerateGroupInviteAction, reviewGroupJoinRequestAction } from "@/app/actions";
+import { createGroupInviteAction, regenerateGroupInviteAction, reviewGroupJoinRequestAction, updateGroupMemberRolesAction } from "@/app/actions";
 import type { AdminGroupMember, AdminGroupMemberStatus, AdminGroupMemberStatusFilter } from "@/domain/models";
 import { formatSystemDate, formatSystemDateTime } from "@/lib/date-format";
 import { AppDialog } from "@/components/ui/app-dialog";
@@ -28,8 +28,11 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
   const [selectedMember, setSelectedMember] = useState<AdminGroupMember | null>(null);
   const [memberMenu, setMemberMenu] = useState<AdminGroupMember | null>(null);
   const [reviewTarget, setReviewTarget] = useState<{ member: AdminGroupMember; decision: ReviewDecision } | null>(null);
+  const [roleTarget, setRoleTarget] = useState<AdminGroupMember | null>(null);
   const [reviewError, setReviewError] = useState("");
   const [isReviewSubmitting, setIsReviewSubmitting] = useState(false);
+  const [roleError, setRoleError] = useState("");
+  const [isRoleSubmitting, setIsRoleSubmitting] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
   const [inviteExpiresAt, setInviteExpiresAt] = useState<string | undefined>();
@@ -128,6 +131,42 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
     setMemberMenu(null);
     setReviewError("");
     setReviewTarget({ member, decision });
+  };
+
+  const handleRoleChangeOpen = (member: AdminGroupMember) => {
+    setMemberMenu(null);
+    setRoleError("");
+    setRoleTarget(member);
+  };
+
+  const handleRoleChangeSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!roleTarget || isRoleSubmitting) {
+      return;
+    }
+
+    const formData = new FormData(event.currentTarget);
+    const shouldCloseManagementView = formData.get("delegateAdmin") === "on";
+    setIsRoleSubmitting(true);
+    setRoleError("");
+
+    try {
+      const result = await updateGroupMemberRolesAction(formData);
+      if (result.status === "error") {
+        setRoleError(result.message);
+        return;
+      }
+
+      setRoleTarget(null);
+      if (shouldCloseManagementView) {
+        onBack();
+      }
+      router.refresh();
+    } catch {
+      setRoleError("역할을 변경할 수 없습니다.");
+    } finally {
+      setIsRoleSubmitting(false);
+    }
   };
 
   const handleReviewConfirm = async () => {
@@ -240,7 +279,8 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
         onClose={() => setRegenerateInviteDialogOpen(false)}
       />
       <MemberDetailDialog member={selectedMember} onClose={() => setSelectedMember(null)} />
-      <MemberMenuDialog member={memberMenu} onReview={handleReviewOpen} onClose={() => setMemberMenu(null)} />
+      <MemberMenuDialog member={memberMenu} onReview={handleReviewOpen} onRoleChange={handleRoleChangeOpen} onClose={() => setMemberMenu(null)} />
+      <RoleChangeDialog target={roleTarget} error={roleError} submitting={isRoleSubmitting} onSubmit={handleRoleChangeSubmit} onClose={() => setRoleTarget(null)} />
       <JoinRequestReviewDialog target={reviewTarget} error={reviewError} submitting={isReviewSubmitting} onConfirm={handleReviewConfirm} onClose={() => setReviewTarget(null)} />
     </div>
   );
@@ -426,10 +466,12 @@ function MemberDetailDialog({ member, onClose }: { member: AdminGroupMember | nu
 function MemberMenuDialog({
   member,
   onReview,
+  onRoleChange,
   onClose,
 }: {
   member: AdminGroupMember | null;
   onReview: (member: AdminGroupMember, decision: ReviewDecision) => void;
+  onRoleChange: (member: AdminGroupMember) => void;
   onClose: () => void;
 }) {
   return (
@@ -441,10 +483,76 @@ function MemberMenuDialog({
         </div>
       ) : (
         <div className="space-y-1">
-          <MemberMenuButton label="역할 변경" badge="준비중" onClick={onClose} />
+          <MemberMenuButton label="역할 변경" onClick={() => member && onRoleChange(member)} />
           <MemberMenuButton label="추방하기" badge="준비중" onClick={onClose} />
         </div>
       )}
+    </AppDialog>
+  );
+}
+
+function RoleChangeDialog({
+  target,
+  error,
+  submitting,
+  onSubmit,
+  onClose,
+}: {
+  target: AdminGroupMember | null;
+  error: string;
+  submitting: boolean;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onClose: () => void;
+}) {
+  const isAdmin = Boolean(target?.roles.includes("admin"));
+  const isTreasurer = Boolean(target?.roles.includes("treasurer"));
+
+  return (
+    <AppDialog open={Boolean(target)} title="역할 변경" onClose={onClose} dismissOnBackdrop={!submitting} footer={null}>
+      <form className="space-y-4" onSubmit={onSubmit}>
+        <input type="hidden" name="userId" value={target?.user.id ?? ""} />
+
+        <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3">
+          <Avatar name={target?.user.name ?? "멤버"} imageUrl={target?.user.avatarUrl} size="sm" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-extrabold text-slate-950">{target?.user.name}</p>
+            <p className="mt-0.5 text-xs font-semibold text-slate-400">@{target?.user.id}</p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="flex min-h-12 items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+            <span className="text-sm font-extrabold text-slate-950">총무</span>
+            <input type="checkbox" name="grantTreasurer" defaultChecked={isTreasurer} className="h-5 w-5 accent-[#5e4ea5]" />
+          </label>
+
+          {isAdmin ? (
+            <div className="rounded-2xl border border-[#DDD8F1] bg-[#F7F5FF] px-4 py-3">
+              <p className="text-sm font-extrabold text-[#51438f]">현재 관리자</p>
+              <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">관리자 권한은 다른 멤버에게 위임할 때만 변경됩니다.</p>
+            </div>
+          ) : (
+            <label className="block rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <div className="flex min-h-6 items-center justify-between gap-3">
+                <span className="text-sm font-extrabold text-slate-950">관리자로 위임</span>
+                <input type="checkbox" name="delegateAdmin" className="h-5 w-5 accent-[#5e4ea5]" />
+              </div>
+              <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">저장하면 기존 관리자는 관리자 권한을 잃고 이 멤버가 새 관리자가 됩니다.</p>
+            </label>
+          )}
+        </div>
+
+        {error && <p className="text-sm font-bold text-red-500">{error}</p>}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" disabled={submitting} className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-950 disabled:bg-slate-100 disabled:text-slate-400" onClick={onClose}>
+            취소
+          </button>
+          <button type="submit" disabled={submitting || !target} className="min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-extrabold text-white disabled:bg-slate-200 disabled:text-slate-400">
+            {submitting ? "저장 중" : "저장"}
+          </button>
+        </div>
+      </form>
     </AppDialog>
   );
 }

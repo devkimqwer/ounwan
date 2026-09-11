@@ -75,6 +75,12 @@ type UpdateBankAccountInfoInput = {
   holderName: string;
 };
 
+type UpdateGroupMemberRolesInput = {
+  userId: string;
+  grantTreasurer: boolean;
+  delegateAdmin: boolean;
+};
+
 type CreateWorkoutPostInput = {
   workoutType?: string;
   content?: string;
@@ -664,6 +670,77 @@ export async function reviewGroupJoinRequest(requestId: string, decision: "appro
     });
 
     return { id: rows[0].id.toString(), status: "approved" as const };
+  });
+}
+
+export async function updateGroupMemberRoles(input: UpdateGroupMemberRolesInput) {
+  const context = await getCurrentGroupAdminContext();
+
+  if (!/^\d+$/.test(input.userId)) {
+    throw new Error("Invalid user id.");
+  }
+
+  const groupId = BigInt(context.groupId);
+  const targetUserId = BigInt(input.userId);
+  const now = new Date();
+
+  return db.transaction(async (tx) => {
+    const targetRows = await tx
+      .select({ roles: groupMembers.roles })
+      .from(groupMembers)
+      .innerJoin(users, eq(groupMembers.userId, users.id))
+      .where(
+        and(
+          eq(groupMembers.groupId, groupId),
+          eq(groupMembers.userId, targetUserId),
+          isNull(groupMembers.leftAt),
+          eq(users.status, "active"),
+          isNull(users.deletedAt),
+        ),
+      )
+      .limit(1);
+    const target = targetRows[0];
+
+    if (!target) {
+      throw new Error("Group member not found.");
+    }
+
+    let targetRoles = updateTreasurerRole(target.roles, input.grantTreasurer);
+
+    if (input.delegateAdmin && !targetRoles.includes("admin")) {
+      const adminRows = await tx
+        .select({ userId: groupMembers.userId, roles: groupMembers.roles })
+        .from(groupMembers)
+        .where(and(eq(groupMembers.groupId, groupId), isNull(groupMembers.leftAt), sql`${groupMembers.roles} @> ARRAY['admin']::member_role[]`));
+
+      for (const admin of adminRows) {
+        if (admin.userId === targetUserId) {
+          continue;
+        }
+
+        const nextRoles = ensureAtLeastMember(admin.roles.filter((role) => role !== "admin"));
+        await tx
+          .update(groupMembers)
+          .set({ roles: nextRoles, updatedAt: now })
+          .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, admin.userId)));
+      }
+
+      targetRoles = ensureRole(targetRoles, "admin");
+      await tx.update(groups).set({ ownerUserId: targetUserId, updatedAt: now }).where(eq(groups.id, groupId));
+    }
+
+    targetRoles = ensureAtLeastMember(targetRoles);
+    const rows = await tx
+      .update(groupMembers)
+      .set({ roles: targetRoles, updatedAt: now })
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, targetUserId), isNull(groupMembers.leftAt)))
+      .returning({ userId: groupMembers.userId, roles: groupMembers.roles });
+
+    if (!rows[0]) {
+      throw new Error("Group member roles were not updated.");
+    }
+
+    return { userId: rows[0].userId.toString(), roles: rows[0].roles };
   });
 }
 
@@ -1257,6 +1334,17 @@ export async function notifyWeeklySettlementCompleted(settlementId: string) {
   });
 }
 
+function updateTreasurerRole(roles: Array<"admin" | "treasurer" | "member">, grantTreasurer: boolean) {
+  return grantTreasurer ? ensureRole(roles, "treasurer") : roles.filter((role) => role !== "treasurer");
+}
+
+function ensureRole(roles: Array<"admin" | "treasurer" | "member">, role: "admin" | "treasurer" | "member") {
+  return roles.includes(role) ? roles : [...roles, role];
+}
+
+function ensureAtLeastMember(roles: Array<"admin" | "treasurer" | "member">) {
+  return roles.length > 0 ? roles : ["member" as const];
+}
 async function getCurrentGroupTreasurerContext() {
   const context = await getCurrentMemberGroupContext();
 

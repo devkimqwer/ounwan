@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { getCurrentUserNotificationPage } from "@/db/queries";
-import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, getOrCreateCurrentGroupInvite, leaveGroup, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateSeasonRules } from "@/db/commands";
+import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, getOrCreateCurrentGroupInvite, leaveGroup, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateGroupMemberRoles, updateSeasonRules } from "@/db/commands";
 import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
@@ -63,6 +63,11 @@ export type CreateGroupInviteState = {
 };
 
 export type CreatePostCommentState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
+export type UpdateGroupMemberRolesState = {
   status: "idle" | "success" | "error";
   message: string;
 };
@@ -416,6 +421,26 @@ export async function deleteGroupAction(formData: FormData): Promise<DeleteGroup
     return { status: "error", message: "그룹을 삭제할 수 없습니다." };
   }
 }
+
+export async function updateGroupMemberRolesAction(formData: FormData): Promise<UpdateGroupMemberRolesState> {
+  const userId = String(formData.get("userId") ?? "").trim();
+  const grantTreasurer = formData.get("grantTreasurer") === "on";
+  const delegateAdmin = formData.get("delegateAdmin") === "on";
+
+  if (!/^\d+$/.test(userId)) {
+    return { status: "error", message: "멤버 정보를 확인할 수 없습니다." };
+  }
+
+  try {
+    await updateGroupMemberRoles({ userId, grantTreasurer, delegateAdmin });
+    revalidatePath("/");
+    return { status: "success", message: "역할이 변경됐습니다." };
+  } catch (error) {
+    console.error("[ounwan error]", error);
+    return { status: "error", message: "역할을 변경할 수 없습니다." };
+  }
+}
+
 export async function reviewGroupJoinRequestAction(formData: FormData) {
   const requestId = String(formData.get("requestId") ?? "").trim();
   const decision = String(formData.get("decision") ?? "").trim();
