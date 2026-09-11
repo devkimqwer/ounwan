@@ -416,7 +416,7 @@ export function MoreView({
             {groupCreateOpen ? (
               <form className="space-y-3" onSubmit={handleGroupCreateSubmit}>
                 <label className="block text-xs font-extrabold text-slate-500" htmlFor="more-group-name">
-                  새 그룹명
+                  새 그룹명 <span className="text-red-500" aria-hidden="true">*</span>
                 </label>
                 <input
                   id="more-group-name"
@@ -518,7 +518,7 @@ export function MoreView({
           {avatarState.message && <p className={`text-xs font-bold ${avatarState.status === "error" ? "text-red-600" : "text-slate-500"}`}>{avatarState.message}</p>}
           <form onSubmit={handleProfileSubmit} className="space-y-3">
             <label className="block text-xs font-extrabold text-slate-500" htmlFor="profile-display-name">
-              이름
+              이름 <span className="text-red-500" aria-hidden="true">*</span>
             </label>
             <input
               id="profile-display-name"
@@ -693,7 +693,7 @@ function LeaveGroupDialog({
             </p>
             {delegateCandidates.length > 0 ? (
               <label className="mt-3 block text-xs font-extrabold text-amber-800" htmlFor="leave-delegate-user-id">
-                위임할 멤버
+                위임할 멤버 <span className="text-red-500" aria-hidden="true">*</span>
                 <select
                   id="leave-delegate-user-id"
                   name="delegateUserId"

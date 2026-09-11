@@ -17,7 +17,7 @@ export function ProfileSetupForm() {
         <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">오운완에서 사용할 이름을 입력해주세요.</p>
       </div>
       <label className="block space-y-2">
-        <span className="text-sm font-bold text-slate-700">이름 <span className="text-red-500">*</span></span>
+        <span className="text-sm font-bold text-slate-700">이름 <span className="text-red-500" aria-hidden="true">*</span></span>
         <input
           name="displayName"
           maxLength={20}

@@ -398,8 +398,8 @@ function SeasonRulesDialog({
         <input type="hidden" name="seasonId" value={season.id} />
 
         <label className="block space-y-2">
-          <span className="text-sm font-extrabold text-slate-700">한 주의 시작요일</span>
-          <select name="weekStartDay" defaultValue={season.weekStartDay} className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10">
+          <span className="text-sm font-extrabold text-slate-700">한 주의 시작요일 <span className="text-red-500" aria-hidden="true">*</span></span>
+          <select name="weekStartDay" defaultValue={season.weekStartDay} required className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10">
             {weekdays.map((weekday) => (
               <option key={weekday.value} value={weekday.value}>{weekday.label}</option>
             ))}
@@ -407,13 +407,13 @@ function SeasonRulesDialog({
         </label>
 
         <label className="block space-y-2">
-          <span className="text-sm font-extrabold text-slate-700">하루의 시작 시각</span>
-          <input type="time" name="dayStartTime" step={60} defaultValue={formatTimeInputValue(season.dayStartTime)} className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10" />
+          <span className="text-sm font-extrabold text-slate-700">하루의 시작 시각 <span className="text-red-500" aria-hidden="true">*</span></span>
+          <input type="time" name="dayStartTime" step={60} required defaultValue={formatTimeInputValue(season.dayStartTime)} className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10" />
         </label>
 
         <label className="block space-y-2">
-          <span className="text-sm font-extrabold text-slate-700">일일 중복 인증</span>
-          <select name="dailyDuplicatePolicy" defaultValue={season.dailyDuplicatePolicy} className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10">
+          <span className="text-sm font-extrabold text-slate-700">일일 중복 인증 <span className="text-red-500" aria-hidden="true">*</span></span>
+          <select name="dailyDuplicatePolicy" defaultValue={season.dailyDuplicatePolicy} required className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10">
             <option value="count_once">1회만</option>
             <option value="count_all">인증한 만큼</option>
           </select>
@@ -421,19 +421,18 @@ function SeasonRulesDialog({
 
         <div className="grid grid-cols-2 gap-3">
           <label className="block space-y-2">
-            <span className="text-sm font-extrabold text-slate-700">주간 목표 (인증 횟수)</span>
+            <span className="text-sm font-extrabold text-slate-700">주간 목표 (인증 횟수) <span className="text-red-500" aria-hidden="true">*</span></span>
             <input
               type="number"
               name="targetWorkoutCountPerWeek"
               min={1}
-              max={7}
               defaultValue={season.targetWorkoutCountPerWeek}
               className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
               required
             />
           </label>
           <label className="block space-y-2">
-            <span className="text-sm font-extrabold text-slate-700">벌금 (단위: 원)</span>
+            <span className="text-sm font-extrabold text-slate-700">벌금 (단위: 원) <span className="text-red-500" aria-hidden="true">*</span></span>
             <input
               type="number"
               name="finePerMiss"

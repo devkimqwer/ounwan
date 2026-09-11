@@ -13,7 +13,7 @@ export function CreateGroupForm() {
   return (
     <form action={formAction} className="mt-5 space-y-3">
       <label className="block text-sm font-extrabold text-slate-700" htmlFor="groupName">
-        그룹명
+        그룹명 <span className="text-red-500" aria-hidden="true">*</span>
       </label>
       <input
         id="groupName"

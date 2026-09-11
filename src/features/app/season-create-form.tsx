@@ -24,7 +24,7 @@ export function SeasonCreateForm({ onCreated }: { onCreated?: () => void }) {
   return (
     <form action={formAction} className="space-y-4">
       <label className="block space-y-2">
-        <span className="text-sm font-extrabold text-slate-700">시즌명</span>
+        <span className="text-sm font-extrabold text-slate-700">시즌명 <span className="text-red-500" aria-hidden="true">*</span></span>
         <input
           name="name"
           maxLength={30}
@@ -35,8 +35,8 @@ export function SeasonCreateForm({ onCreated }: { onCreated?: () => void }) {
       </label>
 
       <label className="block space-y-2">
-        <span className="text-sm font-extrabold text-slate-700">시작예정일</span>
-        <div className="text-xs text-red-700">※ 활성화된 시즌이 없는 경우에만 지정된 일자에 자동으로 시즌이 활성화 됩니다.</div>
+        <span className="text-sm font-extrabold text-slate-700">시작예정일 <span className="text-red-500" aria-hidden="true">*</span></span>
+        <div className="text-xs text-red-600">※ 활성화된 시즌이 없는 경우에만 지정된 일자에 자동으로 시즌이 활성화 됩니다.</div>
         <input
           type="date"
           name="startDate"
@@ -49,18 +49,17 @@ export function SeasonCreateForm({ onCreated }: { onCreated?: () => void }) {
 
       <div className="grid grid-cols-2 gap-3">
         <label className="block space-y-2">
-          <span className="text-sm font-extrabold text-slate-700">주간 목표 (인증 횟수)</span>
+          <span className="text-sm font-extrabold text-slate-700">주간 목표 (인증 횟수) <span className="text-red-500" aria-hidden="true">*</span></span>
           <input
             type="number"
             name="targetWorkoutCountPerWeek"
             min={1}
-            max={7}
             className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
             required
           />
         </label>
         <label className="block space-y-2">
-          <span className="text-sm font-extrabold text-slate-700">벌금 (단위: 원)</span>
+          <span className="text-sm font-extrabold text-slate-700">벌금 (단위: 원) <span className="text-red-500" aria-hidden="true">*</span></span>
           <input
             type="number"
             name="finePerMiss"
