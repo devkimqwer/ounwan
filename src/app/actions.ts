@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { getCurrentUserNotificationPage } from "@/db/queries";
-import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, getOrCreateCurrentGroupInvite, leaveGroup, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile, updateSeasonRules } from "@/db/commands";
+import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, getOrCreateCurrentGroupInvite, leaveGroup, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateSeasonRules } from "@/db/commands";
 import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
@@ -13,6 +13,7 @@ const MAX_POST_COMMENT_LENGTH = 500;
 const MAX_DISPLAY_NAME_LENGTH = 20;
 const MAX_GROUP_NAME_LENGTH = 30;
 const MAX_SEASON_NAME_LENGTH = 30;
+const MAX_BANK_ACCOUNT_FIELD_LENGTH = 100;
 
 export type CreateGroupState = {
   status: "idle" | "success" | "error";
@@ -48,6 +49,12 @@ export type UpdateSeasonRulesState = {
   status: "idle" | "success" | "error";
   message: string;
 };
+
+export type UpdateBankAccountInfoState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
 export type CreateGroupInviteState = {
   status: "idle" | "success" | "error";
   message: string;
@@ -60,6 +67,39 @@ export type CreatePostCommentState = {
   message: string;
 };
 
+export async function updateBankAccountInfoAction(
+  _previousState: UpdateBankAccountInfoState,
+  formData: FormData,
+): Promise<UpdateBankAccountInfoState> {
+  const bankName = String(formData.get("bankName") ?? "").trim();
+  const accountNumber = String(formData.get("accountNumber") ?? "").trim();
+  const holderName = String(formData.get("holderName") ?? "").trim();
+
+  if (!bankName) {
+    return { status: "error", message: "은행을 입력해주세요." };
+  }
+
+  if (!holderName) {
+    return { status: "error", message: "예금주를 입력해주세요." };
+  }
+
+  if (!accountNumber) {
+    return { status: "error", message: "계좌번호를 입력해주세요." };
+  }
+
+  if ([bankName, accountNumber, holderName].some((value) => value.length > MAX_BANK_ACCOUNT_FIELD_LENGTH)) {
+    return { status: "error", message: "계좌 정보는 항목별 100자 이내로 입력해주세요." };
+  }
+
+  try {
+    await updateBankAccountInfo({ bankName, accountNumber, holderName });
+    revalidatePath("/");
+    return { status: "success", message: "계좌 정보가 저장됐습니다." };
+  } catch (error) {
+    console.error("[ounwan error]", error);
+    return { status: "error", message: "계좌 정보를 저장할 수 없습니다." };
+  }
+}
 export async function createGroupAction(
   _previousState: CreateGroupState,
   formData: FormData,

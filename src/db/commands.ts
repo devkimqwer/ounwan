@@ -9,7 +9,7 @@ import { deleteStorageFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from
 
 import { db } from "./client";
 import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError, GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "./errors";
-import { groupInvites, groupJoinRequests, groupMembers, groups, notifications, postComments, postLikes, postMedia, pushSubscriptions, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
+import { bankAccounts, groupInvites, groupJoinRequests, groupMembers, groups, notifications, postComments, postLikes, postMedia, pushSubscriptions, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
 
 const GROUP_INVITE_EXPIRES_HOURS = 72;
 
@@ -67,6 +67,12 @@ type UpdateSeasonRulesInput = {
   dailyDuplicatePolicy: "count_once" | "count_all";
   targetWorkoutCountPerWeek: number;
   finePerMiss: number;
+};
+
+type UpdateBankAccountInfoInput = {
+  bankName: string;
+  accountNumber: string;
+  holderName: string;
 };
 
 type CreateWorkoutPostInput = {
@@ -661,6 +667,42 @@ export async function reviewGroupJoinRequest(requestId: string, decision: "appro
   });
 }
 
+export async function updateBankAccountInfo(input: UpdateBankAccountInfoInput) {
+  const context = await getCurrentGroupTreasurerContext();
+  const bankName = input.bankName.trim();
+  const accountNumber = input.accountNumber.trim();
+  const holderName = input.holderName.trim();
+
+  if (!bankName || !accountNumber || !holderName) {
+    throw new Error("Bank account info is required.");
+  }
+
+  const groupId = BigInt(context.groupId);
+  const userId = BigInt(context.userId);
+  const rows = await db
+    .insert(bankAccounts)
+    .values({
+      groupId,
+      bankName,
+      accountNumber,
+      holderName,
+      updatedByUserId: userId,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: bankAccounts.groupId,
+      set: {
+        bankName,
+        accountNumber,
+        holderName,
+        updatedByUserId: userId,
+        updatedAt: new Date(),
+      },
+    })
+    .returning({ groupId: bankAccounts.groupId });
+
+  return { groupId: rows[0].groupId.toString() };
+}
 export async function createSeason(input: CreateSeasonInput) {
   const context = await getCurrentGroupAdminContext();
   const seasonName = input.name.trim();
@@ -1215,6 +1257,37 @@ export async function notifyWeeklySettlementCompleted(settlementId: string) {
   });
 }
 
+async function getCurrentGroupTreasurerContext() {
+  const context = await getCurrentMemberGroupContext();
+
+  if (!context.roles.includes("treasurer")) {
+    throw new Error("Only treasurers can manage bank account info.");
+  }
+
+  return context;
+}
+
+async function getCurrentMemberGroupContext() {
+  const userId = await requireCurrentUserId();
+  const selectedGroupId = await getCurrentGroupIdForUser(userId);
+  const membershipRows = await db
+    .select({ groupId: groupMembers.groupId, userId: groupMembers.userId, roles: groupMembers.roles })
+    .from(groupMembers)
+    .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+    .where(and(eq(groupMembers.userId, BigInt(userId)), isNull(groupMembers.leftAt), isNull(groups.deletedAt)))
+    .orderBy(desc(groupMembers.updatedAt), desc(groups.id));
+  const membership = membershipRows.find((row) => row.groupId.toString() === selectedGroupId) ?? membershipRows[0];
+
+  if (!membership) {
+    throw new CurrentUserMembershipNotFoundError();
+  }
+
+  return {
+    userId: membership.userId.toString(),
+    groupId: membership.groupId.toString(),
+    roles: membership.roles,
+  };
+}
 async function getCurrentGroupAdminContext() {
   const userId = await requireCurrentUserId();
   const selectedGroupId = await getCurrentGroupIdForUser(userId);

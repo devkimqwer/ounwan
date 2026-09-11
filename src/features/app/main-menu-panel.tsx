@@ -78,7 +78,7 @@ export function MainMenuPanel({
             <MainMenuSection
               title="총무"
               rows={[
-                { label: "계좌 정보 관리", onClick: () => onSelect("more") },
+                { label: "계좌 정보 관리", onClick: () => onOpenMorePage("bank-account-management") },
                 { label: "잔고 등록", onClick: () => onSelect("more") },
               ]}
             />
