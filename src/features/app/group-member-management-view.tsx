@@ -151,6 +151,11 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
     setExpelTarget(member);
   };
 
+  const handleStatusFilterChange = (nextStatusFilter: MemberStatusFilter) => {
+    setStatusFilter(nextStatusFilter);
+    router.refresh();
+  };
+
   const handleRoleChangeSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!roleTarget || isRoleSubmitting) {
@@ -258,7 +263,7 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
                 type="button"
                 className={`relative min-h-10 rounded-xl text-sm font-extrabold ${selected ? "bg-white text-[#51438f] shadow-sm" : "text-slate-500"}`}
                 aria-label={option.value === "pending" && pendingMemberCount > 0 ? `${option.label} ${pendingMemberCount}건` : option.label}
-                onClick={() => setStatusFilter(option.value)}
+                onClick={() => handleStatusFilterChange(option.value)}
               >
                 <span className="inline-flex items-center gap-1.5">
                   {option.label}
