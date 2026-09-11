@@ -60,6 +60,15 @@ type CreateSeasonInput = {
   targetWorkoutCountPerWeek: number;
   finePerMiss: number;
 };
+type UpdateSeasonRulesInput = {
+  seasonId: string;
+  weekStartDay: number;
+  dayStartTime: string;
+  dailyDuplicatePolicy: "count_once" | "count_all";
+  targetWorkoutCountPerWeek: number;
+  finePerMiss: number;
+};
+
 type CreateWorkoutPostInput = {
   workoutType?: string;
   content?: string;
@@ -705,6 +714,33 @@ export async function createSeason(input: CreateSeasonInput) {
 
     return { id: seasonId.toString(), status: shouldActivateNow ? "active" as const : "pending" as const };
   });
+}
+
+export async function updateSeasonRules(input: UpdateSeasonRulesInput) {
+  const context = await getCurrentGroupAdminContext();
+
+  if (!/^\d+$/.test(input.seasonId)) {
+    throw new Error("Invalid season id.");
+  }
+
+  const rows = await db
+    .update(seasons)
+    .set({
+      weekStartDay: input.weekStartDay,
+      dayStartTime: input.dayStartTime,
+      dailyDuplicatePolicy: input.dailyDuplicatePolicy,
+      targetWorkoutCountPerWeek: input.targetWorkoutCountPerWeek,
+      finePerMiss: input.finePerMiss,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(seasons.id, BigInt(input.seasonId)), eq(seasons.groupId, BigInt(context.groupId)), ne(seasons.status, "closed")))
+    .returning({ id: seasons.id });
+
+  if (!rows[0]) {
+    throw new Error("Season not found.");
+  }
+
+  return { id: rows[0].id.toString() };
 }
 
 export async function activateCurrentGroupPendingSeason() {

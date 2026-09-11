@@ -85,6 +85,20 @@
       "when": 1788941822739,
       "tag": "0011_add-table-comments",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789019544838,
+      "tag": "0012_broad_dark_phoenix",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789110488243,
+      "tag": "0013_talented_tyger_tiger",
+      "breakpoints": true
     }
   ]
 }

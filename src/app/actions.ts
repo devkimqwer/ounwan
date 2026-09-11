@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { getCurrentUserNotificationPage } from "@/db/queries";
-import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, getOrCreateCurrentGroupInvite, leaveGroup, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
+import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, getOrCreateCurrentGroupInvite, leaveGroup, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile, updateSeasonRules } from "@/db/commands";
 import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
@@ -41,6 +41,11 @@ export type CreateSeasonState = {
 
 export type SeasonCommandState = {
   status: "success" | "error";
+  message: string;
+};
+
+export type UpdateSeasonRulesState = {
+  status: "idle" | "success" | "error";
   message: string;
 };
 export type CreateGroupInviteState = {
@@ -123,10 +128,6 @@ export async function createSeasonAction(
     return { status: "error", message: "시작일은 오늘 또는 이후 일자로 선택해주세요." };
   }
 
-  if (!Number.isInteger(targetWorkoutCountPerWeek) || targetWorkoutCountPerWeek < 1 || targetWorkoutCountPerWeek > 7) {
-    return { status: "error", message: "주간 목표는 1~7회로 입력해주세요." };
-  }
-
   if (!Number.isInteger(finePerMiss) || finePerMiss < 0) {
     return { status: "error", message: "벌금은 0원 이상으로 입력해주세요." };
   }
@@ -149,6 +150,59 @@ export async function createSeasonAction(
     return { status: "error", message: "시즌을 생성할 수 없습니다." };
   }
 }
+export async function updateSeasonRulesAction(
+  _previousState: UpdateSeasonRulesState,
+  formData: FormData,
+): Promise<UpdateSeasonRulesState> {
+  const seasonId = String(formData.get("seasonId") ?? "").trim();
+  const weekStartDay = Number(formData.get("weekStartDay"));
+  const dayStartTime = String(formData.get("dayStartTime") ?? "").trim();
+  const dailyDuplicatePolicy = String(formData.get("dailyDuplicatePolicy") ?? "").trim();
+  const targetWorkoutCountPerWeek = Number(formData.get("targetWorkoutCountPerWeek"));
+  const finePerMiss = Number(formData.get("finePerMiss"));
+
+  if (!/^\d+$/.test(seasonId)) {
+    return { status: "error", message: "시즌 정보를 확인할 수 없습니다." };
+  }
+
+  if (!Number.isInteger(weekStartDay) || weekStartDay < 0 || weekStartDay > 6) {
+    return { status: "error", message: "한 주의 시작요일을 선택해주세요." };
+  }
+
+  if (!/^\d{2}:\d{2}$/.test(dayStartTime)) {
+    return { status: "error", message: "하루의 시작 시각을 입력해주세요." };
+  }
+
+  const [hour, minute] = dayStartTime.split(":").map(Number);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return { status: "error", message: "하루의 시작 시각을 확인해주세요." };
+  }
+
+  if (dailyDuplicatePolicy !== "count_once" && dailyDuplicatePolicy !== "count_all") {
+    return { status: "error", message: "중복 인증 처리 방식을 선택해주세요." };
+  }
+
+  if (!Number.isInteger(finePerMiss) || finePerMiss < 0) {
+    return { status: "error", message: "벌금은 0원 이상으로 입력해주세요." };
+  }
+
+  try {
+    await updateSeasonRules({
+      seasonId,
+      weekStartDay,
+      dayStartTime,
+      dailyDuplicatePolicy,
+      targetWorkoutCountPerWeek,
+      finePerMiss,
+    });
+    revalidatePath("/");
+    return { status: "success", message: "시즌 규칙이 저장됐습니다." };
+  } catch (error) {
+    console.error("[ounwan error]", error);
+    return { status: "error", message: "시즌 규칙을 저장할 수 없습니다." };
+  }
+}
+
 export async function activatePendingSeasonAction(): Promise<SeasonCommandState> {
   try {
     await activateCurrentGroupPendingSeason();

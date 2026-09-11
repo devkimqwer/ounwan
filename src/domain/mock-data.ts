@@ -49,6 +49,9 @@ export const seasons: Season[] = [
     startDate: "2026-08-01",
     targetWorkoutCountPerWeek: 3,
     finePerMiss: 5000,
+    weekStartDay: 0,
+    dayStartTime: "03:00",
+    dailyDuplicatePolicy: "count_once",
     status: "active",
   },
 ];

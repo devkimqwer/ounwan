@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
-import { activatePendingSeasonAction, closeSeasonAction, deletePendingSeasonAction } from "@/app/actions";
+import { activatePendingSeasonAction, closeSeasonAction, deletePendingSeasonAction, updateSeasonRulesAction } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
 import type { Season, SeasonParticipant } from "@/domain/models";
 import { formatSystemDate } from "@/lib/date-format";
@@ -28,6 +29,7 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
   const [closeSeasonDialogOpen, setCloseSeasonDialogOpen] = useState(false);
   const [activatePendingSeasonDialogOpen, setActivatePendingSeasonDialogOpen] = useState(false);
   const [deletePendingSeasonDialogOpen, setDeletePendingSeasonDialogOpen] = useState(false);
+  const [seasonRulesDialogOpen, setSeasonRulesDialogOpen] = useState(false);
   const seasonDetailHistoryActiveRef = useRef(false);
   const selectedSeasonIdRef = useRef<string | null>(null);
 
@@ -58,6 +60,7 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
   const openSeasonDetail = (seasonId: string) => {
     seasonDetailHistoryActiveRef.current = true;
     selectedSeasonIdRef.current = seasonId;
+    window.history.replaceState({ ounwanMorePage: "season-management" }, "");
     window.history.pushState({ ounwanMorePage: "season-management", ounwanSeasonDetail: seasonId }, "");
     setSelectedSeasonId(seasonId);
   };
@@ -107,6 +110,17 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
             <SeasonStatusBadge status={selectedSeason.status} />
           </div>
         </section>
+
+        <SeasonRulesCard
+          season={selectedSeason}
+          onEdit={() => {
+            if (selectedSeason.status === "closed") {
+              return;
+            }
+
+            setSeasonRulesDialogOpen(true);
+          }}
+        />
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
@@ -160,6 +174,15 @@ export function SeasonManagementView({ seasons, seasonParticipants, onBack }: Se
           </div>
         )}
         <ParticipantDetailDialog participant={selectedParticipant} onClose={() => setSelectedParticipant(null)} />
+        <SeasonRulesDialog
+          open={seasonRulesDialogOpen}
+          season={selectedSeason}
+          onClose={() => setSeasonRulesDialogOpen(false)}
+          onSaved={() => {
+            setSeasonRulesDialogOpen(false);
+            router.refresh();
+          }}
+        />
         <SeasonCloseDialog
           open={closeSeasonDialogOpen}
           season={selectedSeason}
@@ -292,6 +315,149 @@ function SeasonParticipantRow({
         </div>
       </button>
     </div>
+  );
+}
+
+function SeasonRulesCard({ season, onEdit }: { season: Season; onEdit: () => void }) {
+  const canEdit = season.status !== "closed";
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-extrabold text-slate-950">{season.name}의 규칙</h3>
+        {canEdit && (
+          <button type="button" className="rounded-full bg-[#F2F0FA] px-3 py-1.5 text-xs font-extrabold text-[#51438f] active:bg-[#e7e1fb]" onClick={onEdit}>
+            수정
+          </button>
+        )}
+      </div>
+      <div className="mt-4 space-y-2.5 text-sm font-semibold leading-6 text-slate-700">
+        <p>
+          한 주는 <SeasonRuleValue>{formatWeekday(season.weekStartDay)}</SeasonRuleValue>에 시작해요.
+        </p>
+        <p>
+          하루는 <SeasonRuleValue>{formatTime(season.dayStartTime)}</SeasonRuleValue>부터 시작해요.
+        </p>
+        <p>
+          하루에 여러 번 인증하면 <SeasonRuleValue>{formatDuplicatePolicy(season.dailyDuplicatePolicy)}</SeasonRuleValue> 인정해요.
+        </p>
+        <p>
+          일주일에 최소 <SeasonRuleValue>{season.targetWorkoutCountPerWeek}회</SeasonRuleValue> 인증해야 해요.
+        </p>
+        <p>
+          인증이 1회 부족할 때마다 <SeasonRuleValue>{formatCurrency(season.finePerMiss)}</SeasonRuleValue>의 벌금이 부과돼요.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function SeasonRuleValue({ children }: { children: ReactNode }) {
+  return <span className="inline-flex rounded-full bg-[#F7F5FF] px-2.5 py-1 text-sm font-extrabold text-[#51438f]">{children}</span>;
+}
+
+function SeasonRulesDialog({
+  open,
+  season,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  season: Season;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [isPending, startTransition] = useTransition();
+  const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setErrorMessage("");
+    }
+  }, [open, season.id]);
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setErrorMessage("");
+    const formData = new FormData(event.currentTarget);
+
+    startTransition(async () => {
+      const result = await updateSeasonRulesAction({ status: "idle", message: "" }, formData);
+      if (result.status === "error") {
+        setErrorMessage(result.message);
+        return;
+      }
+
+      onSaved();
+    });
+  };
+
+  return (
+    <AppDialog open={open} title={season.name + "의 규칙"} onClose={onClose} dismissOnBackdrop={false} footer={null}>
+      <form className="space-y-4" onSubmit={handleSubmit}>
+        <input type="hidden" name="seasonId" value={season.id} />
+
+        <label className="block space-y-2">
+          <span className="text-sm font-extrabold text-slate-700">한 주의 시작요일</span>
+          <select name="weekStartDay" defaultValue={season.weekStartDay} className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10">
+            {weekdays.map((weekday) => (
+              <option key={weekday.value} value={weekday.value}>{weekday.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block space-y-2">
+          <span className="text-sm font-extrabold text-slate-700">하루의 시작 시각</span>
+          <input type="time" name="dayStartTime" step={60} defaultValue={formatTimeInputValue(season.dayStartTime)} className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10" />
+        </label>
+
+        <label className="block space-y-2">
+          <span className="text-sm font-extrabold text-slate-700">일일 중복 인증</span>
+          <select name="dailyDuplicatePolicy" defaultValue={season.dailyDuplicatePolicy} className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10">
+            <option value="count_once">1회만</option>
+            <option value="count_all">인증한 만큼</option>
+          </select>
+        </label>
+
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block space-y-2">
+            <span className="text-sm font-extrabold text-slate-700">주간 목표 (인증 횟수)</span>
+            <input
+              type="number"
+              name="targetWorkoutCountPerWeek"
+              min={1}
+              max={7}
+              defaultValue={season.targetWorkoutCountPerWeek}
+              className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
+              required
+            />
+          </label>
+          <label className="block space-y-2">
+            <span className="text-sm font-extrabold text-slate-700">벌금 (단위: 원)</span>
+            <input
+              type="number"
+              name="finePerMiss"
+              min={0}
+              step={100}
+              defaultValue={season.finePerMiss}
+              className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
+              required
+            />
+          </label>
+        </div>
+
+        {errorMessage && <p className="text-sm font-bold text-red-600">{errorMessage}</p>}
+
+        <div className="flex justify-end gap-2">
+          <button type="button" className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-950 disabled:bg-slate-200 disabled:text-slate-400" disabled={isPending} onClick={onClose}>
+            취소
+          </button>
+          <button type="submit" className="min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-extrabold text-white disabled:bg-slate-200 disabled:text-slate-400" disabled={isPending}>
+            {isPending ? "저장 중" : "저장"}
+          </button>
+        </div>
+      </form>
+    </AppDialog>
   );
 }
 
@@ -519,6 +685,36 @@ function groupParticipantsBySeason(participants: SeasonParticipant[]) {
   });
 
   return map;
+}
+
+const weekdays = [
+  { value: 0, label: "월요일" },
+  { value: 1, label: "화요일" },
+  { value: 2, label: "수요일" },
+  { value: 3, label: "목요일" },
+  { value: 4, label: "금요일" },
+  { value: 5, label: "토요일" },
+  { value: 6, label: "일요일" },
+];
+
+function formatWeekday(value: number) {
+  return weekdays.find((weekday) => weekday.value === value)?.label ?? "월요일";
+}
+
+function formatTime(value: string) {
+  return formatTimeInputValue(value);
+}
+
+function formatTimeInputValue(value: string) {
+  return value.slice(0, 5);
+}
+
+function formatDuplicatePolicy(value: Season["dailyDuplicatePolicy"]) {
+  return value === "count_all" ? "인증한 만큼" : "1회만";
+}
+
+function formatCurrency(value: number) {
+  return value.toLocaleString("ko-KR") + "원";
 }
 
 function compareSeasonByStartDateDesc(a: Season, b: Season) {

@@ -525,6 +525,9 @@ function toSeason(row: typeof seasons.$inferSelect): Season {
     endDate: row.endDate ?? undefined,
     targetWorkoutCountPerWeek: row.targetWorkoutCountPerWeek,
     finePerMiss: row.finePerMiss,
+    weekStartDay: row.weekStartDay,
+    dayStartTime: row.dayStartTime,
+    dailyDuplicatePolicy: row.dailyDuplicatePolicy,
     status: row.status,
   };
 }
