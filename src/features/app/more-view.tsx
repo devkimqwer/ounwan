@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { createGroupInAppAction, deleteGroupAction, leaveGroupAction, refreshCurrentUserAvatarAction, switchCurrentGroupAction, updateCurrentUserProfileAction } from "@/app/actions";
@@ -7,6 +7,7 @@ import { AppDialog } from "@/components/ui/app-dialog";
 import type { AccountInfo, AdminGroupMember, Group, Season, SeasonParticipant, User, UserGroupMembership } from "@/domain/models";
 import { TextLogoutButton } from "@/features/auth/logout-controls";
 import type { MoreSubPage } from "./app-types";
+import { BankAccountManagementView } from "./bank-account-management-view";
 import { GroupMemberManagementView } from "./group-member-management-view";
 import { SeasonManagementView } from "./season-management-view";
 import { Avatar, Badge, getDisplayRoles, getRoleBadgeTone, getRoleLabel, MenuBlock } from "./shared-ui";
@@ -66,6 +67,7 @@ export function MoreView({
   const [isAvatarRefreshing, setIsAvatarRefreshing] = useState(false);
   const [switchingGroupId, setSwitchingGroupId] = useState<string | null>(null);
   const [notReadyTitle, setNotReadyTitle] = useState<string | null>(null);
+  const [accountNumberCopyState, setAccountNumberCopyState] = useState<"idle" | "copied" | "error">("idle");
 
   useEffect(() => {
     setProfileName(currentUser.name);
@@ -250,12 +252,31 @@ export function MoreView({
     setNotReadyTitle(title);
   };
 
+  const copyAccountNumber = async () => {
+    if (!accountInfo.accountNumber || accountInfo.accountNumber === "미등록") {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(accountInfo.accountNumber);
+      setAccountNumberCopyState("copied");
+    } catch {
+      setAccountNumberCopyState("error");
+    }
+
+    window.setTimeout(() => setAccountNumberCopyState("idle"), 1500);
+  };
+
   if (activeMorePage === "season-management") {
     return <SeasonManagementView seasons={seasons} seasonParticipants={seasonParticipants} onBack={onCloseMorePage} />;
   }
 
   if (activeMorePage === "group-member-management") {
     return <GroupMemberManagementView members={adminGroupMembers} onBack={onCloseMorePage} />;
+  }
+
+  if (activeMorePage === "bank-account-management") {
+    return <BankAccountManagementView accountInfo={accountInfo} onBack={onCloseMorePage} />;
   }
 
   return (
@@ -317,7 +338,21 @@ export function MoreView({
         rows={[
           <MoreInfoRow key="bank-name" label="은행" value={accountInfo.bankName} />,
           <MoreInfoRow key="holder-name" label="예금주" value={accountInfo.holderName} />,
-          <MoreInfoRow key="account-number" label="계좌번호" value={accountInfo.accountNumber} />,
+          <MoreInfoRow
+            key="account-number"
+            label="계좌번호"
+            value={accountInfo.accountNumber}
+            action={
+              <button
+                type="button"
+                disabled={!accountInfo.accountNumber || accountInfo.accountNumber === "미등록"}
+                className="shrink-0 rounded-full bg-[#F2F0FA] px-3 py-1.5 text-xs font-extrabold text-[#51438f] active:bg-[#e7e1fb] disabled:bg-slate-100 disabled:text-slate-400"
+                onClick={copyAccountNumber}
+              >
+                {accountNumberCopyState === "copied" ? "복사됨" : accountNumberCopyState === "error" ? "실패" : "복사"}
+              </button>
+            }
+          />,
         ]}
       />
 
@@ -333,7 +368,7 @@ export function MoreView({
         <MenuBlock
           title="총무"
           rows={[
-            <MoreMenuRow key="account-management" label="계좌 정보 관리" onClick={() => openNotReadyDialog("계좌 정보 관리")} />,
+            <MoreMenuRow key="account-management" label="계좌 정보 관리" onClick={() => onOpenMorePage("bank-account-management")} />,
             <MoreMenuRow key="balance-registration" label="잔고 등록" onClick={() => openNotReadyDialog("잔고 등록")} />,
           ]}
         />
@@ -416,7 +451,7 @@ export function MoreView({
             {groupCreateOpen ? (
               <form className="space-y-3" onSubmit={handleGroupCreateSubmit}>
                 <label className="block text-xs font-extrabold text-slate-500" htmlFor="more-group-name">
-                  새 그룹명
+                  새 그룹명 <span className="text-red-500" aria-hidden="true">*</span>
                 </label>
                 <input
                   id="more-group-name"
@@ -424,7 +459,7 @@ export function MoreView({
                   value={groupCreateName}
                   maxLength={30}
                   onChange={(event) => setGroupCreateName(event.target.value)}
-                  className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold outline-none focus:border-[#5e4ea5]"
+                  className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm leading-5 outline-none placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5]"
                   placeholder="예: 아침 운동 모임"
                   required
                 />
@@ -518,7 +553,7 @@ export function MoreView({
           {avatarState.message && <p className={`text-xs font-bold ${avatarState.status === "error" ? "text-red-600" : "text-slate-500"}`}>{avatarState.message}</p>}
           <form onSubmit={handleProfileSubmit} className="space-y-3">
             <label className="block text-xs font-extrabold text-slate-500" htmlFor="profile-display-name">
-              이름
+              이름 <span className="text-red-500" aria-hidden="true">*</span>
             </label>
             <input
               id="profile-display-name"
@@ -526,7 +561,7 @@ export function MoreView({
               value={profileName}
               maxLength={20}
               onChange={(event) => setProfileName(event.target.value)}
-              className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold outline-none focus:border-[#5e4ea5]"
+              className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm leading-5 outline-none placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5]"
               required
             />
             {profileState.message && <p className={`text-xs font-bold ${profileState.status === "error" ? "text-red-600" : "text-slate-500"}`}>{profileState.message}</p>}
@@ -693,13 +728,13 @@ function LeaveGroupDialog({
             </p>
             {delegateCandidates.length > 0 ? (
               <label className="mt-3 block text-xs font-extrabold text-amber-800" htmlFor="leave-delegate-user-id">
-                위임할 멤버
+                위임할 멤버 <span className="text-red-500" aria-hidden="true">*</span>
                 <select
                   id="leave-delegate-user-id"
                   name="delegateUserId"
                   value={delegateUserId}
                   onChange={(event) => onDelegateChange(event.target.value)}
-                  className="mt-2 min-h-11 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none"
+                  className="mt-2 min-h-11 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm leading-5 text-slate-950 outline-none"
                   required
                 >
                   {delegateCandidates.map((user) => (
@@ -738,11 +773,14 @@ function LeaveGroupDialog({
     </AppDialog>
   );
 }
-function MoreInfoRow({ label, value }: { label: string; value: string }) {
+function MoreInfoRow({ label, value, action }: { label: string; value: string; action?: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-4">
       <span className="shrink-0 font-extrabold text-slate-900">{label}</span>
-      <span className="min-w-0 truncate text-right text-slate-700">{value}</span>
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="min-w-0 truncate text-right text-slate-700">{value}</span>
+        {action}
+      </div>
     </div>
   );
 }

@@ -69,6 +69,8 @@ export interface GroupInvite {
   status: "active" | "disabled" | "expired";
 }
 
+export type DailyDuplicatePolicy = "count_once" | "count_all";
+
 export interface Season {
   id: string;
   groupId: string;
@@ -77,6 +79,9 @@ export interface Season {
   endDate?: string;
   targetWorkoutCountPerWeek: number;
   finePerMiss: number;
+  weekStartDay: number;
+  dayStartTime: string;
+  dailyDuplicatePolicy: DailyDuplicatePolicy;
   status: "pending" | "active" | "closed";
 }
 

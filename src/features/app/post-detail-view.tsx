@@ -160,7 +160,7 @@ export function PostDetailView({
             value={commentContent}
             onChange={(event) => setCommentContent(event.target.value)}
             rows={1}
-            className="min-h-11 flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold leading-5 outline-none placeholder:text-slate-400 focus:border-[#5e4ea5] focus:bg-white"
+            className="min-h-11 flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-5 outline-none placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5] focus:bg-white"
             placeholder="댓글을 입력하세요."
           />
           <button

@@ -53,7 +53,7 @@ export function SeasonlessGroupSwitchSelect({ groups }: { groups: AuthGroupSwitc
           name="groupId"
           value={selectedGroupId}
           disabled={switching}
-          className="min-h-12 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-sm font-extrabold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10 disabled:bg-slate-100 disabled:text-slate-400"
+          className="min-h-12 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-sm leading-5 text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10 disabled:bg-slate-100 disabled:text-slate-400"
           onChange={(event) => handleChange(event.target.value)}
         >
           {!currentGroup && <option value="">그룹을 선택해주세요</option>}

@@ -10,6 +10,7 @@ import {
   pgTable,
   primaryKey,
   text,
+  time,
   timestamp,
   unique,
   uniqueIndex,
@@ -30,6 +31,7 @@ export const joinRequestStatusEnum = pgEnum("join_request_status", [
   "cancelled",
 ]);
 export const mediaTypeEnum = pgEnum("media_type", ["image", "video"]);
+export const dailyDuplicatePolicyEnum = pgEnum("daily_duplicate_policy", ["count_once", "count_all"]);
 export const settlementStatusEnum = pgEnum("settlement_status", ["draft", "confirmed"]);
 
 const timestamps = {
@@ -113,6 +115,9 @@ export const seasons = pgTable(
     endDate: date("end_date"),
     targetWorkoutCountPerWeek: integer("target_workout_count_per_week").notNull(),
     finePerMiss: integer("fine_per_miss").notNull(),
+    weekStartDay: integer("week_start_day").notNull().default(0),
+    dayStartTime: time("day_start_time").notNull().default("03:00"),
+    dailyDuplicatePolicy: dailyDuplicatePolicyEnum("daily_duplicate_policy").notNull().default("count_once"),
     status: seasonStatusEnum("status").notNull().default("active"),
     ...timestamps,
   },
@@ -126,6 +131,7 @@ export const seasons = pgTable(
     check("ck_seasons_end_after_start", sql`${table.endDate} IS NULL OR ${table.endDate} >= ${table.startDate}`),
     check("ck_seasons_target_positive", sql`${table.targetWorkoutCountPerWeek} > 0`),
     check("ck_seasons_fine_non_negative", sql`${table.finePerMiss} >= 0`),
+    check("ck_seasons_week_start_day", sql`${table.weekStartDay} BETWEEN 0 AND 6`),
   ],
 );
 

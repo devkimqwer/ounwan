@@ -9,7 +9,7 @@ import { deleteStorageFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from
 
 import { db } from "./client";
 import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError, GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "./errors";
-import { groupInvites, groupJoinRequests, groupMembers, groups, notifications, postComments, postLikes, postMedia, pushSubscriptions, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
+import { bankAccounts, groupInvites, groupJoinRequests, groupMembers, groups, notifications, postComments, postLikes, postMedia, pushSubscriptions, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
 
 const GROUP_INVITE_EXPIRES_HOURS = 72;
 
@@ -60,6 +60,27 @@ type CreateSeasonInput = {
   targetWorkoutCountPerWeek: number;
   finePerMiss: number;
 };
+type UpdateSeasonRulesInput = {
+  seasonId: string;
+  weekStartDay: number;
+  dayStartTime: string;
+  dailyDuplicatePolicy: "count_once" | "count_all";
+  targetWorkoutCountPerWeek: number;
+  finePerMiss: number;
+};
+
+type UpdateBankAccountInfoInput = {
+  bankName: string;
+  accountNumber: string;
+  holderName: string;
+};
+
+type UpdateGroupMemberRolesInput = {
+  userId: string;
+  grantTreasurer: boolean;
+  delegateAdmin: boolean;
+};
+
 type CreateWorkoutPostInput = {
   workoutType?: string;
   content?: string;
@@ -652,6 +673,113 @@ export async function reviewGroupJoinRequest(requestId: string, decision: "appro
   });
 }
 
+export async function updateGroupMemberRoles(input: UpdateGroupMemberRolesInput) {
+  const context = await getCurrentGroupAdminContext();
+
+  if (!/^\d+$/.test(input.userId)) {
+    throw new Error("Invalid user id.");
+  }
+
+  const groupId = BigInt(context.groupId);
+  const targetUserId = BigInt(input.userId);
+  const now = new Date();
+
+  return db.transaction(async (tx) => {
+    const targetRows = await tx
+      .select({ roles: groupMembers.roles })
+      .from(groupMembers)
+      .innerJoin(users, eq(groupMembers.userId, users.id))
+      .where(
+        and(
+          eq(groupMembers.groupId, groupId),
+          eq(groupMembers.userId, targetUserId),
+          isNull(groupMembers.leftAt),
+          eq(users.status, "active"),
+          isNull(users.deletedAt),
+        ),
+      )
+      .limit(1);
+    const target = targetRows[0];
+
+    if (!target) {
+      throw new Error("Group member not found.");
+    }
+
+    let targetRoles = updateTreasurerRole(target.roles, input.grantTreasurer);
+
+    if (input.delegateAdmin && !targetRoles.includes("admin")) {
+      const adminRows = await tx
+        .select({ userId: groupMembers.userId, roles: groupMembers.roles })
+        .from(groupMembers)
+        .where(and(eq(groupMembers.groupId, groupId), isNull(groupMembers.leftAt), sql`${groupMembers.roles} @> ARRAY['admin']::member_role[]`));
+
+      for (const admin of adminRows) {
+        if (admin.userId === targetUserId) {
+          continue;
+        }
+
+        const nextRoles = ensureAtLeastMember(admin.roles.filter((role) => role !== "admin"));
+        await tx
+          .update(groupMembers)
+          .set({ roles: nextRoles, updatedAt: now })
+          .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, admin.userId)));
+      }
+
+      targetRoles = ensureRole(targetRoles, "admin");
+      await tx.update(groups).set({ ownerUserId: targetUserId, updatedAt: now }).where(eq(groups.id, groupId));
+    }
+
+    targetRoles = ensureAtLeastMember(targetRoles);
+    const rows = await tx
+      .update(groupMembers)
+      .set({ roles: targetRoles, updatedAt: now })
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, targetUserId), isNull(groupMembers.leftAt)))
+      .returning({ userId: groupMembers.userId, roles: groupMembers.roles });
+
+    if (!rows[0]) {
+      throw new Error("Group member roles were not updated.");
+    }
+
+    return { userId: rows[0].userId.toString(), roles: rows[0].roles };
+  });
+}
+
+export async function updateBankAccountInfo(input: UpdateBankAccountInfoInput) {
+  const context = await getCurrentGroupTreasurerContext();
+  const bankName = input.bankName.trim();
+  const accountNumber = input.accountNumber.trim();
+  const holderName = input.holderName.trim();
+
+  if (!bankName || !accountNumber || !holderName) {
+    throw new Error("Bank account info is required.");
+  }
+
+  const groupId = BigInt(context.groupId);
+  const userId = BigInt(context.userId);
+  const rows = await db
+    .insert(bankAccounts)
+    .values({
+      groupId,
+      bankName,
+      accountNumber,
+      holderName,
+      updatedByUserId: userId,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: bankAccounts.groupId,
+      set: {
+        bankName,
+        accountNumber,
+        holderName,
+        updatedByUserId: userId,
+        updatedAt: new Date(),
+      },
+    })
+    .returning({ groupId: bankAccounts.groupId });
+
+  return { groupId: rows[0].groupId.toString() };
+}
 export async function createSeason(input: CreateSeasonInput) {
   const context = await getCurrentGroupAdminContext();
   const seasonName = input.name.trim();
@@ -705,6 +833,33 @@ export async function createSeason(input: CreateSeasonInput) {
 
     return { id: seasonId.toString(), status: shouldActivateNow ? "active" as const : "pending" as const };
   });
+}
+
+export async function updateSeasonRules(input: UpdateSeasonRulesInput) {
+  const context = await getCurrentGroupAdminContext();
+
+  if (!/^\d+$/.test(input.seasonId)) {
+    throw new Error("Invalid season id.");
+  }
+
+  const rows = await db
+    .update(seasons)
+    .set({
+      weekStartDay: input.weekStartDay,
+      dayStartTime: input.dayStartTime,
+      dailyDuplicatePolicy: input.dailyDuplicatePolicy,
+      targetWorkoutCountPerWeek: input.targetWorkoutCountPerWeek,
+      finePerMiss: input.finePerMiss,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(seasons.id, BigInt(input.seasonId)), eq(seasons.groupId, BigInt(context.groupId)), ne(seasons.status, "closed")))
+    .returning({ id: seasons.id });
+
+  if (!rows[0]) {
+    throw new Error("Season not found.");
+  }
+
+  return { id: rows[0].id.toString() };
 }
 
 export async function activateCurrentGroupPendingSeason() {
@@ -1179,6 +1334,48 @@ export async function notifyWeeklySettlementCompleted(settlementId: string) {
   });
 }
 
+function updateTreasurerRole(roles: Array<"admin" | "treasurer" | "member">, grantTreasurer: boolean) {
+  return grantTreasurer ? ensureRole(roles, "treasurer") : roles.filter((role) => role !== "treasurer");
+}
+
+function ensureRole(roles: Array<"admin" | "treasurer" | "member">, role: "admin" | "treasurer" | "member") {
+  return roles.includes(role) ? roles : [...roles, role];
+}
+
+function ensureAtLeastMember(roles: Array<"admin" | "treasurer" | "member">) {
+  return roles.length > 0 ? roles : ["member" as const];
+}
+async function getCurrentGroupTreasurerContext() {
+  const context = await getCurrentMemberGroupContext();
+
+  if (!context.roles.includes("treasurer")) {
+    throw new Error("Only treasurers can manage bank account info.");
+  }
+
+  return context;
+}
+
+async function getCurrentMemberGroupContext() {
+  const userId = await requireCurrentUserId();
+  const selectedGroupId = await getCurrentGroupIdForUser(userId);
+  const membershipRows = await db
+    .select({ groupId: groupMembers.groupId, userId: groupMembers.userId, roles: groupMembers.roles })
+    .from(groupMembers)
+    .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+    .where(and(eq(groupMembers.userId, BigInt(userId)), isNull(groupMembers.leftAt), isNull(groups.deletedAt)))
+    .orderBy(desc(groupMembers.updatedAt), desc(groups.id));
+  const membership = membershipRows.find((row) => row.groupId.toString() === selectedGroupId) ?? membershipRows[0];
+
+  if (!membership) {
+    throw new CurrentUserMembershipNotFoundError();
+  }
+
+  return {
+    userId: membership.userId.toString(),
+    groupId: membership.groupId.toString(),
+    roles: membership.roles,
+  };
+}
 async function getCurrentGroupAdminContext() {
   const userId = await requireCurrentUserId();
   const selectedGroupId = await getCurrentGroupIdForUser(userId);

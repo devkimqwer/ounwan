@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { getCurrentUserNotificationPage } from "@/db/queries";
-import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, getOrCreateCurrentGroupInvite, leaveGroup, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateCurrentUserProfile } from "@/db/commands";
+import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, getOrCreateCurrentGroupInvite, leaveGroup, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateGroupMemberRoles, updateSeasonRules } from "@/db/commands";
 import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
@@ -13,6 +13,7 @@ const MAX_POST_COMMENT_LENGTH = 500;
 const MAX_DISPLAY_NAME_LENGTH = 20;
 const MAX_GROUP_NAME_LENGTH = 30;
 const MAX_SEASON_NAME_LENGTH = 30;
+const MAX_BANK_ACCOUNT_FIELD_LENGTH = 100;
 
 export type CreateGroupState = {
   status: "idle" | "success" | "error";
@@ -43,6 +44,17 @@ export type SeasonCommandState = {
   status: "success" | "error";
   message: string;
 };
+
+export type UpdateSeasonRulesState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
+export type UpdateBankAccountInfoState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
 export type CreateGroupInviteState = {
   status: "idle" | "success" | "error";
   message: string;
@@ -55,6 +67,44 @@ export type CreatePostCommentState = {
   message: string;
 };
 
+export type UpdateGroupMemberRolesState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
+export async function updateBankAccountInfoAction(
+  _previousState: UpdateBankAccountInfoState,
+  formData: FormData,
+): Promise<UpdateBankAccountInfoState> {
+  const bankName = String(formData.get("bankName") ?? "").trim();
+  const accountNumber = String(formData.get("accountNumber") ?? "").trim();
+  const holderName = String(formData.get("holderName") ?? "").trim();
+
+  if (!bankName) {
+    return { status: "error", message: "은행을 입력해주세요." };
+  }
+
+  if (!holderName) {
+    return { status: "error", message: "예금주를 입력해주세요." };
+  }
+
+  if (!accountNumber) {
+    return { status: "error", message: "계좌번호를 입력해주세요." };
+  }
+
+  if ([bankName, accountNumber, holderName].some((value) => value.length > MAX_BANK_ACCOUNT_FIELD_LENGTH)) {
+    return { status: "error", message: "계좌 정보는 항목별 100자 이내로 입력해주세요." };
+  }
+
+  try {
+    await updateBankAccountInfo({ bankName, accountNumber, holderName });
+    revalidatePath("/");
+    return { status: "success", message: "계좌 정보가 저장됐습니다." };
+  } catch (error) {
+    console.error("[ounwan error]", error);
+    return { status: "error", message: "계좌 정보를 저장할 수 없습니다." };
+  }
+}
 export async function createGroupAction(
   _previousState: CreateGroupState,
   formData: FormData,
@@ -123,10 +173,6 @@ export async function createSeasonAction(
     return { status: "error", message: "시작일은 오늘 또는 이후 일자로 선택해주세요." };
   }
 
-  if (!Number.isInteger(targetWorkoutCountPerWeek) || targetWorkoutCountPerWeek < 1 || targetWorkoutCountPerWeek > 7) {
-    return { status: "error", message: "주간 목표는 1~7회로 입력해주세요." };
-  }
-
   if (!Number.isInteger(finePerMiss) || finePerMiss < 0) {
     return { status: "error", message: "벌금은 0원 이상으로 입력해주세요." };
   }
@@ -149,6 +195,59 @@ export async function createSeasonAction(
     return { status: "error", message: "시즌을 생성할 수 없습니다." };
   }
 }
+export async function updateSeasonRulesAction(
+  _previousState: UpdateSeasonRulesState,
+  formData: FormData,
+): Promise<UpdateSeasonRulesState> {
+  const seasonId = String(formData.get("seasonId") ?? "").trim();
+  const weekStartDay = Number(formData.get("weekStartDay"));
+  const dayStartTime = String(formData.get("dayStartTime") ?? "").trim();
+  const dailyDuplicatePolicy = String(formData.get("dailyDuplicatePolicy") ?? "").trim();
+  const targetWorkoutCountPerWeek = Number(formData.get("targetWorkoutCountPerWeek"));
+  const finePerMiss = Number(formData.get("finePerMiss"));
+
+  if (!/^\d+$/.test(seasonId)) {
+    return { status: "error", message: "시즌 정보를 확인할 수 없습니다." };
+  }
+
+  if (!Number.isInteger(weekStartDay) || weekStartDay < 0 || weekStartDay > 6) {
+    return { status: "error", message: "한 주의 시작요일을 선택해주세요." };
+  }
+
+  if (!/^\d{2}:\d{2}$/.test(dayStartTime)) {
+    return { status: "error", message: "하루의 시작 시각을 입력해주세요." };
+  }
+
+  const [hour, minute] = dayStartTime.split(":").map(Number);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return { status: "error", message: "하루의 시작 시각을 확인해주세요." };
+  }
+
+  if (dailyDuplicatePolicy !== "count_once" && dailyDuplicatePolicy !== "count_all") {
+    return { status: "error", message: "중복 인증 처리 방식을 선택해주세요." };
+  }
+
+  if (!Number.isInteger(finePerMiss) || finePerMiss < 0) {
+    return { status: "error", message: "벌금은 0원 이상으로 입력해주세요." };
+  }
+
+  try {
+    await updateSeasonRules({
+      seasonId,
+      weekStartDay,
+      dayStartTime,
+      dailyDuplicatePolicy,
+      targetWorkoutCountPerWeek,
+      finePerMiss,
+    });
+    revalidatePath("/");
+    return { status: "success", message: "시즌 규칙이 저장됐습니다." };
+  } catch (error) {
+    console.error("[ounwan error]", error);
+    return { status: "error", message: "시즌 규칙을 저장할 수 없습니다." };
+  }
+}
+
 export async function activatePendingSeasonAction(): Promise<SeasonCommandState> {
   try {
     await activateCurrentGroupPendingSeason();
@@ -322,6 +421,26 @@ export async function deleteGroupAction(formData: FormData): Promise<DeleteGroup
     return { status: "error", message: "그룹을 삭제할 수 없습니다." };
   }
 }
+
+export async function updateGroupMemberRolesAction(formData: FormData): Promise<UpdateGroupMemberRolesState> {
+  const userId = String(formData.get("userId") ?? "").trim();
+  const grantTreasurer = formData.get("grantTreasurer") === "on";
+  const delegateAdmin = formData.get("delegateAdmin") === "on";
+
+  if (!/^\d+$/.test(userId)) {
+    return { status: "error", message: "멤버 정보를 확인할 수 없습니다." };
+  }
+
+  try {
+    await updateGroupMemberRoles({ userId, grantTreasurer, delegateAdmin });
+    revalidatePath("/");
+    return { status: "success", message: "역할이 변경됐습니다." };
+  } catch (error) {
+    console.error("[ounwan error]", error);
+    return { status: "error", message: "역할을 변경할 수 없습니다." };
+  }
+}
+
 export async function reviewGroupJoinRequestAction(formData: FormData) {
   const requestId = String(formData.get("requestId") ?? "").trim();
   const decision = String(formData.get("decision") ?? "").trim();
