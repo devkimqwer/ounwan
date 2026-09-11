@@ -73,7 +73,7 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
     isAdmin ? getAdminGroupMembers({ status: "all" }) : Promise.resolve([]),
     season ? getWorkoutPosts(group.id, season.id, currentUser.id) : Promise.resolve([]),
     season ? getWeeklyUserWorkoutStatus(group.id, season, currentUser.id) : Promise.resolve(undefined),
-    season ? getLatestSettlement(group.id, season.id) : Promise.resolve(undefined),
+    season ? getLatestSettlement(group.id, season) : Promise.resolve(undefined),
     getBankRecords(group.id),
     getAccountInfo(group.id),
     getCurrentUserNotificationPage(),
@@ -673,11 +673,11 @@ async function getWorkoutPosts(groupId: string, seasonId: string, currentUserId:
   });
 }
 
-async function getLatestSettlement(groupId: string, seasonId: string): Promise<Settlement> {
+async function getLatestSettlement(groupId: string, season: Season): Promise<Settlement> {
   const rows = await db
     .select()
     .from(weeklySettlements)
-    .where(and(eq(weeklySettlements.groupId, BigInt(groupId)), eq(weeklySettlements.seasonId, BigInt(seasonId))))
+    .where(and(eq(weeklySettlements.groupId, BigInt(groupId)), eq(weeklySettlements.seasonId, BigInt(season.id))))
     .orderBy(desc(weeklySettlements.weekStartDate))
     .limit(1);
 
@@ -694,11 +694,11 @@ async function getLatestSettlement(groupId: string, seasonId: string): Promise<S
     };
   }
 
-  const weekRange = getKoreanWeekRange();
+  const weekRange = getKoreanWeekRange(getCurrentKoreanWorkoutDate(season.dayStartTime), season.weekStartDay);
   return {
     id: "",
     groupId,
-    seasonId,
+    seasonId: season.id,
     weekStartDate: weekRange.weekStartDate,
     weekEndDate: weekRange.weekEndDate,
     status: "draft",
@@ -706,7 +706,7 @@ async function getLatestSettlement(groupId: string, seasonId: string): Promise<S
 }
 
 async function getWeeklyUserWorkoutStatus(groupId: string, season: Season, userId: string): Promise<WeeklyUserWorkoutStatus> {
-  const weekRange = getKoreanWeekRange();
+  const weekRange = getKoreanWeekRange(getCurrentKoreanWorkoutDate(season.dayStartTime), season.weekStartDay);
   const rows = await db
     .select({ workoutDate: workoutPosts.workoutDate })
     .from(workoutPosts)
@@ -721,7 +721,9 @@ async function getWeeklyUserWorkoutStatus(groupId: string, season: Season, userI
         lte(workoutPosts.workoutDate, weekRange.weekEndDate),
       ),
     );
-  const validWorkoutCount = new Set(rows.map((row) => row.workoutDate)).size;
+  const validWorkoutCount = season.dailyDuplicatePolicy === "count_all"
+    ? rows.length
+    : new Set(rows.map((row) => row.workoutDate)).size;
   const missedCount = Math.max(season.targetWorkoutCountPerWeek - validWorkoutCount, 0);
 
   return {
@@ -787,18 +789,38 @@ async function getAccountInfo(groupId: string): Promise<AccountInfo> {
     holderName: rows[0].holderName,
   };
 }
-function getKoreanWeekRange(date = new Date()) {
+function getCurrentKoreanWorkoutDate(dayStartTime: string, now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).formatToParts(date);
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
   const partMap = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  const baseDate = new Date(Date.UTC(Number(partMap.year), Number(partMap.month) - 1, Number(partMap.day)));
-  const day = baseDate.getUTCDay();
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  baseDate.setUTCDate(baseDate.getUTCDate() + mondayOffset);
+  const date = new Date(Date.UTC(Number(partMap.year), Number(partMap.month) - 1, Number(partMap.day)));
+  const secondOfDay = Number(partMap.hour) * 3600 + Number(partMap.minute) * 60 + Number(partMap.second);
+
+  if (secondOfDay < parseTimeToSecondOfDay(dayStartTime)) {
+    date.setUTCDate(date.getUTCDate() - 1);
+  }
+
+  return date;
+}
+
+function getKoreanWeekRange(date = new Date(), weekStartDay = 0) {
+  const baseDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const dayIndexFromMonday = (baseDate.getUTCDay() + 6) % 7;
+  let startOffset = weekStartDay - dayIndexFromMonday;
+
+  if (startOffset > 0) {
+    startOffset -= 7;
+  }
+
+  baseDate.setUTCDate(baseDate.getUTCDate() + startOffset);
 
   const endDate = new Date(baseDate);
   endDate.setUTCDate(baseDate.getUTCDate() + 6);
@@ -807,4 +829,9 @@ function getKoreanWeekRange(date = new Date()) {
     weekStartDate: baseDate.toISOString().slice(0, 10),
     weekEndDate: endDate.toISOString().slice(0, 10),
   };
+}
+
+function parseTimeToSecondOfDay(value: string) {
+  const [hour = "0", minute = "0", second = "0"] = value.split(":");
+  return Number(hour) * 3600 + Number(minute) * 60 + Number(second);
 }

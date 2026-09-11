@@ -1046,7 +1046,7 @@ export async function createWorkoutPost(input: CreateWorkoutPostInput) {
       groupId: BigInt(context.groupId),
       seasonId: BigInt(context.seasonId),
       userId: BigInt(context.userId),
-      workoutDate: getKoreanWorkoutDate(),
+      workoutDate: getKoreanWorkoutDate(new Date(), context.dayStartTime),
       workoutType: input.workoutType ?? null,
       content: input.content,
     })
@@ -1485,7 +1485,7 @@ async function getCurrentSeedContext() {
   }
 
   const seasonRows = await db
-    .select({ id: seasons.id })
+    .select({ id: seasons.id, dayStartTime: seasons.dayStartTime })
     .from(seasons)
     .where(and(eq(seasons.groupId, membership.groupId), eq(seasons.status, "active")))
     .limit(1);
@@ -1498,6 +1498,7 @@ async function getCurrentSeedContext() {
     userId: membership.userId.toString(),
     groupId: membership.groupId.toString(),
     seasonId: seasonRows[0].id.toString(),
+    dayStartTime: seasonRows[0].dayStartTime,
     roles: membership.roles,
   };
 }
@@ -1614,27 +1615,34 @@ async function notifySeasonParticipants(executor: NotificationExecutor, seasonId
     })),
   );
 }
-function getKoreanWorkoutDate(now = new Date()) {
+function getKoreanWorkoutDate(now = new Date(), dayStartTime = "03:00:00") {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
     hourCycle: "h23",
   }).formatToParts(now);
   const partMap = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   const year = Number(partMap.year);
   const month = Number(partMap.month);
   const day = Number(partMap.day);
-  const hour = Number(partMap.hour);
+  const secondOfDay = Number(partMap.hour) * 3600 + Number(partMap.minute) * 60 + Number(partMap.second);
   const date = new Date(Date.UTC(year, month - 1, day));
 
-  if (hour < 3) {
+  if (secondOfDay < parseTimeToSecondOfDay(dayStartTime)) {
     date.setUTCDate(date.getUTCDate() - 1);
   }
 
   return date.toISOString().slice(0, 10);
+}
+
+function parseTimeToSecondOfDay(value: string) {
+  const [hour = "0", minute = "0", second = "0"] = value.split(":");
+  return Number(hour) * 3600 + Number(minute) * 60 + Number(second);
 }
 async function activatePendingSeasonForGroup(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], groupId: bigint, activationDate: string) {
   const activeSeasonRows = await tx
