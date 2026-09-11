@@ -15,12 +15,12 @@ export const CURRENT_GROUP_ID = "group-ounwan";
 export const CURRENT_SEASON_ID = "season-2026-3";
 
 export const users: User[] = [
-  { id: "user-1", kakaoId: "kakao-1", name: "김지수" },
-  { id: "user-2", kakaoId: "kakao-2", name: "박은영" },
-  { id: "user-3", kakaoId: "kakao-3", name: "이철수" },
-  { id: "user-4", kakaoId: "kakao-4", name: "최민준" },
-  { id: "user-5", kakaoId: "kakao-5", name: "정수아" },
-  { id: "user-6", kakaoId: "kakao-6", name: "한태양" },
+  { id: "user-1", publicId: "USER000001", kakaoId: "kakao-1", name: "김지수" },
+  { id: "user-2", publicId: "USER000002", kakaoId: "kakao-2", name: "박은영" },
+  { id: "user-3", publicId: "USER000003", kakaoId: "kakao-3", name: "이철수" },
+  { id: "user-4", publicId: "USER000004", kakaoId: "kakao-4", name: "최민준" },
+  { id: "user-5", publicId: "USER000005", kakaoId: "kakao-5", name: "정수아" },
+  { id: "user-6", publicId: "USER000006", kakaoId: "kakao-6", name: "한태양" },
 ];
 
 export const groups: Group[] = [

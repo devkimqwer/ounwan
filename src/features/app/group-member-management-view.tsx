@@ -1,7 +1,8 @@
 import { type FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { createGroupInviteAction, regenerateGroupInviteAction, reviewGroupJoinRequestAction, updateGroupMemberRolesAction } from "@/app/actions";
+import { createGroupInviteAction, expelGroupMemberAction, regenerateGroupInviteAction, reviewGroupJoinRequestAction, updateGroupMemberRolesAction } from "@/app/actions";
+import type { ExpelGroupMemberState } from "@/app/actions";
 import type { AdminGroupMember, AdminGroupMemberStatus, AdminGroupMemberStatusFilter } from "@/domain/models";
 import { formatSystemDate, formatSystemDateTime } from "@/lib/date-format";
 import { AppDialog } from "@/components/ui/app-dialog";
@@ -14,6 +15,8 @@ type GroupMemberManagementViewProps = {
 
 type MemberStatusFilter = AdminGroupMemberStatusFilter;
 type ReviewDecision = "approve" | "reject";
+
+const expelInitialState: ExpelGroupMemberState = { status: "idle", message: "" };
 
 const statusFilterOptions: Array<{ value: MemberStatusFilter; label: string }> = [
   { value: "approved", label: "승인" },
@@ -29,10 +32,13 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
   const [memberMenu, setMemberMenu] = useState<AdminGroupMember | null>(null);
   const [reviewTarget, setReviewTarget] = useState<{ member: AdminGroupMember; decision: ReviewDecision } | null>(null);
   const [roleTarget, setRoleTarget] = useState<AdminGroupMember | null>(null);
+  const [expelTarget, setExpelTarget] = useState<AdminGroupMember | null>(null);
   const [reviewError, setReviewError] = useState("");
   const [isReviewSubmitting, setIsReviewSubmitting] = useState(false);
   const [roleError, setRoleError] = useState("");
   const [isRoleSubmitting, setIsRoleSubmitting] = useState(false);
+  const [expelState, setExpelState] = useState<ExpelGroupMemberState>(expelInitialState);
+  const [isExpelSubmitting, setIsExpelSubmitting] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
   const [inviteExpiresAt, setInviteExpiresAt] = useState<string | undefined>();
@@ -55,7 +61,7 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
         return true;
       }
 
-      return [member.user.name, member.user.id, member.user.kakaoId]
+      return [member.user.name, member.user.publicId]
         .filter(Boolean)
         .some((value) => value.toLowerCase().includes(normalizedKeyword));
     });
@@ -139,6 +145,17 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
     setRoleTarget(member);
   };
 
+  const handleExpelOpen = (member: AdminGroupMember) => {
+    setMemberMenu(null);
+    setExpelState(expelInitialState);
+    setExpelTarget(member);
+  };
+
+  const handleStatusFilterChange = (nextStatusFilter: MemberStatusFilter) => {
+    setStatusFilter(nextStatusFilter);
+    router.refresh();
+  };
+
   const handleRoleChangeSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!roleTarget || isRoleSubmitting) {
@@ -169,6 +186,31 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
     }
   };
 
+  const handleExpelConfirm = async () => {
+    if (!expelTarget || isExpelSubmitting) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.set("userId", expelTarget.user.id);
+    setIsExpelSubmitting(true);
+    setExpelState(expelInitialState);
+
+    try {
+      const result = await expelGroupMemberAction(formData);
+      setExpelState(result);
+      if (result.status === "error") {
+        return;
+      }
+
+      setExpelTarget(null);
+      router.refresh();
+    } catch {
+      setExpelState({ status: "error", message: "멤버를 추방할 수 없습니다." });
+    } finally {
+      setIsExpelSubmitting(false);
+    }
+  };
   const handleReviewConfirm = async () => {
     if (!reviewTarget?.member.requestId || isReviewSubmitting) {
       return;
@@ -221,7 +263,7 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
                 type="button"
                 className={`relative min-h-10 rounded-xl text-sm font-extrabold ${selected ? "bg-white text-[#51438f] shadow-sm" : "text-slate-500"}`}
                 aria-label={option.value === "pending" && pendingMemberCount > 0 ? `${option.label} ${pendingMemberCount}건` : option.label}
-                onClick={() => setStatusFilter(option.value)}
+                onClick={() => handleStatusFilterChange(option.value)}
               >
                 <span className="inline-flex items-center gap-1.5">
                   {option.label}
@@ -279,8 +321,9 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
         onClose={() => setRegenerateInviteDialogOpen(false)}
       />
       <MemberDetailDialog member={selectedMember} onClose={() => setSelectedMember(null)} />
-      <MemberMenuDialog member={memberMenu} onReview={handleReviewOpen} onRoleChange={handleRoleChangeOpen} onClose={() => setMemberMenu(null)} />
+      <MemberMenuDialog member={memberMenu} onReview={handleReviewOpen} onRoleChange={handleRoleChangeOpen} onExpel={handleExpelOpen} onClose={() => setMemberMenu(null)} />
       <RoleChangeDialog target={roleTarget} error={roleError} submitting={isRoleSubmitting} onSubmit={handleRoleChangeSubmit} onClose={() => setRoleTarget(null)} />
+      <ExpelMemberDialog target={expelTarget} state={expelState} submitting={isExpelSubmitting} onConfirm={handleExpelConfirm} onClose={() => setExpelTarget(null)} />
       <JoinRequestReviewDialog target={reviewTarget} error={reviewError} submitting={isReviewSubmitting} onConfirm={handleReviewConfirm} onClose={() => setReviewTarget(null)} />
     </div>
   );
@@ -310,7 +353,7 @@ function GroupMemberRow({ member, onOpen, onOpenMenu }: { member: AdminGroupMemb
             <p className="truncate text-sm font-extrabold text-slate-950">{member.user.name}</p>
             <MemberStatusBadge status={member.status} />
           </div>
-          <p className="mt-0.5 truncate text-xs font-semibold text-slate-400">@{member.user.id}</p>
+          <p className="mt-0.5 truncate text-xs font-semibold text-slate-400">@{member.user.publicId}</p>
           <div className="mt-1 flex flex-wrap gap-1.5">
             {member.roles.length > 0 ? (
               member.roles.map((role) => (
@@ -453,7 +496,7 @@ function MemberDetailDialog({ member, onClose }: { member: AdminGroupMember | nu
     <AppDialog open={Boolean(member)} title={member?.user.name ?? "멤버 상세"} onClose={onClose} dismissOnBackdrop actions={[{ label: "닫기", onClick: onClose }]}>
       {member && (
         <div className="space-y-3">
-          <MemberInfoRow label="ID" value={`@${member.user.id}`} />
+          <MemberInfoRow label="ID" value={`@${member.user.publicId}`} />
           <MemberInfoRow label="상태" value={member.status === "approved" ? "승인된 멤버" : "승인 대기"} />
           {member.joinedAt && <MemberInfoRow label="가입일" value={formatSystemDate(member.joinedAt)} />}
           {member.requestedAt && <MemberInfoRow label="요청일" value={formatSystemDateTime(member.requestedAt)} />}
@@ -467,11 +510,13 @@ function MemberMenuDialog({
   member,
   onReview,
   onRoleChange,
+  onExpel,
   onClose,
 }: {
   member: AdminGroupMember | null;
   onReview: (member: AdminGroupMember, decision: ReviewDecision) => void;
   onRoleChange: (member: AdminGroupMember) => void;
+  onExpel: (member: AdminGroupMember) => void;
   onClose: () => void;
 }) {
   return (
@@ -484,13 +529,59 @@ function MemberMenuDialog({
       ) : (
         <div className="space-y-1">
           <MemberMenuButton label="역할 변경" onClick={() => member && onRoleChange(member)} />
-          <MemberMenuButton label="추방하기" badge="준비중" onClick={onClose} />
+          {member && !member.isCurrentUser && <MemberMenuButton label="추방하기" onClick={() => onExpel(member)} />}
         </div>
       )}
     </AppDialog>
   );
 }
 
+function ExpelMemberDialog({
+  target,
+  state,
+  submitting,
+  onConfirm,
+  onClose,
+}: {
+  target: AdminGroupMember | null;
+  state: ExpelGroupMemberState;
+  submitting: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <AppDialog
+      open={Boolean(target)}
+      title="멤버 추방"
+      description={target ? `${target.user.name}님을 그룹에서 추방하시겠습니까?` : undefined}
+      onClose={onClose}
+      dismissOnBackdrop={!submitting}
+      role="alertdialog"
+      footer={
+        <>
+          <button
+            type="button"
+            disabled={submitting}
+            className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-950 disabled:bg-slate-100 disabled:text-slate-400"
+            onClick={onClose}
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            disabled={submitting || !target}
+            className="min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-extrabold text-white disabled:bg-slate-200 disabled:text-slate-400"
+            onClick={onConfirm}
+          >
+            {submitting ? "처리 중" : "추방"}
+          </button>
+        </>
+      }
+    >
+      {state.message && <p className={`text-sm font-bold ${state.status === "error" ? "text-red-500" : "text-slate-500"}`}>{state.message}</p>}
+    </AppDialog>
+  );
+}
 function RoleChangeDialog({
   target,
   error,
@@ -516,7 +607,7 @@ function RoleChangeDialog({
           <Avatar name={target?.user.name ?? "멤버"} imageUrl={target?.user.avatarUrl} size="sm" />
           <div className="min-w-0">
             <p className="truncate text-sm font-extrabold text-slate-950">{target?.user.name}</p>
-            <p className="mt-0.5 text-xs font-semibold text-slate-400">@{target?.user.id}</p>
+            <p className="mt-0.5 text-xs font-semibold text-slate-400">@{target?.user.publicId}</p>
           </div>
         </div>
 

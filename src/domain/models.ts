@@ -4,6 +4,7 @@ export type GroupVisibility = "private" | "public";
 
 export interface User {
   id: string;
+  publicId: string;
   kakaoId: string;
   name: string;
   avatarUrl?: string;
@@ -38,6 +39,7 @@ export interface AdminGroupMember {
   status: AdminGroupMemberStatus;
   user: User;
   roles: Role[];
+  isCurrentUser?: boolean;
   joinedAt?: string;
   leftAt?: string;
   requestedAt?: string;

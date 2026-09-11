@@ -81,6 +81,10 @@ type UpdateGroupMemberRolesInput = {
   delegateAdmin: boolean;
 };
 
+type ExpelGroupMemberInput = {
+  userId: string;
+};
+
 type CreateWorkoutPostInput = {
   workoutType?: string;
   content?: string;
@@ -744,6 +748,69 @@ export async function updateGroupMemberRoles(input: UpdateGroupMemberRolesInput)
   });
 }
 
+export async function expelGroupMember(input: ExpelGroupMemberInput) {
+  const context = await getCurrentGroupAdminContext();
+
+  if (!/^\d+$/.test(input.userId)) {
+    throw new Error("Invalid user id.");
+  }
+
+  if (input.userId === context.userId) {
+    throw new Error("Admins cannot expel themselves.");
+  }
+
+  const groupId = BigInt(context.groupId);
+  const targetUserId = BigInt(input.userId);
+  const now = new Date();
+  const leftAt = getKoreanDate(now);
+
+  return db.transaction(async (tx) => {
+    const targetRows = await tx
+      .select({ roles: groupMembers.roles })
+      .from(groupMembers)
+      .innerJoin(users, eq(groupMembers.userId, users.id))
+      .where(
+        and(
+          eq(groupMembers.groupId, groupId),
+          eq(groupMembers.userId, targetUserId),
+          isNull(groupMembers.leftAt),
+          eq(users.status, "active"),
+          isNull(users.deletedAt),
+        ),
+      )
+      .limit(1);
+    const target = targetRows[0];
+
+    if (!target) {
+      throw new Error("Group member not found.");
+    }
+
+    if (target.roles.includes("admin")) {
+      throw new Error("Admins cannot be expelled.");
+    }
+
+    const rows = await tx
+      .update(groupMembers)
+      .set({ leftAt, updatedAt: now })
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, targetUserId), isNull(groupMembers.leftAt)))
+      .returning({ userId: groupMembers.userId });
+
+    if (!rows[0]) {
+      throw new Error("Group member was not expelled.");
+    }
+
+    const activeSeasonRows = await tx.select({ id: seasons.id }).from(seasons).where(and(eq(seasons.groupId, groupId), eq(seasons.status, "active"))).limit(1);
+    const activeSeason = activeSeasonRows[0];
+    if (activeSeason) {
+      await tx
+        .update(seasonParticipantPeriods)
+        .set({ endDate: leftAt })
+        .where(and(eq(seasonParticipantPeriods.seasonId, activeSeason.id), eq(seasonParticipantPeriods.userId, targetUserId), isNull(seasonParticipantPeriods.endDate)));
+    }
+
+    return { userId: rows[0].userId.toString() };
+  });
+}
 export async function updateBankAccountInfo(input: UpdateBankAccountInfoInput) {
   const context = await getCurrentGroupTreasurerContext();
   const bankName = input.bankName.trim();
@@ -979,7 +1046,7 @@ export async function createWorkoutPost(input: CreateWorkoutPostInput) {
       groupId: BigInt(context.groupId),
       seasonId: BigInt(context.seasonId),
       userId: BigInt(context.userId),
-      workoutDate: getKoreanWorkoutDate(),
+      workoutDate: getKoreanWorkoutDate(new Date(), context.dayStartTime),
       workoutType: input.workoutType ?? null,
       content: input.content,
     })
@@ -1418,7 +1485,7 @@ async function getCurrentSeedContext() {
   }
 
   const seasonRows = await db
-    .select({ id: seasons.id })
+    .select({ id: seasons.id, dayStartTime: seasons.dayStartTime })
     .from(seasons)
     .where(and(eq(seasons.groupId, membership.groupId), eq(seasons.status, "active")))
     .limit(1);
@@ -1431,6 +1498,7 @@ async function getCurrentSeedContext() {
     userId: membership.userId.toString(),
     groupId: membership.groupId.toString(),
     seasonId: seasonRows[0].id.toString(),
+    dayStartTime: seasonRows[0].dayStartTime,
     roles: membership.roles,
   };
 }
@@ -1547,27 +1615,34 @@ async function notifySeasonParticipants(executor: NotificationExecutor, seasonId
     })),
   );
 }
-function getKoreanWorkoutDate(now = new Date()) {
+function getKoreanWorkoutDate(now = new Date(), dayStartTime = "03:00:00") {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
     hourCycle: "h23",
   }).formatToParts(now);
   const partMap = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   const year = Number(partMap.year);
   const month = Number(partMap.month);
   const day = Number(partMap.day);
-  const hour = Number(partMap.hour);
+  const secondOfDay = Number(partMap.hour) * 3600 + Number(partMap.minute) * 60 + Number(partMap.second);
   const date = new Date(Date.UTC(year, month - 1, day));
 
-  if (hour < 3) {
+  if (secondOfDay < parseTimeToSecondOfDay(dayStartTime)) {
     date.setUTCDate(date.getUTCDate() - 1);
   }
 
   return date.toISOString().slice(0, 10);
+}
+
+function parseTimeToSecondOfDay(value: string) {
+  const [hour = "0", minute = "0", second = "0"] = value.split(":");
+  return Number(hour) * 3600 + Number(minute) * 60 + Number(second);
 }
 async function activatePendingSeasonForGroup(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], groupId: bigint, activationDate: string) {
   const activeSeasonRows = await tx

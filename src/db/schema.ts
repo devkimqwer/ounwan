@@ -39,14 +39,19 @@ const timestamps = {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 };
 
-export const users = pgTable("users", {
-  id: bigserial("id", { mode: "bigint" }).primaryKey(),
-  displayName: varchar("display_name", { length: 100 }).notNull(),
-  avatarStorageKey: text("avatar_storage_key"),
-  status: userStatusEnum("status").notNull().default("active"),
-  ...timestamps,
-  deletedAt: timestamp("deleted_at", { withTimezone: true }),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: bigserial("id", { mode: "bigint" }).primaryKey(),
+    publicId: varchar("public_id", { length: 10 }).notNull(),
+    displayName: varchar("display_name", { length: 100 }).notNull(),
+    avatarStorageKey: text("avatar_storage_key"),
+    status: userStatusEnum("status").notNull().default("active"),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [uniqueIndex("ux_users_public_id").on(table.publicId)],
+);
 
 export const oauthAccounts = pgTable(
   "oauth_accounts",

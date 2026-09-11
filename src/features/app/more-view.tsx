@@ -308,7 +308,7 @@ export function MoreView({
                 ))}
               </div>
             </div>
-            <p className="mt-0.5 text-xs font-semibold text-slate-400">@{currentUser.id}</p>
+            <p className="mt-0.5 text-xs font-semibold text-slate-400">@{currentUser.publicId}</p>
             <button
               type="button"
               className="mt-3 inline-flex max-w-full items-center gap-2 rounded-xl px-0 py-1 text-left text-base font-extrabold text-slate-950"
@@ -739,7 +739,7 @@ function LeaveGroupDialog({
                 >
                   {delegateCandidates.map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.name} (@{user.id})
+                      {user.name} (@{user.publicId})
                     </option>
                   ))}
                 </select>

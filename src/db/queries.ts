@@ -73,7 +73,7 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
     isAdmin ? getAdminGroupMembers({ status: "all" }) : Promise.resolve([]),
     season ? getWorkoutPosts(group.id, season.id, currentUser.id) : Promise.resolve([]),
     season ? getWeeklyUserWorkoutStatus(group.id, season, currentUser.id) : Promise.resolve(undefined),
-    season ? getLatestSettlement(group.id, season.id) : Promise.resolve(undefined),
+    season ? getLatestSettlement(group.id, season) : Promise.resolve(undefined),
     getBankRecords(group.id),
     getAccountInfo(group.id),
     getCurrentUserNotificationPage(),
@@ -115,18 +115,18 @@ export async function getAdminGroupMembers(input: GetAdminGroupMembersInput = {}
 
   if (status === "all") {
     const [approvedMembers, pendingMembers] = await Promise.all([
-      getApprovedGroupMembers(context.groupId, keyword),
-      getPendingGroupMembers(context.groupId, keyword),
+      getApprovedGroupMembers(context.groupId, keyword, context.userId),
+      getPendingGroupMembers(context.groupId, keyword, context.userId),
     ]);
 
     return [...approvedMembers, ...pendingMembers];
   }
 
   if (status === "pending") {
-    return getPendingGroupMembers(context.groupId, keyword);
+    return getPendingGroupMembers(context.groupId, keyword, context.userId);
   }
 
-  return getApprovedGroupMembers(context.groupId, keyword);
+  return getApprovedGroupMembers(context.groupId, keyword, context.userId);
 }
 
 
@@ -242,6 +242,7 @@ export async function getValidGroupInviteByToken(inviteToken: string): Promise<G
     },
     createdByUser: {
       id: row.createdByUser.id.toString(),
+      publicId: row.createdByUser.publicId,
       kakaoId: row.createdByKakaoId ?? "",
       name: row.createdByUser.displayName,
       avatarUrl: row.createdByUser.avatarStorageKey ? `/uploads/${row.createdByUser.avatarStorageKey}?v=${row.createdByUser.updatedAt.getTime()}` : undefined,
@@ -298,7 +299,7 @@ function toAppNotification(row: typeof notifications.$inferSelect): AppNotificat
 function isNotificationActionType(value: string | null): value is NotificationActionType {
   return Boolean(value && notificationActionTypes.has(value as NotificationActionType));
 }
-async function getApprovedGroupMembers(groupId: string, keyword?: string): Promise<AdminGroupMember[]> {
+async function getApprovedGroupMembers(groupId: string, keyword: string | undefined, currentUserId: string): Promise<AdminGroupMember[]> {
   const conditions = [eq(groupMembers.groupId, BigInt(groupId)), isNull(groupMembers.leftAt), isNull(users.deletedAt)];
   const searchCondition = createUserSearchCondition(keyword);
 
@@ -319,12 +320,13 @@ async function getApprovedGroupMembers(groupId: string, keyword?: string): Promi
     status: "approved",
     user: toUser(user, kakaoId),
     roles: member.roles,
+    isCurrentUser: member.userId.toString() === currentUserId,
     joinedAt: member.joinedAt,
     leftAt: member.leftAt ?? undefined,
   }));
 }
 
-async function getPendingGroupMembers(groupId: string, keyword?: string): Promise<AdminGroupMember[]> {
+async function getPendingGroupMembers(groupId: string, keyword: string | undefined, currentUserId: string): Promise<AdminGroupMember[]> {
   const conditions = [eq(groupJoinRequests.groupId, BigInt(groupId)), eq(groupJoinRequests.status, "pending"), isNull(users.deletedAt)];
   const searchCondition = createUserSearchCondition(keyword);
 
@@ -345,6 +347,7 @@ async function getPendingGroupMembers(groupId: string, keyword?: string): Promis
     status: "pending",
     user: toUser(user, kakaoId),
     roles: [],
+    isCurrentUser: request.userId.toString() === currentUserId,
     requestedAt: request.requestedAt.toISOString(),
     requestId: request.id.toString(),
   }));
@@ -378,13 +381,14 @@ function createUserSearchCondition(keyword?: string) {
   }
 
   const pattern = `%${keyword}%`;
-  return or(ilike(users.displayName, pattern), ilike(oauthAccounts.providerUserId, pattern), sql`${users.id}::text ILIKE ${pattern}`);
+  return or(ilike(users.displayName, pattern), ilike(users.publicId, pattern));
 }
 async function getCurrentUser(): Promise<User> {
   const currentUserId = await requireCurrentUserId();
   const rows = await db
     .select({
       id: users.id,
+      publicId: users.publicId,
       kakaoId: oauthAccounts.providerUserId,
       displayName: users.displayName,
       avatarStorageKey: users.avatarStorageKey,
@@ -403,11 +407,12 @@ async function getCurrentUser(): Promise<User> {
 }
 
 function toUser(
-  user: Pick<typeof users.$inferSelect, "id" | "displayName" | "avatarStorageKey" | "updatedAt">,
+  user: Pick<typeof users.$inferSelect, "id" | "publicId" | "displayName" | "avatarStorageKey" | "updatedAt">,
   kakaoId?: string | null,
 ): User {
   return {
     id: user.id.toString(),
+    publicId: user.publicId,
     kakaoId: kakaoId ?? "",
     name: user.displayName,
     avatarUrl: user.avatarStorageKey ? `/uploads/${user.avatarStorageKey}?v=${user.updatedAt.getTime()}` : undefined,
@@ -507,6 +512,7 @@ async function getSeasonParticipants(groupId: string): Promise<SeasonParticipant
     seasonId: period.seasonId.toString(),
     user: {
       id: user.id.toString(),
+      publicId: user.publicId,
       kakaoId: kakaoId ?? "",
       name: user.displayName,
       avatarUrl: user.avatarStorageKey ? `/uploads/${user.avatarStorageKey}?v=${user.updatedAt.getTime()}` : undefined,
@@ -536,6 +542,7 @@ async function getGroupUsers(groupId: string): Promise<User[]> {
   const rows = await db
     .select({
       id: users.id,
+      publicId: users.publicId,
       kakaoId: oauthAccounts.providerUserId,
       displayName: users.displayName,
       avatarStorageKey: users.avatarStorageKey,
@@ -549,6 +556,7 @@ async function getGroupUsers(groupId: string): Promise<User[]> {
 
   return rows.map((row) => ({
     id: row.id.toString(),
+    publicId: row.publicId,
     kakaoId: row.kakaoId,
     name: row.displayName,
     avatarUrl: row.avatarStorageKey ? `/uploads/${row.avatarStorageKey}?v=${row.updatedAt.getTime()}` : undefined,
@@ -671,11 +679,11 @@ async function getWorkoutPosts(groupId: string, seasonId: string, currentUserId:
   });
 }
 
-async function getLatestSettlement(groupId: string, seasonId: string): Promise<Settlement> {
+async function getLatestSettlement(groupId: string, season: Season): Promise<Settlement> {
   const rows = await db
     .select()
     .from(weeklySettlements)
-    .where(and(eq(weeklySettlements.groupId, BigInt(groupId)), eq(weeklySettlements.seasonId, BigInt(seasonId))))
+    .where(and(eq(weeklySettlements.groupId, BigInt(groupId)), eq(weeklySettlements.seasonId, BigInt(season.id))))
     .orderBy(desc(weeklySettlements.weekStartDate))
     .limit(1);
 
@@ -692,11 +700,11 @@ async function getLatestSettlement(groupId: string, seasonId: string): Promise<S
     };
   }
 
-  const weekRange = getKoreanWeekRange();
+  const weekRange = getKoreanWeekRange(getCurrentKoreanWorkoutDate(season.dayStartTime), season.weekStartDay);
   return {
     id: "",
     groupId,
-    seasonId,
+    seasonId: season.id,
     weekStartDate: weekRange.weekStartDate,
     weekEndDate: weekRange.weekEndDate,
     status: "draft",
@@ -704,7 +712,7 @@ async function getLatestSettlement(groupId: string, seasonId: string): Promise<S
 }
 
 async function getWeeklyUserWorkoutStatus(groupId: string, season: Season, userId: string): Promise<WeeklyUserWorkoutStatus> {
-  const weekRange = getKoreanWeekRange();
+  const weekRange = getKoreanWeekRange(getCurrentKoreanWorkoutDate(season.dayStartTime), season.weekStartDay);
   const rows = await db
     .select({ workoutDate: workoutPosts.workoutDate })
     .from(workoutPosts)
@@ -719,7 +727,9 @@ async function getWeeklyUserWorkoutStatus(groupId: string, season: Season, userI
         lte(workoutPosts.workoutDate, weekRange.weekEndDate),
       ),
     );
-  const validWorkoutCount = new Set(rows.map((row) => row.workoutDate)).size;
+  const validWorkoutCount = season.dailyDuplicatePolicy === "count_all"
+    ? rows.length
+    : new Set(rows.map((row) => row.workoutDate)).size;
   const missedCount = Math.max(season.targetWorkoutCountPerWeek - validWorkoutCount, 0);
 
   return {
@@ -785,18 +795,38 @@ async function getAccountInfo(groupId: string): Promise<AccountInfo> {
     holderName: rows[0].holderName,
   };
 }
-function getKoreanWeekRange(date = new Date()) {
+function getCurrentKoreanWorkoutDate(dayStartTime: string, now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).formatToParts(date);
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
   const partMap = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  const baseDate = new Date(Date.UTC(Number(partMap.year), Number(partMap.month) - 1, Number(partMap.day)));
-  const day = baseDate.getUTCDay();
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  baseDate.setUTCDate(baseDate.getUTCDate() + mondayOffset);
+  const date = new Date(Date.UTC(Number(partMap.year), Number(partMap.month) - 1, Number(partMap.day)));
+  const secondOfDay = Number(partMap.hour) * 3600 + Number(partMap.minute) * 60 + Number(partMap.second);
+
+  if (secondOfDay < parseTimeToSecondOfDay(dayStartTime)) {
+    date.setUTCDate(date.getUTCDate() - 1);
+  }
+
+  return date;
+}
+
+function getKoreanWeekRange(date = new Date(), weekStartDay = 0) {
+  const baseDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const dayIndexFromMonday = (baseDate.getUTCDay() + 6) % 7;
+  let startOffset = weekStartDay - dayIndexFromMonday;
+
+  if (startOffset > 0) {
+    startOffset -= 7;
+  }
+
+  baseDate.setUTCDate(baseDate.getUTCDate() + startOffset);
 
   const endDate = new Date(baseDate);
   endDate.setUTCDate(baseDate.getUTCDate() + 6);
@@ -805,4 +835,9 @@ function getKoreanWeekRange(date = new Date()) {
     weekStartDate: baseDate.toISOString().slice(0, 10),
     weekEndDate: endDate.toISOString().slice(0, 10),
   };
+}
+
+function parseTimeToSecondOfDay(value: string) {
+  const [hour = "0", minute = "0", second = "0"] = value.split(":");
+  return Number(hour) * 3600 + Number(minute) * 60 + Number(second);
 }

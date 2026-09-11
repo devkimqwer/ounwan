@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import { oauthAccounts, users } from "@/db/schema";
+import { generatePublicId, PUBLIC_ID_MAX_ATTEMPTS } from "@/lib/public-id";
 import { saveUserAvatarSvg } from "@/storage/service";
 
 export type KakaoAccountAuthState =
@@ -56,11 +57,7 @@ export async function registerKakaoUser(input: { kakaoId: string; displayName: s
     throw new Error("Blocked Kakao account cannot register.");
   }
 
-  const userRows = await db
-    .insert(users)
-    .values({ displayName: input.displayName })
-    .returning({ id: users.id });
-  const userId = userRows[0].id;
+  const userId = await createUserWithPublicId(input.displayName);
 
   if (accountState.status === "deleted") {
     await db
@@ -81,4 +78,20 @@ export async function registerKakaoUser(input: { kakaoId: string; displayName: s
   }
 
   return userId.toString();
+}
+
+async function createUserWithPublicId(displayName: string) {
+  for (let attempt = 0; attempt < PUBLIC_ID_MAX_ATTEMPTS; attempt += 1) {
+    const publicId = generatePublicId();
+    const existing = await db.select({ id: users.id }).from(users).where(eq(users.publicId, publicId)).limit(1);
+
+    if (existing[0]) {
+      continue;
+    }
+
+    const userRows = await db.insert(users).values({ displayName, publicId }).returning({ id: users.id });
+    return userRows[0].id;
+  }
+
+  throw new Error("Could not generate unique public id.");
 }
