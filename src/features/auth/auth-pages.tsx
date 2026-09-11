@@ -41,7 +41,7 @@ export function LoginPage({ authBlocked = false, devLoginFailed = false }: { aut
                 name="userId"
                 inputMode="numeric"
                 pattern="[0-9]*"
-                className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:border-[#5e4ea5]"
+                className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm leading-5 outline-none placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5]"
                 placeholder="사용자 ID"
                 aria-label="개발용 로그인 사용자 ID"
                 required

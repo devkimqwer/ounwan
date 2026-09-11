@@ -459,7 +459,7 @@ export function MoreView({
                   value={groupCreateName}
                   maxLength={30}
                   onChange={(event) => setGroupCreateName(event.target.value)}
-                  className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold outline-none focus:border-[#5e4ea5]"
+                  className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm leading-5 outline-none placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5]"
                   placeholder="예: 아침 운동 모임"
                   required
                 />
@@ -561,7 +561,7 @@ export function MoreView({
               value={profileName}
               maxLength={20}
               onChange={(event) => setProfileName(event.target.value)}
-              className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold outline-none focus:border-[#5e4ea5]"
+              className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm leading-5 outline-none placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5]"
               required
             />
             {profileState.message && <p className={`text-xs font-bold ${profileState.status === "error" ? "text-red-600" : "text-slate-500"}`}>{profileState.message}</p>}
@@ -734,7 +734,7 @@ function LeaveGroupDialog({
                   name="delegateUserId"
                   value={delegateUserId}
                   onChange={(event) => onDelegateChange(event.target.value)}
-                  className="mt-2 min-h-11 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none"
+                  className="mt-2 min-h-11 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm leading-5 text-slate-950 outline-none"
                   required
                 >
                   {delegateCandidates.map((user) => (

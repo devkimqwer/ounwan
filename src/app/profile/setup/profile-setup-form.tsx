@@ -21,7 +21,7 @@ export function ProfileSetupForm() {
         <input
           name="displayName"
           maxLength={20}
-          className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-3 text-sm font-semibold outline-none placeholder:text-slate-400 focus:border-[#5e4ea5]"
+          className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-3 text-sm leading-5 outline-none placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5]"
           placeholder="예: 홍길동"
           autoComplete="name"
           required

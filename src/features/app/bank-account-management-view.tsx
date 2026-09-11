@@ -70,7 +70,7 @@ export function BankAccountManagementView({ accountInfo, onBack }: BankAccountMa
               value={bankName}
               maxLength={100}
               onChange={(event) => setBankName(event.target.value)}
-              className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
+              className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm leading-5 text-slate-950 outline-none transition placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
               placeholder="예: 카카오뱅크"
               required
             />
@@ -83,7 +83,7 @@ export function BankAccountManagementView({ accountInfo, onBack }: BankAccountMa
               value={holderName}
               maxLength={100}
               onChange={(event) => setHolderName(event.target.value)}
-              className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
+              className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm leading-5 text-slate-950 outline-none transition placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
               placeholder="예: 홍길동"
               required
             />
@@ -97,7 +97,7 @@ export function BankAccountManagementView({ accountInfo, onBack }: BankAccountMa
               maxLength={100}
               inputMode="text"
               onChange={(event) => setAccountNumber(event.target.value)}
-              className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
+              className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm leading-5 text-slate-950 outline-none transition placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
               placeholder="예: 3333-12-3456789"
               required
             />

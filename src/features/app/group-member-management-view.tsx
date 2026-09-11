@@ -206,7 +206,7 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
             <input
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
-              className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-950 outline-none placeholder:text-slate-400"
+              className="min-w-0 flex-1 bg-transparent text-sm leading-5 text-slate-950 outline-none placeholder:text-sm placeholder:text-slate-400"
               placeholder="이름 또는 아이디 검색"
             />
           </div>

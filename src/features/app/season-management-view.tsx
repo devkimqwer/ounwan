@@ -399,7 +399,7 @@ function SeasonRulesDialog({
 
         <label className="block space-y-2">
           <span className="text-sm font-extrabold text-slate-700">한 주의 시작요일 <span className="text-red-500" aria-hidden="true">*</span></span>
-          <select name="weekStartDay" defaultValue={season.weekStartDay} required className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10">
+          <select name="weekStartDay" defaultValue={season.weekStartDay} required className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm leading-5 text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10">
             {weekdays.map((weekday) => (
               <option key={weekday.value} value={weekday.value}>{weekday.label}</option>
             ))}
@@ -408,12 +408,12 @@ function SeasonRulesDialog({
 
         <label className="block space-y-2">
           <span className="text-sm font-extrabold text-slate-700">하루의 시작 시각 <span className="text-red-500" aria-hidden="true">*</span></span>
-          <input type="time" name="dayStartTime" step={60} required defaultValue={formatTimeInputValue(season.dayStartTime)} className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10" />
+          <input type="time" name="dayStartTime" step={60} required defaultValue={formatTimeInputValue(season.dayStartTime)} className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm leading-5 text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10" />
         </label>
 
         <label className="block space-y-2">
           <span className="text-sm font-extrabold text-slate-700">일일 중복 인증 <span className="text-red-500" aria-hidden="true">*</span></span>
-          <select name="dailyDuplicatePolicy" defaultValue={season.dailyDuplicatePolicy} required className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10">
+          <select name="dailyDuplicatePolicy" defaultValue={season.dailyDuplicatePolicy} required className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm leading-5 text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10">
             <option value="count_once">1회만</option>
             <option value="count_all">인증한 만큼</option>
           </select>
@@ -427,7 +427,7 @@ function SeasonRulesDialog({
               name="targetWorkoutCountPerWeek"
               min={1}
               defaultValue={season.targetWorkoutCountPerWeek}
-              className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
+              className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm leading-5 text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
               required
             />
           </label>
@@ -439,7 +439,7 @@ function SeasonRulesDialog({
               min={0}
               step={100}
               defaultValue={season.finePerMiss}
-              className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
+              className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm leading-5 text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
               required
             />
           </label>

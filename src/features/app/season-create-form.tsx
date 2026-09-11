@@ -28,7 +28,7 @@ export function SeasonCreateForm({ onCreated }: { onCreated?: () => void }) {
         <input
           name="name"
           maxLength={30}
-          className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
+          className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm leading-5 text-slate-950 outline-none transition placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
           placeholder="예: 2026 시즌 4"
           required
         />
@@ -42,7 +42,7 @@ export function SeasonCreateForm({ onCreated }: { onCreated?: () => void }) {
           name="startDate"
           defaultValue={getTodayDate()}
           min={getTodayDate()}
-          className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
+          className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm leading-5 text-slate-950 outline-none transition placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
           required
         />
       </label>
@@ -54,7 +54,7 @@ export function SeasonCreateForm({ onCreated }: { onCreated?: () => void }) {
             type="number"
             name="targetWorkoutCountPerWeek"
             min={1}
-            className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
+            className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm leading-5 text-slate-950 outline-none transition placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
             required
           />
         </label>
@@ -65,7 +65,7 @@ export function SeasonCreateForm({ onCreated }: { onCreated?: () => void }) {
             name="finePerMiss"
             min={0}
             step={100}
-            className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
+            className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm leading-5 text-slate-950 outline-none transition placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5] focus:ring-4 focus:ring-[#5e4ea5]/10"
             required
           />
         </label>
