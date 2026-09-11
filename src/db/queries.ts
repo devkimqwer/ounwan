@@ -242,6 +242,7 @@ export async function getValidGroupInviteByToken(inviteToken: string): Promise<G
     },
     createdByUser: {
       id: row.createdByUser.id.toString(),
+      publicId: row.createdByUser.publicId,
       kakaoId: row.createdByKakaoId ?? "",
       name: row.createdByUser.displayName,
       avatarUrl: row.createdByUser.avatarStorageKey ? `/uploads/${row.createdByUser.avatarStorageKey}?v=${row.createdByUser.updatedAt.getTime()}` : undefined,
@@ -380,13 +381,14 @@ function createUserSearchCondition(keyword?: string) {
   }
 
   const pattern = `%${keyword}%`;
-  return or(ilike(users.displayName, pattern), ilike(oauthAccounts.providerUserId, pattern), sql`${users.id}::text ILIKE ${pattern}`);
+  return or(ilike(users.displayName, pattern), ilike(users.publicId, pattern));
 }
 async function getCurrentUser(): Promise<User> {
   const currentUserId = await requireCurrentUserId();
   const rows = await db
     .select({
       id: users.id,
+      publicId: users.publicId,
       kakaoId: oauthAccounts.providerUserId,
       displayName: users.displayName,
       avatarStorageKey: users.avatarStorageKey,
@@ -405,11 +407,12 @@ async function getCurrentUser(): Promise<User> {
 }
 
 function toUser(
-  user: Pick<typeof users.$inferSelect, "id" | "displayName" | "avatarStorageKey" | "updatedAt">,
+  user: Pick<typeof users.$inferSelect, "id" | "publicId" | "displayName" | "avatarStorageKey" | "updatedAt">,
   kakaoId?: string | null,
 ): User {
   return {
     id: user.id.toString(),
+    publicId: user.publicId,
     kakaoId: kakaoId ?? "",
     name: user.displayName,
     avatarUrl: user.avatarStorageKey ? `/uploads/${user.avatarStorageKey}?v=${user.updatedAt.getTime()}` : undefined,
@@ -509,6 +512,7 @@ async function getSeasonParticipants(groupId: string): Promise<SeasonParticipant
     seasonId: period.seasonId.toString(),
     user: {
       id: user.id.toString(),
+      publicId: user.publicId,
       kakaoId: kakaoId ?? "",
       name: user.displayName,
       avatarUrl: user.avatarStorageKey ? `/uploads/${user.avatarStorageKey}?v=${user.updatedAt.getTime()}` : undefined,
@@ -538,6 +542,7 @@ async function getGroupUsers(groupId: string): Promise<User[]> {
   const rows = await db
     .select({
       id: users.id,
+      publicId: users.publicId,
       kakaoId: oauthAccounts.providerUserId,
       displayName: users.displayName,
       avatarStorageKey: users.avatarStorageKey,
@@ -551,6 +556,7 @@ async function getGroupUsers(groupId: string): Promise<User[]> {
 
   return rows.map((row) => ({
     id: row.id.toString(),
+    publicId: row.publicId,
     kakaoId: row.kakaoId,
     name: row.displayName,
     avatarUrl: row.avatarStorageKey ? `/uploads/${row.avatarStorageKey}?v=${row.updatedAt.getTime()}` : undefined,

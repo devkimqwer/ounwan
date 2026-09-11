@@ -61,7 +61,7 @@ export function GroupMemberManagementView({ members, onBack }: GroupMemberManage
         return true;
       }
 
-      return [member.user.name, member.user.id, member.user.kakaoId]
+      return [member.user.name, member.user.publicId]
         .filter(Boolean)
         .some((value) => value.toLowerCase().includes(normalizedKeyword));
     });
@@ -353,7 +353,7 @@ function GroupMemberRow({ member, onOpen, onOpenMenu }: { member: AdminGroupMemb
             <p className="truncate text-sm font-extrabold text-slate-950">{member.user.name}</p>
             <MemberStatusBadge status={member.status} />
           </div>
-          <p className="mt-0.5 truncate text-xs font-semibold text-slate-400">@{member.user.id}</p>
+          <p className="mt-0.5 truncate text-xs font-semibold text-slate-400">@{member.user.publicId}</p>
           <div className="mt-1 flex flex-wrap gap-1.5">
             {member.roles.length > 0 ? (
               member.roles.map((role) => (
@@ -496,7 +496,7 @@ function MemberDetailDialog({ member, onClose }: { member: AdminGroupMember | nu
     <AppDialog open={Boolean(member)} title={member?.user.name ?? "멤버 상세"} onClose={onClose} dismissOnBackdrop actions={[{ label: "닫기", onClick: onClose }]}>
       {member && (
         <div className="space-y-3">
-          <MemberInfoRow label="ID" value={`@${member.user.id}`} />
+          <MemberInfoRow label="ID" value={`@${member.user.publicId}`} />
           <MemberInfoRow label="상태" value={member.status === "approved" ? "승인된 멤버" : "승인 대기"} />
           {member.joinedAt && <MemberInfoRow label="가입일" value={formatSystemDate(member.joinedAt)} />}
           {member.requestedAt && <MemberInfoRow label="요청일" value={formatSystemDateTime(member.requestedAt)} />}
@@ -607,7 +607,7 @@ function RoleChangeDialog({
           <Avatar name={target?.user.name ?? "멤버"} imageUrl={target?.user.avatarUrl} size="sm" />
           <div className="min-w-0">
             <p className="truncate text-sm font-extrabold text-slate-950">{target?.user.name}</p>
-            <p className="mt-0.5 text-xs font-semibold text-slate-400">@{target?.user.id}</p>
+            <p className="mt-0.5 text-xs font-semibold text-slate-400">@{target?.user.publicId}</p>
           </div>
         </div>
 

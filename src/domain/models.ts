@@ -4,6 +4,7 @@ export type GroupVisibility = "private" | "public";
 
 export interface User {
   id: string;
+  publicId: string;
   kakaoId: string;
   name: string;
   avatarUrl?: string;
