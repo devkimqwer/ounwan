@@ -38,6 +38,7 @@ export interface AdminGroupMember {
   status: AdminGroupMemberStatus;
   user: User;
   roles: Role[];
+  isCurrentUser?: boolean;
   joinedAt?: string;
   leftAt?: string;
   requestedAt?: string;

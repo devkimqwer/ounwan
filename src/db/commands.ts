@@ -81,6 +81,10 @@ type UpdateGroupMemberRolesInput = {
   delegateAdmin: boolean;
 };
 
+type ExpelGroupMemberInput = {
+  userId: string;
+};
+
 type CreateWorkoutPostInput = {
   workoutType?: string;
   content?: string;
@@ -744,6 +748,69 @@ export async function updateGroupMemberRoles(input: UpdateGroupMemberRolesInput)
   });
 }
 
+export async function expelGroupMember(input: ExpelGroupMemberInput) {
+  const context = await getCurrentGroupAdminContext();
+
+  if (!/^\d+$/.test(input.userId)) {
+    throw new Error("Invalid user id.");
+  }
+
+  if (input.userId === context.userId) {
+    throw new Error("Admins cannot expel themselves.");
+  }
+
+  const groupId = BigInt(context.groupId);
+  const targetUserId = BigInt(input.userId);
+  const now = new Date();
+  const leftAt = getKoreanDate(now);
+
+  return db.transaction(async (tx) => {
+    const targetRows = await tx
+      .select({ roles: groupMembers.roles })
+      .from(groupMembers)
+      .innerJoin(users, eq(groupMembers.userId, users.id))
+      .where(
+        and(
+          eq(groupMembers.groupId, groupId),
+          eq(groupMembers.userId, targetUserId),
+          isNull(groupMembers.leftAt),
+          eq(users.status, "active"),
+          isNull(users.deletedAt),
+        ),
+      )
+      .limit(1);
+    const target = targetRows[0];
+
+    if (!target) {
+      throw new Error("Group member not found.");
+    }
+
+    if (target.roles.includes("admin")) {
+      throw new Error("Admins cannot be expelled.");
+    }
+
+    const rows = await tx
+      .update(groupMembers)
+      .set({ leftAt, updatedAt: now })
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, targetUserId), isNull(groupMembers.leftAt)))
+      .returning({ userId: groupMembers.userId });
+
+    if (!rows[0]) {
+      throw new Error("Group member was not expelled.");
+    }
+
+    const activeSeasonRows = await tx.select({ id: seasons.id }).from(seasons).where(and(eq(seasons.groupId, groupId), eq(seasons.status, "active"))).limit(1);
+    const activeSeason = activeSeasonRows[0];
+    if (activeSeason) {
+      await tx
+        .update(seasonParticipantPeriods)
+        .set({ endDate: leftAt })
+        .where(and(eq(seasonParticipantPeriods.seasonId, activeSeason.id), eq(seasonParticipantPeriods.userId, targetUserId), isNull(seasonParticipantPeriods.endDate)));
+    }
+
+    return { userId: rows[0].userId.toString() };
+  });
+}
 export async function updateBankAccountInfo(input: UpdateBankAccountInfoInput) {
   const context = await getCurrentGroupTreasurerContext();
   const bankName = input.bankName.trim();

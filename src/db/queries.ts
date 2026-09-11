@@ -115,18 +115,18 @@ export async function getAdminGroupMembers(input: GetAdminGroupMembersInput = {}
 
   if (status === "all") {
     const [approvedMembers, pendingMembers] = await Promise.all([
-      getApprovedGroupMembers(context.groupId, keyword),
-      getPendingGroupMembers(context.groupId, keyword),
+      getApprovedGroupMembers(context.groupId, keyword, context.userId),
+      getPendingGroupMembers(context.groupId, keyword, context.userId),
     ]);
 
     return [...approvedMembers, ...pendingMembers];
   }
 
   if (status === "pending") {
-    return getPendingGroupMembers(context.groupId, keyword);
+    return getPendingGroupMembers(context.groupId, keyword, context.userId);
   }
 
-  return getApprovedGroupMembers(context.groupId, keyword);
+  return getApprovedGroupMembers(context.groupId, keyword, context.userId);
 }
 
 
@@ -298,7 +298,7 @@ function toAppNotification(row: typeof notifications.$inferSelect): AppNotificat
 function isNotificationActionType(value: string | null): value is NotificationActionType {
   return Boolean(value && notificationActionTypes.has(value as NotificationActionType));
 }
-async function getApprovedGroupMembers(groupId: string, keyword?: string): Promise<AdminGroupMember[]> {
+async function getApprovedGroupMembers(groupId: string, keyword: string | undefined, currentUserId: string): Promise<AdminGroupMember[]> {
   const conditions = [eq(groupMembers.groupId, BigInt(groupId)), isNull(groupMembers.leftAt), isNull(users.deletedAt)];
   const searchCondition = createUserSearchCondition(keyword);
 
@@ -319,12 +319,13 @@ async function getApprovedGroupMembers(groupId: string, keyword?: string): Promi
     status: "approved",
     user: toUser(user, kakaoId),
     roles: member.roles,
+    isCurrentUser: member.userId.toString() === currentUserId,
     joinedAt: member.joinedAt,
     leftAt: member.leftAt ?? undefined,
   }));
 }
 
-async function getPendingGroupMembers(groupId: string, keyword?: string): Promise<AdminGroupMember[]> {
+async function getPendingGroupMembers(groupId: string, keyword: string | undefined, currentUserId: string): Promise<AdminGroupMember[]> {
   const conditions = [eq(groupJoinRequests.groupId, BigInt(groupId)), eq(groupJoinRequests.status, "pending"), isNull(users.deletedAt)];
   const searchCondition = createUserSearchCondition(keyword);
 
@@ -345,6 +346,7 @@ async function getPendingGroupMembers(groupId: string, keyword?: string): Promis
     status: "pending",
     user: toUser(user, kakaoId),
     roles: [],
+    isCurrentUser: request.userId.toString() === currentUserId,
     requestedAt: request.requestedAt.toISOString(),
     requestId: request.id.toString(),
   }));
