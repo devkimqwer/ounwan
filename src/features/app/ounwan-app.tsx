@@ -31,6 +31,21 @@ const tabs: Array<{ id: TabId; label: string }> = [
   { id: "calendar", label: "캘린더" },
   { id: "more", label: "더보기" },
 ];
+
+function clearInitialActionParams(params: URLSearchParams) {
+  const actionParamKeys = ["notificationId", "postId", "more", "settlementId"];
+  const shouldReplaceUrl = actionParamKeys.some((key) => params.has(key));
+
+  if (!shouldReplaceUrl) {
+    return;
+  }
+
+  const nextParams = new URLSearchParams(params);
+  actionParamKeys.forEach((key) => nextParams.delete(key));
+  const nextSearch = nextParams.toString();
+  const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+  window.history.replaceState(window.history.state, "", nextUrl);
+}
 export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("home");
@@ -372,6 +387,8 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     const notificationId = params.get("notificationId");
     const postId = params.get("postId");
     const morePage = params.get("more");
+
+    clearInitialActionParams(params);
 
     if (notificationId && /^\d+$/.test(notificationId)) {
       markNotificationsReadAction([notificationId])
