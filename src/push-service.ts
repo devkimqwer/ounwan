@@ -99,19 +99,24 @@ function toPushPayload(notification: NotificationPushPayload) {
 }
 
 function getNotificationActionUrl(notification: NotificationPushPayload) {
+  const params = new URLSearchParams({ notificationId: notification.notificationId.toString() });
+
   if (notification.actionType === "post_detail" && notification.actionTargetId) {
-    return `/?postId=${encodeURIComponent(notification.actionTargetId)}`;
+    params.set("postId", notification.actionTargetId);
+    return `/?${params.toString()}`;
   }
 
   if (notification.actionType === "group_member_management") {
-    return "/?more=group-member-management";
+    params.set("more", "group-member-management");
+    return `/?${params.toString()}`;
   }
 
   if (notification.actionType === "settlement_detail" && notification.actionTargetId) {
-    return `/?settlementId=${encodeURIComponent(notification.actionTargetId)}`;
+    params.set("settlementId", notification.actionTargetId);
+    return `/?${params.toString()}`;
   }
 
-  return "/";
+  return `/?${params.toString()}`;
 }
 
 function normalizeVapidSubject(value?: string) {

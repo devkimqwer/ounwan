@@ -7,6 +7,7 @@ self.addEventListener("push", (event) => {
     badge: "/icons/app-icon-white-bg.png",
     data: {
       url: payload.url || "/",
+      notificationId: payload.notificationId,
     },
   };
 
@@ -16,8 +17,14 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const targetUrl = new URL(event.notification.data?.url || "/", self.location.origin).href;
-  event.waitUntil(openOrFocusClient(targetUrl));
+  const targetUrl = new URL(event.notification.data?.url || "/", self.location.origin);
+  const notificationId = event.notification.data?.notificationId;
+
+  if (notificationId && !targetUrl.searchParams.has("notificationId")) {
+    targetUrl.searchParams.set("notificationId", notificationId);
+  }
+
+  event.waitUntil(openOrFocusClient(targetUrl.href));
 });
 
 function readPushPayload(event) {

@@ -1,6 +1,8 @@
 "use client";
 import Image from "next/image";
 
+import { markNotificationsReadAction } from "@/app/actions";
+
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -367,8 +369,15 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
     initialUrlHandledRef.current = true;
     const params = new URLSearchParams(window.location.search);
+    const notificationId = params.get("notificationId");
     const postId = params.get("postId");
     const morePage = params.get("more");
+
+    if (notificationId && /^\d+$/.test(notificationId)) {
+      markNotificationsReadAction([notificationId])
+        .then(() => router.refresh())
+        .catch(() => undefined);
+    }
 
     if (postId) {
       const targetPost = posts.find((post) => post.id === postId);
