@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
 
-import { markNotificationsReadAction } from "@/app/actions";
+import { markNotificationsReadAction, switchCurrentGroupAction } from "@/app/actions";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -33,7 +33,7 @@ const tabs: Array<{ id: TabId; label: string }> = [
 ];
 
 function clearInitialActionParams(params: URLSearchParams) {
-  const actionParamKeys = ["notificationId", "postId", "more", "settlementId"];
+  const actionParamKeys = ["notificationId", "postId", "more", "settlementId", "groupId"];
   const shouldReplaceUrl = actionParamKeys.some((key) => params.has(key));
 
   if (!shouldReplaceUrl) {
@@ -132,9 +132,17 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     closeNotificationsFromHistory();
   };
 
-  const openNotificationTarget = (notification: AppNotification) => {
+  const openNotificationTarget = async (notification: AppNotification) => {
+    const switchedGroup = await switchToNotificationGroup(notification.groupId).catch(() => false);
+
     if (notification.actionType === "post_detail" && notification.actionTargetId) {
       closeNotifications();
+
+      if (switchedGroup) {
+        setPendingCreatedPostId(notification.actionTargetId);
+        router.refresh();
+        return;
+      }
 
       const targetPost = posts.find((post) => post.id === notification.actionTargetId);
       if (targetPost) {
@@ -151,6 +159,9 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
       moveToTab("more", { refreshOnEnter: true });
       openMorePage("group-member-management", { refreshOnEnter: true });
+      if (switchedGroup) {
+        router.refresh();
+      }
     }
   };
   const closePostDetail = () => {
@@ -245,6 +256,16 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     refreshEnteredRoute(options);
   };
 
+  const switchToNotificationGroup = async (targetGroupId?: string | null) => {
+    if (!targetGroupId || targetGroupId === group.id || !/^\d+$/.test(targetGroupId)) {
+      return false;
+    }
+
+    const formData = new FormData();
+    formData.set("groupId", targetGroupId);
+    await switchCurrentGroupAction(formData);
+    return true;
+  };
   const shouldRefreshOnEnter = (tabId: TabId) => tabId !== "cert";
 
   const refreshEnteredTab = (tabId: TabId, options: RefreshOnEnterOptions) => {
@@ -385,6 +406,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     initialUrlHandledRef.current = true;
     const params = new URLSearchParams(window.location.search);
     const notificationId = params.get("notificationId");
+    const groupId = params.get("groupId");
     const postId = params.get("postId");
     const morePage = params.get("more");
 
@@ -394,6 +416,26 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
       markNotificationsReadAction([notificationId])
         .then(() => router.refresh())
         .catch(() => undefined);
+    }
+
+    if (groupId && groupId !== group.id && /^\d+$/.test(groupId)) {
+      switchToNotificationGroup(groupId)
+        .then((switchedGroup) => {
+          if (postId) {
+            setPendingCreatedPostId(postId);
+          }
+
+          if (morePage === "group-member-management") {
+            moveToTab("more", { refreshOnEnter: true });
+            openMorePage("group-member-management", { refreshOnEnter: true });
+          }
+
+          if (switchedGroup) {
+            router.refresh();
+          }
+        })
+        .catch(() => undefined);
+      return;
     }
 
     if (postId) {

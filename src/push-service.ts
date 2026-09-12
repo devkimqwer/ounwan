@@ -12,6 +12,7 @@ export type NotificationPushPayload = {
   message: string;
   actionType?: string | null;
   actionTargetId?: string | null;
+  groupId?: bigint | null;
 };
 
 type StoredPushSubscription = typeof pushSubscriptions.$inferSelect;
@@ -95,11 +96,16 @@ function toPushPayload(notification: NotificationPushPayload) {
     body: notification.message,
     url: getNotificationActionUrl(notification),
     notificationId: notification.notificationId.toString(),
+    groupId: notification.groupId?.toString(),
   };
 }
 
 function getNotificationActionUrl(notification: NotificationPushPayload) {
   const params = new URLSearchParams({ notificationId: notification.notificationId.toString() });
+
+  if (notification.groupId) {
+    params.set("groupId", notification.groupId.toString());
+  }
 
   if (notification.actionType === "post_detail" && notification.actionTargetId) {
     params.set("postId", notification.actionTargetId);

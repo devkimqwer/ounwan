@@ -291,6 +291,7 @@ function toAppNotification(row: typeof notifications.$inferSelect): AppNotificat
     message: row.message,
     actionType: isNotificationActionType(row.actionType) ? row.actionType : undefined,
     actionTargetId: row.actionTargetId ?? undefined,
+    groupId: row.groupId?.toString(),
     readAt: row.readAt?.toISOString(),
     createdAt: row.createdAt.toISOString(),
   };

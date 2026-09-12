@@ -8,6 +8,7 @@ self.addEventListener("push", (event) => {
     data: {
       url: payload.url || "/",
       notificationId: payload.notificationId,
+      groupId: payload.groupId,
     },
   };
 
@@ -19,9 +20,14 @@ self.addEventListener("notificationclick", (event) => {
 
   const targetUrl = new URL(event.notification.data?.url || "/", self.location.origin);
   const notificationId = event.notification.data?.notificationId;
+  const groupId = event.notification.data?.groupId;
 
   if (notificationId && !targetUrl.searchParams.has("notificationId")) {
     targetUrl.searchParams.set("notificationId", notificationId);
+  }
+
+  if (groupId && !targetUrl.searchParams.has("groupId")) {
+    targetUrl.searchParams.set("groupId", groupId);
   }
 
   event.waitUntil(openOrFocusClient(targetUrl.href));
