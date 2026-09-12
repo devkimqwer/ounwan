@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { getCurrentUserNotificationPage } from "@/db/queries";
+import { getCurrentUserNotificationPage, getCurrentUserUnreadNotificationCount } from "@/db/queries";
 import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, expelGroupMember, getOrCreateCurrentGroupInvite, leaveGroup, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateGroupMemberRoles, updateSeasonRules } from "@/db/commands";
 import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
 
@@ -526,6 +526,9 @@ export async function togglePostLikeAction(formData: FormData) {
 }
 
 
+export async function getUnreadNotificationCountAction() {
+  return getCurrentUserUnreadNotificationCount();
+}
 export async function loadNotificationsAction(offset: number) {
   return getCurrentUserNotificationPage(offset);
 }

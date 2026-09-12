@@ -12,7 +12,7 @@ self.addEventListener("push", (event) => {
     },
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(Promise.all([self.registration.showNotification(title, options), notifyOpenClients()]));
 });
 
 self.addEventListener("notificationclick", (event) => {
@@ -33,6 +33,10 @@ self.addEventListener("notificationclick", (event) => {
   event.waitUntil(openOrFocusClient(targetUrl.href));
 });
 
+async function notifyOpenClients() {
+  const windowClients = await clients.matchAll({ type: "window", includeUncontrolled: true });
+  windowClients.forEach((client) => client.postMessage({ type: "ounwan-push-notification" }));
+}
 function readPushPayload(event) {
   if (!event.data) {
     return {};

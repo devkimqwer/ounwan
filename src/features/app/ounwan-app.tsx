@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
 
-import { markNotificationsReadAction, switchCurrentGroupAction } from "@/app/actions";
+import { getUnreadNotificationCountAction, markNotificationsReadAction, switchCurrentGroupAction } from "@/app/actions";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -20,6 +20,7 @@ import { PostDetailView } from "./post-detail-view";
 import { TabIcon } from "./tab-icon";
 import { PageNotReadyView } from "./page-not-ready-view";
 
+const UNREAD_NOTIFICATION_POLL_INTERVAL_MS = 15000;
 type RefreshOnEnterOptions = {
   refreshOnEnter?: boolean;
 };
@@ -397,6 +398,49 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   useEffect(() => {
     setUnreadNotificationCount(appData.notifications.unreadCount);
   }, [appData.notifications.unreadCount]);
+  useEffect(() => {
+    let disposed = false;
+
+    const refreshUnreadNotificationCount = async () => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+
+      try {
+        const nextUnreadCount = await getUnreadNotificationCountAction();
+        if (!disposed) {
+          setUnreadNotificationCount(nextUnreadCount);
+        }
+      } catch {
+        // Polling 실패는 다음 주기에서 회복되도록 둔다.
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshUnreadNotificationCount();
+      }
+    };
+
+    const handleServiceWorkerMessage = (event: MessageEvent) => {
+      if (event.data?.type === "ounwan-push-notification") {
+        void refreshUnreadNotificationCount();
+      }
+    };
+
+    const intervalId = window.setInterval(refreshUnreadNotificationCount, UNREAD_NOTIFICATION_POLL_INTERVAL_MS);
+    window.addEventListener("focus", refreshUnreadNotificationCount);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    navigator.serviceWorker?.addEventListener("message", handleServiceWorkerMessage);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshUnreadNotificationCount);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      navigator.serviceWorker?.removeEventListener("message", handleServiceWorkerMessage);
+    };
+  }, []);
 
   useEffect(() => {
     if (initialUrlHandledRef.current) {
