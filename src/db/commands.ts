@@ -1517,16 +1517,18 @@ type CreateNotificationInput = {
 };
 
 async function createNotification(executor: NotificationExecutor, input: CreateNotificationInput) {
+  const preparedInputs = await withGroupMessagePrefixes(executor, [input]);
+  const preparedInput = preparedInputs[0];
   const rows = await executor
     .insert(notifications)
     .values({
-      recipientUserId: input.recipientUserId,
-      actorUserId: input.actorUserId ?? null,
-      groupId: input.groupId ?? null,
-      type: input.type,
-      message: input.message,
-      actionType: input.actionType ?? null,
-      actionTargetId: input.actionTargetId ?? null,
+      recipientUserId: preparedInput.recipientUserId,
+      actorUserId: preparedInput.actorUserId ?? null,
+      groupId: preparedInput.groupId ?? null,
+      type: preparedInput.type,
+      message: preparedInput.message,
+      actionType: preparedInput.actionType ?? null,
+      actionTargetId: preparedInput.actionTargetId ?? null,
     })
     .returning({
       notificationId: notifications.id,
@@ -1534,6 +1536,7 @@ async function createNotification(executor: NotificationExecutor, input: CreateN
       message: notifications.message,
       actionType: notifications.actionType,
       actionTargetId: notifications.actionTargetId,
+      groupId: notifications.groupId,
     });
 
   await sendPushForNotifications(rows);
@@ -1544,10 +1547,11 @@ async function createNotifications(executor: NotificationExecutor, inputs: Creat
     return;
   }
 
+  const preparedInputs = await withGroupMessagePrefixes(executor, inputs);
   const rows = await executor
     .insert(notifications)
     .values(
-      inputs.map((input) => ({
+      preparedInputs.map((input) => ({
         recipientUserId: input.recipientUserId,
         actorUserId: input.actorUserId ?? null,
         groupId: input.groupId ?? null,
@@ -1563,11 +1567,37 @@ async function createNotifications(executor: NotificationExecutor, inputs: Creat
       message: notifications.message,
       actionType: notifications.actionType,
       actionTargetId: notifications.actionTargetId,
+      groupId: notifications.groupId,
     });
 
   await sendPushForNotifications(rows);
 }
 
+async function withGroupMessagePrefixes(executor: NotificationExecutor, inputs: CreateNotificationInput[]) {
+  const groupIds = [...new Set(inputs.map((input) => input.groupId).filter((groupId): groupId is bigint => Boolean(groupId)))];
+
+  if (groupIds.length === 0) {
+    return inputs;
+  }
+
+  const groupRows = await executor.select({ id: groups.id, name: groups.name }).from(groups).where(inArray(groups.id, groupIds));
+  const groupNamesById = new Map(groupRows.map((row) => [row.id.toString(), row.name]));
+
+  return inputs.map((input) => {
+    const groupName = input.groupId ? groupNamesById.get(input.groupId.toString()) : undefined;
+
+    if (!groupName) {
+      return input;
+    }
+
+    return { ...input, message: prefixNotificationGroupName(input.message, groupName) };
+  });
+}
+
+function prefixNotificationGroupName(message: string, groupName: string) {
+  const prefix = `[${groupName}] `;
+  return message.startsWith(prefix) ? message : `${prefix}${message}`;
+}
 async function notifyGroupAdmins(
   executor: NotificationExecutor,
   input: { groupId: bigint; actorUserId?: bigint; type: string; message: string; actionType?: string; actionTargetId?: string },

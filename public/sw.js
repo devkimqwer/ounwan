@@ -7,19 +7,36 @@ self.addEventListener("push", (event) => {
     badge: "/icons/app-icon-white-bg.png",
     data: {
       url: payload.url || "/",
+      notificationId: payload.notificationId,
+      groupId: payload.groupId,
     },
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(Promise.all([self.registration.showNotification(title, options), notifyOpenClients()]));
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const targetUrl = new URL(event.notification.data?.url || "/", self.location.origin).href;
-  event.waitUntil(openOrFocusClient(targetUrl));
+  const targetUrl = new URL(event.notification.data?.url || "/", self.location.origin);
+  const notificationId = event.notification.data?.notificationId;
+  const groupId = event.notification.data?.groupId;
+
+  if (notificationId && !targetUrl.searchParams.has("notificationId")) {
+    targetUrl.searchParams.set("notificationId", notificationId);
+  }
+
+  if (groupId && !targetUrl.searchParams.has("groupId")) {
+    targetUrl.searchParams.set("groupId", groupId);
+  }
+
+  event.waitUntil(openOrFocusClient(targetUrl.href));
 });
 
+async function notifyOpenClients() {
+  const windowClients = await clients.matchAll({ type: "window", includeUncontrolled: true });
+  windowClients.forEach((client) => client.postMessage({ type: "ounwan-push-notification" }));
+}
 function readPushPayload(event) {
   if (!event.data) {
     return {};

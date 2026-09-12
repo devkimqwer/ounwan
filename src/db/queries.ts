@@ -258,6 +258,15 @@ export async function getValidGroupInviteByToken(inviteToken: string): Promise<G
 const NOTIFICATION_PAGE_SIZE = 10;
 const notificationActionTypes = new Set<NotificationActionType>(["post_detail", "group_member_management", "settlement_detail"]);
 
+export async function getCurrentUserUnreadNotificationCount() {
+  const currentUserId = await requireCurrentUserId();
+  const rows = await db
+    .select({ value: count() })
+    .from(notifications)
+    .where(and(eq(notifications.recipientUserId, BigInt(currentUserId)), isNull(notifications.deletedAt), isNull(notifications.readAt)));
+
+  return Number(rows[0]?.value ?? 0);
+}
 export async function getCurrentUserNotificationPage(offset = 0): Promise<NotificationPage> {
   const currentUserId = await requireCurrentUserId();
   const safeOffset = Math.max(0, Math.trunc(offset));
@@ -291,6 +300,7 @@ function toAppNotification(row: typeof notifications.$inferSelect): AppNotificat
     message: row.message,
     actionType: isNotificationActionType(row.actionType) ? row.actionType : undefined,
     actionTargetId: row.actionTargetId ?? undefined,
+    groupId: row.groupId?.toString(),
     readAt: row.readAt?.toISOString(),
     createdAt: row.createdAt.toISOString(),
   };

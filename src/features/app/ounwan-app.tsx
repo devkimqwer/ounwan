@@ -1,6 +1,8 @@
 "use client";
 import Image from "next/image";
 
+import { getUnreadNotificationCountAction, markNotificationsReadAction, switchCurrentGroupAction } from "@/app/actions";
+
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -18,6 +20,7 @@ import { PostDetailView } from "./post-detail-view";
 import { TabIcon } from "./tab-icon";
 import { PageNotReadyView } from "./page-not-ready-view";
 
+const UNREAD_NOTIFICATION_POLL_INTERVAL_MS = 15000;
 type RefreshOnEnterOptions = {
   refreshOnEnter?: boolean;
 };
@@ -29,6 +32,21 @@ const tabs: Array<{ id: TabId; label: string }> = [
   { id: "calendar", label: "캘린더" },
   { id: "more", label: "더보기" },
 ];
+
+function clearInitialActionParams(params: URLSearchParams) {
+  const actionParamKeys = ["notificationId", "postId", "more", "settlementId", "groupId"];
+  const shouldReplaceUrl = actionParamKeys.some((key) => params.has(key));
+
+  if (!shouldReplaceUrl) {
+    return;
+  }
+
+  const nextParams = new URLSearchParams(params);
+  actionParamKeys.forEach((key) => nextParams.delete(key));
+  const nextSearch = nextParams.toString();
+  const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+  window.history.replaceState(window.history.state, "", nextUrl);
+}
 export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("home");
@@ -115,9 +133,17 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     closeNotificationsFromHistory();
   };
 
-  const openNotificationTarget = (notification: AppNotification) => {
+  const openNotificationTarget = async (notification: AppNotification) => {
+    const switchedGroup = await switchToNotificationGroup(notification.groupId).catch(() => false);
+
     if (notification.actionType === "post_detail" && notification.actionTargetId) {
       closeNotifications();
+
+      if (switchedGroup) {
+        setPendingCreatedPostId(notification.actionTargetId);
+        router.refresh();
+        return;
+      }
 
       const targetPost = posts.find((post) => post.id === notification.actionTargetId);
       if (targetPost) {
@@ -134,6 +160,9 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
       moveToTab("more", { refreshOnEnter: true });
       openMorePage("group-member-management", { refreshOnEnter: true });
+      if (switchedGroup) {
+        router.refresh();
+      }
     }
   };
   const closePostDetail = () => {
@@ -228,6 +257,16 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     refreshEnteredRoute(options);
   };
 
+  const switchToNotificationGroup = async (targetGroupId?: string | null) => {
+    if (!targetGroupId || targetGroupId === group.id || !/^\d+$/.test(targetGroupId)) {
+      return false;
+    }
+
+    const formData = new FormData();
+    formData.set("groupId", targetGroupId);
+    await switchCurrentGroupAction(formData);
+    return true;
+  };
   const shouldRefreshOnEnter = (tabId: TabId) => tabId !== "cert";
 
   const refreshEnteredTab = (tabId: TabId, options: RefreshOnEnterOptions) => {
@@ -359,6 +398,49 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   useEffect(() => {
     setUnreadNotificationCount(appData.notifications.unreadCount);
   }, [appData.notifications.unreadCount]);
+  useEffect(() => {
+    let disposed = false;
+
+    const refreshUnreadNotificationCount = async () => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+
+      try {
+        const nextUnreadCount = await getUnreadNotificationCountAction();
+        if (!disposed) {
+          setUnreadNotificationCount(nextUnreadCount);
+        }
+      } catch {
+        // Polling 실패는 다음 주기에서 회복되도록 둔다.
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshUnreadNotificationCount();
+      }
+    };
+
+    const handleServiceWorkerMessage = (event: MessageEvent) => {
+      if (event.data?.type === "ounwan-push-notification") {
+        void refreshUnreadNotificationCount();
+      }
+    };
+
+    const intervalId = window.setInterval(refreshUnreadNotificationCount, UNREAD_NOTIFICATION_POLL_INTERVAL_MS);
+    window.addEventListener("focus", refreshUnreadNotificationCount);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    navigator.serviceWorker?.addEventListener("message", handleServiceWorkerMessage);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshUnreadNotificationCount);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      navigator.serviceWorker?.removeEventListener("message", handleServiceWorkerMessage);
+    };
+  }, []);
 
   useEffect(() => {
     if (initialUrlHandledRef.current) {
@@ -367,8 +449,38 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
     initialUrlHandledRef.current = true;
     const params = new URLSearchParams(window.location.search);
+    const notificationId = params.get("notificationId");
+    const groupId = params.get("groupId");
     const postId = params.get("postId");
     const morePage = params.get("more");
+
+    clearInitialActionParams(params);
+
+    if (notificationId && /^\d+$/.test(notificationId)) {
+      markNotificationsReadAction([notificationId])
+        .then(() => router.refresh())
+        .catch(() => undefined);
+    }
+
+    if (groupId && groupId !== group.id && /^\d+$/.test(groupId)) {
+      switchToNotificationGroup(groupId)
+        .then((switchedGroup) => {
+          if (postId) {
+            setPendingCreatedPostId(postId);
+          }
+
+          if (morePage === "group-member-management") {
+            moveToTab("more", { refreshOnEnter: true });
+            openMorePage("group-member-management", { refreshOnEnter: true });
+          }
+
+          if (switchedGroup) {
+            router.refresh();
+          }
+        })
+        .catch(() => undefined);
+      return;
+    }
 
     if (postId) {
       const targetPost = posts.find((post) => post.id === postId);

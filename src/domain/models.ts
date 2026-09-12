@@ -178,6 +178,7 @@ export interface AppNotification {
   message: string;
   actionType?: NotificationActionType;
   actionTargetId?: string;
+  groupId?: string;
   readAt?: string;
   createdAt: string;
 }
