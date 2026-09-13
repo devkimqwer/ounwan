@@ -118,3 +118,21 @@ Docker 배포 구성은 `Dockerfile`, `compose.yaml`, `compose.prod.yaml`을 기
 ## 알림
 
 앱 내부 알림은 DB에 저장되며, Web Push 키가 설정된 경우 구독된 브라우저로 푸시 알림을 발송합니다. 로컬 개발 환경에서 origin 설정이 맞지 않거나 VAPID 키가 비어 있으면 푸시 발송은 비활성화될 수 있습니다.
+## 운영 로그
+
+Docker 컨테이너 로그는 `compose.yaml`과 `compose.prod.yaml`의 `json-file` logging option으로 회전합니다.
+
+- 최대 파일 크기: `10m`
+- 보관 파일 수: `5`
+
+주간 결산 배치는 EC2 cron에서 다음 명령으로 실행하고 파일 로그를 남깁니다.
+
+```cron
+*/5 * * * * docker exec ounwan-app npm run batch:weekly-settlement >> /var/log/ounwan-weekly-settlement.log 2>&1
+```
+
+배치 파일 로그는 `ops/logrotate/ounwan-weekly-settlement`를 EC2의 `/etc/logrotate.d/ounwan-weekly-settlement`에 복사해 회전합니다.
+
+```bash
+sudo cp ops/logrotate/ounwan-weekly-settlement /etc/logrotate.d/ounwan-weekly-settlement
+```
