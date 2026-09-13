@@ -68,7 +68,7 @@ export function MainMenuPanel({
               { label: "피드", onClick: () => onSelect("feed") },
               { label: "인증", onClick: () => onSelect("cert") },
               { label: "캘린더", onClick: () => onSelect("calendar") },
-              { label: "결산 내역", onClick: () => onSelect("more") },
+              { label: "결산 내역", onClick: () => onOpenMorePage("settlement-history") },
               { label: "잔고 현황", onClick: () => onSelect("more") },
               { label: "이전 시즌", onClick: () => onSelect("more") },
             ]}

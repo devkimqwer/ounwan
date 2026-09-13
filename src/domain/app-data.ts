@@ -10,6 +10,7 @@ import type {
   SeasonParticipant,
   Settlement,
   SettlementRow,
+  SettlementSummary,
   User,
   WeeklyUserWorkoutStatus,
   WorkoutPost,
@@ -31,6 +32,7 @@ export interface OunwanAppData {
   posts: WorkoutPost[];
   weeklyUserWorkoutStatus?: WeeklyUserWorkoutStatus;
   settlement?: Settlement;
+  settlementSummaries: SettlementSummary[];
   settlementRows: SettlementRow[];
   bankRecords: BankRecord[];
   accountInfo: AccountInfo;

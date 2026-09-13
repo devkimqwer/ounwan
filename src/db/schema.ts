@@ -123,6 +123,7 @@ export const seasons = pgTable(
     weekStartDay: integer("week_start_day").notNull().default(0),
     dayStartTime: time("day_start_time").notNull().default("03:00"),
     dailyDuplicatePolicy: dailyDuplicatePolicyEnum("daily_duplicate_policy").notNull().default("count_once"),
+    nextSettlementAt: timestamp("next_settlement_at", { withTimezone: true }),
     status: seasonStatusEnum("status").notNull().default("active"),
     ...timestamps,
   },
@@ -369,7 +370,7 @@ export const weeklySettlements = pgTable(
     ...timestamps,
   },
   (table) => [
-    unique("ux_weekly_settlements_group_week").on(table.groupId, table.weekStartDate),
+    unique("ux_weekly_settlements_season_week").on(table.seasonId, table.weekStartDate),
     index("idx_weekly_settlements_season_week").on(table.seasonId, table.weekStartDate.desc()),
     check("ck_weekly_settlements_date_range", sql`${table.weekEndDate} >= ${table.weekStartDate}`),
   ],

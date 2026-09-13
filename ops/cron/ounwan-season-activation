@@ -1,0 +1,1 @@
+*/5 * * * * docker exec ounwan-app npm run batch:activate-pending-seasons >> /var/log/ounwan-season-activation.log 2>&1

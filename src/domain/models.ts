@@ -84,6 +84,7 @@ export interface Season {
   weekStartDay: number;
   dayStartTime: string;
   dailyDuplicatePolicy: DailyDuplicatePolicy;
+  nextSettlementAt?: string;
   status: "pending" | "active" | "closed";
 }
 
@@ -141,6 +142,19 @@ export interface Settlement {
   status: "draft" | "confirmed";
   confirmedAt?: string;
   comment?: string;
+}
+
+export interface SettlementSummary {
+  id: string;
+  groupId: string;
+  seasonId: string;
+  seasonName: string;
+  weekStartDate: string;
+  weekEndDate: string;
+  status: "draft" | "confirmed";
+  confirmedAt?: string;
+  participantCount: number;
+  finalFineAmountTotal: number;
 }
 
 export interface SettlementRow {

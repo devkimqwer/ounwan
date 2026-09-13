@@ -21,12 +21,14 @@ import type {
   SeasonParticipant,
   Settlement,
   SettlementRow,
+  SettlementSummary,
   User,
   UserGroupMembership,
   WeeklyUserWorkoutStatus,
   WorkoutPost,
 } from "@/domain/models";
 import { getCurrentGroupIdForUser, requireCurrentUserId } from "@/auth/session";
+import { getKoreanWeekRange, getKoreanWorkoutDate } from "@/lib/season-time";
 import { isInviteTokenFormat } from "@/invites/tokens";
 import type { OunwanAppData } from "@/domain/app-data";
 import { db } from "./client";
@@ -66,7 +68,7 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
   const membership = selectedGroup.membership;
   const season = await getActiveSeason(group.id);
   const isAdmin = membership.roles.includes("admin");
-  const [appUsers, groupSeasons, seasonParticipants, adminGroupMembers, posts, weeklyUserWorkoutStatus, settlement, bankRecords, accountInfo, notificationPage] = await Promise.all([
+  const [appUsers, groupSeasons, seasonParticipants, adminGroupMembers, posts, weeklyUserWorkoutStatus, settlement, settlementSummaries, bankRecords, accountInfo, notificationPage] = await Promise.all([
     getGroupUsers(group.id),
     getGroupSeasons(group.id),
     getSeasonParticipants(group.id),
@@ -74,6 +76,7 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
     season ? getWorkoutPosts(group.id, season.id, currentUser.id) : Promise.resolve([]),
     season ? getWeeklyUserWorkoutStatus(group.id, season, currentUser.id) : Promise.resolve(undefined),
     season ? getLatestSettlement(group.id, season) : Promise.resolve(undefined),
+    getSettlementSummaries(group.id),
     getBankRecords(group.id),
     getAccountInfo(group.id),
     getCurrentUserNotificationPage(),
@@ -96,6 +99,7 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
     posts,
     weeklyUserWorkoutStatus,
     settlement,
+    settlementSummaries,
     settlementRows,
     bankRecords,
     accountInfo,
@@ -544,6 +548,7 @@ function toSeason(row: typeof seasons.$inferSelect): Season {
     weekStartDay: row.weekStartDay,
     dayStartTime: row.dayStartTime,
     dailyDuplicatePolicy: row.dailyDuplicatePolicy,
+    nextSettlementAt: row.nextSettlementAt?.toISOString(),
     status: row.status,
   };
 }
@@ -710,7 +715,7 @@ async function getLatestSettlement(groupId: string, season: Season): Promise<Set
     };
   }
 
-  const weekRange = getKoreanWeekRange(getCurrentKoreanWorkoutDate(season.dayStartTime), season.weekStartDay);
+  const weekRange = getKoreanWeekRange(getKoreanWorkoutDate(new Date(), season.dayStartTime), season.weekStartDay);
   return {
     id: "",
     groupId,
@@ -721,8 +726,42 @@ async function getLatestSettlement(groupId: string, season: Season): Promise<Set
   };
 }
 
+async function getSettlementSummaries(groupId: string): Promise<SettlementSummary[]> {
+  const rows = await db
+    .select({
+      id: weeklySettlements.id,
+      groupId: weeklySettlements.groupId,
+      seasonId: weeklySettlements.seasonId,
+      seasonName: seasons.name,
+      weekStartDate: weeklySettlements.weekStartDate,
+      weekEndDate: weeklySettlements.weekEndDate,
+      status: weeklySettlements.status,
+      confirmedAt: weeklySettlements.confirmedAt,
+      participantCount: sql<number>`count(${weeklySettlementRows.userId})`,
+      finalFineAmountTotal: sql<number>`coalesce(sum(${weeklySettlementRows.finalFineAmount}), 0)`,
+    })
+    .from(weeklySettlements)
+    .innerJoin(seasons, eq(weeklySettlements.seasonId, seasons.id))
+    .leftJoin(weeklySettlementRows, eq(weeklySettlementRows.settlementId, weeklySettlements.id))
+    .where(eq(weeklySettlements.groupId, BigInt(groupId)))
+    .groupBy(weeklySettlements.id, seasons.name)
+    .orderBy(desc(weeklySettlements.weekStartDate), desc(weeklySettlements.id));
+
+  return rows.map((row) => ({
+    id: row.id.toString(),
+    groupId: row.groupId.toString(),
+    seasonId: row.seasonId.toString(),
+    seasonName: row.seasonName,
+    weekStartDate: row.weekStartDate,
+    weekEndDate: row.weekEndDate,
+    status: row.status,
+    confirmedAt: row.confirmedAt?.toISOString(),
+    participantCount: Number(row.participantCount),
+    finalFineAmountTotal: Number(row.finalFineAmountTotal),
+  }));
+}
 async function getWeeklyUserWorkoutStatus(groupId: string, season: Season, userId: string): Promise<WeeklyUserWorkoutStatus> {
-  const weekRange = getKoreanWeekRange(getCurrentKoreanWorkoutDate(season.dayStartTime), season.weekStartDay);
+  const weekRange = getKoreanWeekRange(getKoreanWorkoutDate(new Date(), season.dayStartTime), season.weekStartDay);
   const rows = await db
     .select({ workoutDate: workoutPosts.workoutDate })
     .from(workoutPosts)
@@ -804,50 +843,4 @@ async function getAccountInfo(groupId: string): Promise<AccountInfo> {
     accountNumber: rows[0].accountNumber,
     holderName: rows[0].holderName,
   };
-}
-function getCurrentKoreanWorkoutDate(dayStartTime: string, now = new Date()) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(now);
-  const partMap = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  const date = new Date(Date.UTC(Number(partMap.year), Number(partMap.month) - 1, Number(partMap.day)));
-  const secondOfDay = Number(partMap.hour) * 3600 + Number(partMap.minute) * 60 + Number(partMap.second);
-
-  if (secondOfDay < parseTimeToSecondOfDay(dayStartTime)) {
-    date.setUTCDate(date.getUTCDate() - 1);
-  }
-
-  return date;
-}
-
-function getKoreanWeekRange(date = new Date(), weekStartDay = 0) {
-  const baseDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const dayIndexFromMonday = (baseDate.getUTCDay() + 6) % 7;
-  let startOffset = weekStartDay - dayIndexFromMonday;
-
-  if (startOffset > 0) {
-    startOffset -= 7;
-  }
-
-  baseDate.setUTCDate(baseDate.getUTCDate() + startOffset);
-
-  const endDate = new Date(baseDate);
-  endDate.setUTCDate(baseDate.getUTCDate() + 6);
-
-  return {
-    weekStartDate: baseDate.toISOString().slice(0, 10),
-    weekEndDate: endDate.toISOString().slice(0, 10),
-  };
-}
-
-function parseTimeToSecondOfDay(value: string) {
-  const [hour = "0", minute = "0", second = "0"] = value.split(":");
-  return Number(hour) * 3600 + Number(minute) * 60 + Number(second);
 }
