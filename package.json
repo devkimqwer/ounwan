@@ -15,7 +15,9 @@
     "db:studio:local": "node --env-file=.env.local ./node_modules/drizzle-kit/bin.cjs studio",
     "db:up:local": "docker compose --env-file .env.local up -d postgres",
     "db:down": "docker compose down",
-    "db:seed:local": "node --env-file=.env.local --import tsx src/db/seed.ts"
+    "db:seed:local": "node --env-file=.env.local --import tsx src/db/seed.ts",
+    "batch:weekly-settlement": "tsx src/batch/weekly-settlement.ts",
+    "batch:weekly-settlement:local": "node --env-file=.env.local --import tsx src/batch/weekly-settlement.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",

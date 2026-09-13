@@ -5,6 +5,7 @@ import { and, desc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { clearCurrentGroupId, getCurrentGroupIdForUser, requireCurrentUserId, setCurrentGroupIdForUser } from "@/auth/session";
 import { generateInviteToken, isInviteTokenFormat } from "@/invites/tokens";
 import { sendPushForNotifications } from "@/push-service";
+import { getKoreanDate, getKoreanWeekRange, getKoreanWorkoutDate, getNextSettlementAt } from "@/lib/season-time";
 import { deleteStorageFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/service";
 
 import { db } from "./client";
@@ -909,18 +910,29 @@ export async function updateSeasonRules(input: UpdateSeasonRulesInput) {
     throw new Error("Invalid season id.");
   }
 
-  const rows = await db
-    .update(seasons)
-    .set({
-      weekStartDay: input.weekStartDay,
-      dayStartTime: input.dayStartTime,
-      dailyDuplicatePolicy: input.dailyDuplicatePolicy,
-      targetWorkoutCountPerWeek: input.targetWorkoutCountPerWeek,
-      finePerMiss: input.finePerMiss,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(seasons.id, BigInt(input.seasonId)), eq(seasons.groupId, BigInt(context.groupId)), ne(seasons.status, "closed")))
-    .returning({ id: seasons.id });
+  const rows = await db.transaction(async (tx) => {
+    const updatedRows = await tx
+      .update(seasons)
+      .set({
+        weekStartDay: input.weekStartDay,
+        dayStartTime: input.dayStartTime,
+        dailyDuplicatePolicy: input.dailyDuplicatePolicy,
+        targetWorkoutCountPerWeek: input.targetWorkoutCountPerWeek,
+        finePerMiss: input.finePerMiss,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(seasons.id, BigInt(input.seasonId)), eq(seasons.groupId, BigInt(context.groupId)), ne(seasons.status, "closed")))
+      .returning({ id: seasons.id, status: seasons.status, weekStartDay: seasons.weekStartDay, dayStartTime: seasons.dayStartTime, nextSettlementAt: seasons.nextSettlementAt });
+
+    if (updatedRows[0]?.status === "active") {
+      await tx
+        .update(seasons)
+        .set({ nextSettlementAt: getNextSettlementAt(new Date(), updatedRows[0].weekStartDay, updatedRows[0].dayStartTime), updatedAt: new Date() })
+        .where(eq(seasons.id, updatedRows[0].id));
+    }
+
+    return updatedRows;
+  });
 
   if (!rows[0]) {
     throw new Error("Season not found.");
@@ -928,7 +940,6 @@ export async function updateSeasonRules(input: UpdateSeasonRulesInput) {
 
   return { id: rows[0].id.toString() };
 }
-
 export async function activateCurrentGroupPendingSeason() {
   const context = await getCurrentGroupAdminContext();
   const today = getKoreanDate();
@@ -1645,35 +1656,6 @@ async function notifySeasonParticipants(executor: NotificationExecutor, seasonId
     })),
   );
 }
-function getKoreanWorkoutDate(now = new Date(), dayStartTime = "03:00:00") {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(now);
-  const partMap = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  const year = Number(partMap.year);
-  const month = Number(partMap.month);
-  const day = Number(partMap.day);
-  const secondOfDay = Number(partMap.hour) * 3600 + Number(partMap.minute) * 60 + Number(partMap.second);
-  const date = new Date(Date.UTC(year, month - 1, day));
-
-  if (secondOfDay < parseTimeToSecondOfDay(dayStartTime)) {
-    date.setUTCDate(date.getUTCDate() - 1);
-  }
-
-  return date.toISOString().slice(0, 10);
-}
-
-function parseTimeToSecondOfDay(value: string) {
-  const [hour = "0", minute = "0", second = "0"] = value.split(":");
-  return Number(hour) * 3600 + Number(minute) * 60 + Number(second);
-}
 async function activatePendingSeasonForGroup(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], groupId: bigint, activationDate: string) {
   const activeSeasonRows = await tx
     .select({ id: seasons.id })
@@ -1753,6 +1735,22 @@ async function activateDuePendingSeasonForGroup(tx: Parameters<Parameters<typeof
 }
 
 async function initializeActiveSeason(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], seasonId: bigint, groupId: bigint, activationDate: string) {
+  const activeSeasonRows = await tx
+    .select({ weekStartDay: seasons.weekStartDay, dayStartTime: seasons.dayStartTime })
+    .from(seasons)
+    .where(eq(seasons.id, seasonId))
+    .limit(1);
+  const activeSeason = activeSeasonRows[0];
+
+  if (!activeSeason) {
+    throw new Error("Active season not found.");
+  }
+
+  await tx
+    .update(seasons)
+    .set({ nextSettlementAt: getNextSettlementAt(new Date(), activeSeason.weekStartDay, activeSeason.dayStartTime), updatedAt: new Date() })
+    .where(eq(seasons.id, seasonId));
+
   const memberRows = await tx
     .select({ userId: groupMembers.userId })
     .from(groupMembers)
@@ -1768,7 +1766,7 @@ async function initializeActiveSeason(tx: Parameters<Parameters<typeof db.transa
     );
   }
 
-  const weekRange = getKoreanWeekRange(new Date(`${activationDate}T00:00:00+09:00`));
+  const weekRange = getKoreanWeekRange(activationDate, activeSeason.weekStartDay);
   const settlementRows = await tx
     .insert(weeklySettlements)
     .values({
@@ -1794,34 +1792,4 @@ async function initializeActiveSeason(tx: Parameters<Parameters<typeof db.transa
       })),
     );
   }
-}
-function getKoreanDate(now = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-}
-function getKoreanWeekRange(date: Date) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    weekday: "short",
-  }).formatToParts(date);
-  const partMap = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  const baseDate = new Date(Date.UTC(Number(partMap.year), Number(partMap.month) - 1, Number(partMap.day)));
-  const day = baseDate.getUTCDay();
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  baseDate.setUTCDate(baseDate.getUTCDate() + mondayOffset);
-
-  const endDate = new Date(baseDate);
-  endDate.setUTCDate(baseDate.getUTCDate() + 6);
-
-  return {
-    weekStartDate: baseDate.toISOString().slice(0, 10),
-    weekEndDate: endDate.toISOString().slice(0, 10),
-  };
 }

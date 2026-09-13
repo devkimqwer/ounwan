@@ -84,6 +84,7 @@ export interface Season {
   weekStartDay: number;
   dayStartTime: string;
   dailyDuplicatePolicy: DailyDuplicatePolicy;
+  nextSettlementAt?: string;
   status: "pending" | "active" | "closed";
 }
 
