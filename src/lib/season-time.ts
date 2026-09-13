@@ -78,6 +78,14 @@ export function getPreviousSettlementPeriod(settlementAt: Date, weekStartDay: nu
   };
 }
 
+export function getSeasonLogicalStartAt(startDate: string, dayStartTime: string) {
+  return toKstDateTime(startDate, dayStartTime);
+}
+
+export function isSeasonStartDue(startDate: string, dayStartTime: string, now = new Date()) {
+  return getSeasonLogicalStartAt(startDate, dayStartTime).getTime() <= now.getTime();
+}
+
 export function getSettlementWindow(weekStartDate: string, dayStartTime: string) {
   return {
     startAt: toKstDateTime(weekStartDate, dayStartTime),
