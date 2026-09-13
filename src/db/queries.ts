@@ -21,6 +21,7 @@ import type {
   SeasonParticipant,
   Settlement,
   SettlementRow,
+  SettlementSummary,
   User,
   UserGroupMembership,
   WeeklyUserWorkoutStatus,
@@ -67,7 +68,7 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
   const membership = selectedGroup.membership;
   const season = await getActiveSeason(group.id);
   const isAdmin = membership.roles.includes("admin");
-  const [appUsers, groupSeasons, seasonParticipants, adminGroupMembers, posts, weeklyUserWorkoutStatus, settlement, bankRecords, accountInfo, notificationPage] = await Promise.all([
+  const [appUsers, groupSeasons, seasonParticipants, adminGroupMembers, posts, weeklyUserWorkoutStatus, settlement, settlementSummaries, bankRecords, accountInfo, notificationPage] = await Promise.all([
     getGroupUsers(group.id),
     getGroupSeasons(group.id),
     getSeasonParticipants(group.id),
@@ -75,6 +76,7 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
     season ? getWorkoutPosts(group.id, season.id, currentUser.id) : Promise.resolve([]),
     season ? getWeeklyUserWorkoutStatus(group.id, season, currentUser.id) : Promise.resolve(undefined),
     season ? getLatestSettlement(group.id, season) : Promise.resolve(undefined),
+    getSettlementSummaries(group.id),
     getBankRecords(group.id),
     getAccountInfo(group.id),
     getCurrentUserNotificationPage(),
@@ -97,6 +99,7 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
     posts,
     weeklyUserWorkoutStatus,
     settlement,
+    settlementSummaries,
     settlementRows,
     bankRecords,
     accountInfo,
@@ -723,6 +726,40 @@ async function getLatestSettlement(groupId: string, season: Season): Promise<Set
   };
 }
 
+async function getSettlementSummaries(groupId: string): Promise<SettlementSummary[]> {
+  const rows = await db
+    .select({
+      id: weeklySettlements.id,
+      groupId: weeklySettlements.groupId,
+      seasonId: weeklySettlements.seasonId,
+      seasonName: seasons.name,
+      weekStartDate: weeklySettlements.weekStartDate,
+      weekEndDate: weeklySettlements.weekEndDate,
+      status: weeklySettlements.status,
+      confirmedAt: weeklySettlements.confirmedAt,
+      participantCount: sql<number>`count(${weeklySettlementRows.userId})`,
+      finalFineAmountTotal: sql<number>`coalesce(sum(${weeklySettlementRows.finalFineAmount}), 0)`,
+    })
+    .from(weeklySettlements)
+    .innerJoin(seasons, eq(weeklySettlements.seasonId, seasons.id))
+    .leftJoin(weeklySettlementRows, eq(weeklySettlementRows.settlementId, weeklySettlements.id))
+    .where(eq(weeklySettlements.groupId, BigInt(groupId)))
+    .groupBy(weeklySettlements.id, seasons.name)
+    .orderBy(desc(weeklySettlements.weekStartDate), desc(weeklySettlements.id));
+
+  return rows.map((row) => ({
+    id: row.id.toString(),
+    groupId: row.groupId.toString(),
+    seasonId: row.seasonId.toString(),
+    seasonName: row.seasonName,
+    weekStartDate: row.weekStartDate,
+    weekEndDate: row.weekEndDate,
+    status: row.status,
+    confirmedAt: row.confirmedAt?.toISOString(),
+    participantCount: Number(row.participantCount),
+    finalFineAmountTotal: Number(row.finalFineAmountTotal),
+  }));
+}
 async function getWeeklyUserWorkoutStatus(groupId: string, season: Season, userId: string): Promise<WeeklyUserWorkoutStatus> {
   const weekRange = getKoreanWeekRange(getKoreanWorkoutDate(new Date(), season.dayStartTime), season.weekStartDay);
   const rows = await db

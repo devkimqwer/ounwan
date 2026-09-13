@@ -4,12 +4,13 @@ import { useRouter } from "next/navigation";
 import { createGroupInAppAction, deleteGroupAction, leaveGroupAction, refreshCurrentUserAvatarAction, switchCurrentGroupAction, updateCurrentUserProfileAction } from "@/app/actions";
 import type { CreateGroupState, DeleteGroupState, LeaveGroupState, RefreshCurrentUserAvatarState, UpdateCurrentUserProfileState } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
-import type { AccountInfo, AdminGroupMember, Group, Season, SeasonParticipant, User, UserGroupMembership } from "@/domain/models";
+import type { AccountInfo, AdminGroupMember, Group, Season, SeasonParticipant, SettlementSummary, User, UserGroupMembership } from "@/domain/models";
 import { TextLogoutButton } from "@/features/auth/logout-controls";
 import type { MoreSubPage } from "./app-types";
 import { BankAccountManagementView } from "./bank-account-management-view";
 import { GroupMemberManagementView } from "./group-member-management-view";
 import { SeasonManagementView } from "./season-management-view";
+import { SettlementHistoryView } from "./settlement-history-view";
 import { Avatar, Badge, getDisplayRoles, getRoleBadgeTone, getRoleLabel, MenuBlock } from "./shared-ui";
 
 export function MoreView({
@@ -22,6 +23,7 @@ export function MoreView({
   adminGroupMembers,
   seasons,
   seasonParticipants,
+  settlementSummaries,
   activeMorePage,
   onOpenMorePage,
   onCloseMorePage,
@@ -35,6 +37,7 @@ export function MoreView({
   adminGroupMembers: AdminGroupMember[];
   seasons: Season[];
   seasonParticipants: SeasonParticipant[];
+  settlementSummaries: SettlementSummary[];
   activeMorePage: MoreSubPage;
   onOpenMorePage: (page: Exclude<MoreSubPage, "main">) => void;
   onCloseMorePage: () => void;
@@ -279,6 +282,10 @@ export function MoreView({
     return <BankAccountManagementView accountInfo={accountInfo} onBack={onCloseMorePage} />;
   }
 
+  if (activeMorePage === "settlement-history") {
+    return <SettlementHistoryView settlements={settlementSummaries} onBack={onCloseMorePage} />;
+  }
+
   return (
     <div className="space-y-4 p-4">
       <section className="relative rounded-2xl border border-slate-200 bg-white p-5">
@@ -358,7 +365,7 @@ export function MoreView({
 
       <MenuBlock
         rows={[
-          <MoreMenuRow key="settlement-history" label="결산 내역" onClick={() => openNotReadyDialog("결산 내역")} />,
+          <MoreMenuRow key="settlement-history" label="결산 내역" onClick={() => onOpenMorePage("settlement-history")} />,
           <MoreMenuRow key="balance-status" label="잔고 현황" onClick={() => openNotReadyDialog("잔고 현황")} />,
           <MoreMenuRow key="season-archive" label="이전 시즌" onClick={() => openNotReadyDialog("이전 시즌")} />,
         ]}

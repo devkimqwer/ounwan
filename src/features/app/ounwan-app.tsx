@@ -74,7 +74,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const initialUrlHandledRef = useRef(false);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTopRef = useRef(0);
-  const { accountInfo, adminGroupMembers, approvedGroups, currentUser, currentUserId, group, membership, posts, season, seasonParticipants, seasons, users, weeklyUserWorkoutStatus } = appData;
+  const { accountInfo, adminGroupMembers, approvedGroups, currentUser, currentUserId, group, membership, posts, season, seasonParticipants, seasons, settlementSummaries, users, weeklyUserWorkoutStatus } = appData;
   const roles = membership.roles;
   const isAdmin = roles.includes("admin");
   const isTreasurer = roles.includes("treasurer");
@@ -715,6 +715,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                   adminGroupMembers={adminGroupMembers}
                   seasons={seasons}
                   seasonParticipants={seasonParticipants}
+                  settlementSummaries={settlementSummaries}
                   activeMorePage={activeMorePage}
                   onOpenMorePage={(page) => openMorePage(page, { refreshOnEnter: true })}
                   onCloseMorePage={closeMorePage}

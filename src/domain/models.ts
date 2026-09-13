@@ -144,6 +144,19 @@ export interface Settlement {
   comment?: string;
 }
 
+export interface SettlementSummary {
+  id: string;
+  groupId: string;
+  seasonId: string;
+  seasonName: string;
+  weekStartDate: string;
+  weekEndDate: string;
+  status: "draft" | "confirmed";
+  confirmedAt?: string;
+  participantCount: number;
+  finalFineAmountTotal: number;
+}
+
 export interface SettlementRow {
   settlementId: string;
   userId: string;
