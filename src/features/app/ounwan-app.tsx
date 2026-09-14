@@ -2,6 +2,7 @@
 import Image from "next/image";
 
 import { getUnreadNotificationCountAction, getWorkoutPostByIdAction, markNotificationsReadAction, switchCurrentGroupAction } from "@/app/actions";
+import { AppDialog } from "@/components/ui/app-dialog";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -14,6 +15,7 @@ import { CertView } from "./cert-view";
 import { FeedView } from "./feed-view";
 import { HomeView } from "./home-view";
 import { readInitialTabPreference } from "./initial-tab-preference";
+import { SeasonRulesSummary } from "./season-rules-summary";
 import { MainMenuPanel } from "./main-menu-panel";
 import { MoreView } from "./more-view";
 import { NotificationView } from "./notification-view";
@@ -59,6 +61,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const [pendingCreatedPostId, setPendingCreatedPostId] = useState<string | null>(null);
   const [activeMorePage, setActiveMorePage] = useState<MoreSubPage>("main");
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [seasonRulesOpen, setSeasonRulesOpen] = useState(false);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(appData.notifications.unreadCount);
   const feedScopeKey = `${appData.currentGroupId}:${appData.currentSeasonId ?? "none"}`;
   const [feedState, setFeedState] = useState({ scopeKey: feedScopeKey, page: appData.postPage, mineOnly: false });
@@ -88,6 +91,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const activeFeedState = feedState.scopeKey === feedScopeKey ? feedState : { scopeKey: feedScopeKey, page: postPage, mineOnly: false };
   const pendingSeason = seasons.find((item) => item.status === "pending");
   const hasActiveSeason = Boolean(season);
+  const displayedStatusSeason = season ?? pendingSeason;
   const seasonStatusText = season
     ? `${season.name} 진행중`
     : pendingSeason
@@ -711,10 +715,30 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
         />
 
         <div className="z-40 flex h-9 shrink-0 items-center justify-center border-b border-slate-200 bg-white">
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold leading-none text-slate-500">
-            {seasonStatusText}
-          </span>
+          {displayedStatusSeason ? (
+            <button
+              type="button"
+              className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold leading-none text-slate-500 active:bg-slate-200"
+              onClick={() => setSeasonRulesOpen(true)}
+            >
+              {seasonStatusText}
+            </button>
+          ) : (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold leading-none text-slate-500">
+              {seasonStatusText}
+            </span>
+          )}
         </div>
+
+        <AppDialog
+          open={seasonRulesOpen && Boolean(displayedStatusSeason)}
+          title={displayedStatusSeason ? `${displayedStatusSeason.name}의 규칙` : "시즌 규칙"}
+          onClose={() => setSeasonRulesOpen(false)}
+          dismissOnBackdrop
+          actions={[{ label: "확인", onClick: () => setSeasonRulesOpen(false) }]}
+        >
+          {displayedStatusSeason && <SeasonRulesSummary season={displayedStatusSeason} />}
+        </AppDialog>
 
         <div ref={contentScrollRef} className="min-h-0 flex-1 overflow-y-auto bg-slate-50 pb-4">
           {selectedPost ? (
