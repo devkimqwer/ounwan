@@ -90,7 +90,7 @@ export async function getDuePendingSeasons(now = new Date()): Promise<PendingSea
     .where(
       and(
         eq(seasons.status, "pending"),
-        sql`(${seasons.startDate}::timestamp + ${seasons.dayStartTime}) AT TIME ZONE 'Asia/Seoul' <= ${now}`,
+        sql`(${seasons.startDate} + ${seasons.dayStartTime}) AT TIME ZONE 'Asia/Seoul' <= ${now.toISOString()}::timestamptz`,
       ),
     )
     .orderBy(asc(seasons.startDate), asc(seasons.id));
@@ -229,9 +229,14 @@ function log(message: string, data: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ level: "info", batch: "season-activation", message, ...data }));
 }
 
-function serializeError(error: unknown) {
+function serializeError(error: unknown): Record<string, unknown> {
   if (error instanceof Error) {
-    return { name: error.name, message: error.message, stack: error.stack };
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      cause: error.cause ? serializeError(error.cause) : undefined,
+    };
   }
 
   return { message: String(error) };
