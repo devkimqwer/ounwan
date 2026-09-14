@@ -1275,6 +1275,18 @@ export async function markNotificationsRead(notificationIds: string[]) {
   return { updatedCount: rows.length };
 }
 
+export async function markAllNotificationsRead() {
+  const userId = await requireCurrentUserId();
+
+  const rows = await db
+    .update(notifications)
+    .set({ readAt: new Date() })
+    .where(and(eq(notifications.recipientUserId, BigInt(userId)), isNull(notifications.deletedAt), isNull(notifications.readAt)))
+    .returning({ id: notifications.id });
+
+  return { updatedCount: rows.length };
+}
+
 export async function deleteNotification(notificationId: string) {
   const userId = await requireCurrentUserId();
 

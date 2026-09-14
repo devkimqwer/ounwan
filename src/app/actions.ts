@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { getCurrentUserNotificationPage, getCurrentUserUnreadNotificationCount, getCurrentWorkoutPostById, getCurrentWorkoutPostPage } from "@/db/queries";
-import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, expelGroupMember, getOrCreateCurrentGroupInvite, leaveGroup, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateGroupMemberRoles, updateSeasonRules } from "@/db/commands";
+import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, expelGroupMember, getOrCreateCurrentGroupInvite, leaveGroup, markAllNotificationsRead, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateGroupMemberRoles, updateSeasonRules } from "@/db/commands";
 import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
 import type { WorkoutPost, WorkoutPostCursor, WorkoutPostPage } from "@/domain/models";
 
@@ -562,6 +562,11 @@ export async function loadNotificationsAction(offset: number) {
 
 export async function markNotificationsReadAction(notificationIds: string[]) {
   await markNotificationsRead(notificationIds);
+  revalidatePath("/");
+}
+
+export async function markAllNotificationsReadAction() {
+  await markAllNotificationsRead();
   revalidatePath("/");
 }
 
