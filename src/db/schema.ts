@@ -285,7 +285,7 @@ export const workoutPosts = pgTable(
   },
   (table) => [
     index("idx_workout_posts_feed")
-      .on(table.groupId, table.seasonId, table.createdAt.desc())
+      .on(table.groupId, table.seasonId, table.createdAt.desc(), table.id.desc())
       .where(sql`${table.deletedAt} IS NULL`),
     index("idx_workout_posts_weekly_count")
       .on(table.seasonId, table.userId, table.workoutDate)

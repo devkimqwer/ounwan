@@ -1,13 +1,13 @@
 "use client";
 import Image from "next/image";
 
-import { getUnreadNotificationCountAction, markNotificationsReadAction, switchCurrentGroupAction } from "@/app/actions";
+import { getUnreadNotificationCountAction, getWorkoutPostByIdAction, markNotificationsReadAction, switchCurrentGroupAction } from "@/app/actions";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import type { OunwanAppData } from "@/domain/app-data";
-import type { AppNotification } from "@/domain/models";
+import type { AppNotification, WorkoutPost } from "@/domain/models";
 import { formatSystemDate } from "@/lib/date-format";
 import type { MoreSubPage, TabId } from "./app-types";
 import { CertView } from "./cert-view";
@@ -52,10 +52,13 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [menuOpen, setMenuOpen] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [selectedPostSnapshot, setSelectedPostSnapshot] = useState<WorkoutPost | null>(null);
   const [pendingCreatedPostId, setPendingCreatedPostId] = useState<string | null>(null);
   const [activeMorePage, setActiveMorePage] = useState<MoreSubPage>("main");
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(appData.notifications.unreadCount);
+  const feedScopeKey = `${appData.currentGroupId}:${appData.currentSeasonId ?? "none"}`;
+  const [feedState, setFeedState] = useState({ scopeKey: feedScopeKey, page: appData.postPage, mineOnly: false });
   const detailHistoryActiveRef = useRef(false);
   const menuHistoryActiveRef = useRef(false);
   const tabHistoryActiveRef = useRef(false);
@@ -74,11 +77,12 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const initialUrlHandledRef = useRef(false);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTopRef = useRef(0);
-  const { accountInfo, adminGroupMembers, approvedGroups, currentUser, currentUserId, group, membership, posts, season, seasonParticipants, seasons, settlementSummaries, users, weeklyUserWorkoutStatus } = appData;
+  const { accountInfo, adminGroupMembers, approvedGroups, currentUser, currentUserId, group, membership, postPage, posts, season, seasonParticipants, seasons, settlementSummaries, users, weeklyUserWorkoutStatus } = appData;
   const roles = membership.roles;
   const isAdmin = roles.includes("admin");
   const isTreasurer = roles.includes("treasurer");
-  const selectedPost = posts.find((post) => post.id === selectedPostId);
+  const selectedPost = posts.find((post) => post.id === selectedPostId) ?? (selectedPostSnapshot?.id === selectedPostId ? selectedPostSnapshot : undefined);
+  const activeFeedState = feedState.scopeKey === feedScopeKey ? feedState : { scopeKey: feedScopeKey, page: postPage, mineOnly: false };
   const pendingSeason = seasons.find((item) => item.status === "pending");
   const hasActiveSeason = Boolean(season);
   const seasonStatusText = season
@@ -86,6 +90,10 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     : pendingSeason
       ? `${pendingSeason.name} ${formatSystemDate(pendingSeason.startDate)} 시작 예정`
       : "진행중 시즌 없음";
+
+  useEffect(() => {
+    setFeedState({ scopeKey: feedScopeKey, page: appData.postPage, mineOnly: false });
+  }, [appData.postPage, feedScopeKey]);
 
   const restoreListScroll = () => {
     requestAnimationFrame(() => {
@@ -97,6 +105,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     detailHistoryActiveRef.current = false;
     selectedPostIdRef.current = null;
     setSelectedPostId(null);
+    setSelectedPostSnapshot(null);
     restoreListScroll();
   };
 
@@ -109,6 +118,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
     selectedPostIdRef.current = null;
     setSelectedPostId(null);
+    setSelectedPostSnapshot(null);
     notificationOpenRef.current = true;
     setNotificationOpen(true);
     requestAnimationFrame(() => {
@@ -147,7 +157,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
       const targetPost = posts.find((post) => post.id === notification.actionTargetId);
       if (targetPost) {
-        openPostDetail(targetPost.id);
+        openPostDetail(targetPost.id, targetPost);
       } else {
         setPendingCreatedPostId(notification.actionTargetId);
         router.refresh();
@@ -175,12 +185,13 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     closePostDetailFromHistory();
   };
 
-  const openPostDetail = (postId: string) => {
+  const openPostDetail = (postId: string, post?: WorkoutPost) => {
     listScrollTopRef.current = contentScrollRef.current?.scrollTop ?? 0;
     detailHistoryActiveRef.current = true;
     window.history.pushState({ ounwanPostDetail: postId }, "");
     selectedPostIdRef.current = postId;
     setSelectedPostId(postId);
+    setSelectedPostSnapshot(post ?? null);
     requestAnimationFrame(() => {
       contentScrollRef.current?.scrollTo({ top: 0 });
     });
@@ -284,6 +295,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
     selectedPostIdRef.current = null;
     setSelectedPostId(null);
+    setSelectedPostSnapshot(null);
     if (activeMorePageRef.current !== "main") {
       closeMorePageFromHistory();
     }
@@ -328,6 +340,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     setActiveTab("feed");
     selectedPostIdRef.current = null;
     setSelectedPostId(null);
+    setSelectedPostSnapshot(null);
     if (activeMorePageRef.current !== "main") {
       closeMorePageFromHistory();
     }
@@ -485,7 +498,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     if (postId) {
       const targetPost = posts.find((post) => post.id === postId);
       if (targetPost) {
-        openPostDetail(targetPost.id);
+        openPostDetail(targetPost.id, targetPost);
       } else {
         setPendingCreatedPostId(postId);
       }
@@ -561,6 +574,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
         selectedPostIdRef.current = null;
         activeTabRef.current = "home";
         setSelectedPostId(null);
+        setSelectedPostSnapshot(null);
         setActiveTab("home");
         requestAnimationFrame(() => {
           contentScrollRef.current?.scrollTo({ top: 0 });
@@ -573,12 +587,45 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   }, []);
 
   useEffect(() => {
-    if (!pendingCreatedPostId || !posts.some((post) => post.id === pendingCreatedPostId)) {
+    if (!selectedPostId) {
       return;
     }
 
-    openPostDetail(pendingCreatedPostId);
-    setPendingCreatedPostId(null);
+    const targetPost = posts.find((post) => post.id === selectedPostId);
+    if (targetPost) {
+      setSelectedPostSnapshot(targetPost);
+    }
+  }, [posts, selectedPostId]);
+
+  useEffect(() => {
+    if (!pendingCreatedPostId) {
+      return;
+    }
+
+    const targetPost = posts.find((post) => post.id === pendingCreatedPostId);
+    if (targetPost) {
+      openPostDetail(targetPost.id, targetPost);
+      setPendingCreatedPostId(null);
+      return;
+    }
+
+    let cancelled = false;
+    getWorkoutPostByIdAction(pendingCreatedPostId)
+      .then((post) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (post) {
+          openPostDetail(post.id, post);
+          setPendingCreatedPostId(null);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
   }, [pendingCreatedPostId, posts]);
 
   return (
@@ -687,10 +734,15 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
               {activeTab === "feed" && hasActiveSeason && (
                 <FeedView
                   isAdmin={isAdmin}
-                  posts={posts}
+                  initialPage={activeFeedState.page}
+                  currentGroupId={group.id}
+                  currentSeasonId={season?.id}
+                  initialMineOnly={activeFeedState.mineOnly}
                   currentUserId={currentUserId}
+                  scrollRootRef={contentScrollRef}
                   users={users}
                   onPostOpen={openPostDetail}
+                  onFeedStateChange={(state) => setFeedState({ scopeKey: feedScopeKey, ...state })}
                 />
               )}
               {activeTab === "feed" && !hasActiveSeason && (

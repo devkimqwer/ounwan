@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, desc, eq, gt, gte, ilike, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, ilike, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 
 import type {
   AdminGroupMember,
@@ -26,6 +26,8 @@ import type {
   UserGroupMembership,
   WeeklyUserWorkoutStatus,
   WorkoutPost,
+  WorkoutPostCursor,
+  WorkoutPostPage,
 } from "@/domain/models";
 import { getCurrentGroupIdForUser, requireCurrentUserId } from "@/auth/session";
 import { getKoreanWeekRange, getKoreanWorkoutDate } from "@/lib/season-time";
@@ -68,12 +70,13 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
   const membership = selectedGroup.membership;
   const season = await getActiveSeason(group.id);
   const isAdmin = membership.roles.includes("admin");
-  const [appUsers, groupSeasons, seasonParticipants, adminGroupMembers, posts, weeklyUserWorkoutStatus, settlement, settlementSummaries, bankRecords, accountInfo, notificationPage] = await Promise.all([
+  const emptyPostPage: WorkoutPostPage = { posts: [], hasMore: false };
+  const [appUsers, groupSeasons, seasonParticipants, adminGroupMembers, postPage, weeklyUserWorkoutStatus, settlement, settlementSummaries, bankRecords, accountInfo, notificationPage] = await Promise.all([
     getGroupUsers(group.id),
     getGroupSeasons(group.id),
     getSeasonParticipants(group.id),
     isAdmin ? getAdminGroupMembers({ status: "all" }) : Promise.resolve([]),
-    season ? getWorkoutPosts(group.id, season.id, currentUser.id) : Promise.resolve([]),
+    season ? getWorkoutPostPage(group.id, season.id, currentUser.id) : Promise.resolve(emptyPostPage),
     season ? getWeeklyUserWorkoutStatus(group.id, season, currentUser.id) : Promise.resolve(undefined),
     season ? getLatestSettlement(group.id, season) : Promise.resolve(undefined),
     getSettlementSummaries(group.id),
@@ -96,7 +99,8 @@ export async function getOunwanAppData(): Promise<OunwanAppData> {
     season,
     seasons: groupSeasons,
     seasonParticipants,
-    posts,
+    posts: postPage.posts,
+    postPage,
     weeklyUserWorkoutStatus,
     settlement,
     settlementSummaries,
@@ -258,6 +262,8 @@ export async function getValidGroupInviteByToken(inviteToken: string): Promise<G
     status: row.invite.status,
   };
 }
+
+export const FEED_PAGE_SIZE = 10;
 
 const NOTIFICATION_PAGE_SIZE = 10;
 const notificationActionTypes = new Set<NotificationActionType>(["post_detail", "group_member_management", "settlement_detail"]);
@@ -578,7 +584,43 @@ async function getGroupUsers(groupId: string): Promise<User[]> {
   }));
 }
 
-async function getWorkoutPosts(groupId: string, seasonId: string, currentUserId: string): Promise<WorkoutPost[]> {
+export async function getCurrentWorkoutPostPage(input: { cursor?: WorkoutPostCursor; mineOnly?: boolean } = {}): Promise<WorkoutPostPage> {
+  const currentUser = await getCurrentUser();
+  const approvedGroups = await getApprovedGroupMemberships(currentUser.id);
+  const selectedGroupId = await getCurrentGroupIdForUser(currentUser.id);
+  const selectedGroup = approvedGroups.find(({ group }) => group.id === selectedGroupId) ?? approvedGroups[0];
+
+  if (!selectedGroup) {
+    throw new CurrentUserMembershipNotFoundError();
+  }
+
+  const season = await getActiveSeason(selectedGroup.group.id);
+  if (!season) {
+    return { posts: [], hasMore: false };
+  }
+
+  return getWorkoutPostPage(selectedGroup.group.id, season.id, currentUser.id, input);
+}
+
+export async function getCurrentWorkoutPostById(postId: string): Promise<WorkoutPost | undefined> {
+  if (!/^\d+$/.test(postId)) {
+    return undefined;
+  }
+
+  const currentUser = await getCurrentUser();
+  const approvedGroups = await getApprovedGroupMemberships(currentUser.id);
+  const selectedGroupId = await getCurrentGroupIdForUser(currentUser.id);
+  const selectedGroup = approvedGroups.find(({ group }) => group.id === selectedGroupId) ?? approvedGroups[0];
+
+  if (!selectedGroup) {
+    throw new CurrentUserMembershipNotFoundError();
+  }
+
+  const season = await getActiveSeason(selectedGroup.group.id);
+  if (!season) {
+    return undefined;
+  }
+
   const rows = await db
     .select({
       post: workoutPosts,
@@ -588,14 +630,84 @@ async function getWorkoutPosts(groupId: string, seasonId: string, currentUserId:
     .leftJoin(postLikes, eq(postLikes.postId, workoutPosts.id))
     .where(
       and(
-        eq(workoutPosts.groupId, BigInt(groupId)),
-        eq(workoutPosts.seasonId, BigInt(seasonId)),
+        eq(workoutPosts.id, BigInt(postId)),
+        eq(workoutPosts.groupId, BigInt(selectedGroup.group.id)),
+        eq(workoutPosts.seasonId, BigInt(season.id)),
         isNull(workoutPosts.deletedAt),
       ),
     )
     .groupBy(workoutPosts.id)
-    .orderBy(desc(workoutPosts.createdAt));
+    .limit(1);
 
+  return (await hydrateWorkoutPosts(rows, currentUser.id))[0];
+}
+
+async function getWorkoutPostPage(
+  groupId: string,
+  seasonId: string,
+  currentUserId: string,
+  input: { cursor?: WorkoutPostCursor; mineOnly?: boolean } = {},
+): Promise<WorkoutPostPage> {
+  const cursor = normalizeWorkoutPostCursor(input.cursor);
+  const conditions = [
+    eq(workoutPosts.groupId, BigInt(groupId)),
+    eq(workoutPosts.seasonId, BigInt(seasonId)),
+    isNull(workoutPosts.deletedAt),
+  ];
+
+  if (input.mineOnly) {
+    conditions.push(eq(workoutPosts.userId, BigInt(currentUserId)));
+  }
+
+  if (cursor) {
+    conditions.push(
+      or(
+        lt(workoutPosts.createdAt, cursor.createdAt),
+        and(eq(workoutPosts.createdAt, cursor.createdAt), lt(workoutPosts.id, BigInt(cursor.id))),
+      )!,
+    );
+  }
+
+  const rows = await db
+    .select({
+      post: workoutPosts,
+      likeCount: count(postLikes.userId),
+    })
+    .from(workoutPosts)
+    .leftJoin(postLikes, eq(postLikes.postId, workoutPosts.id))
+    .where(and(...conditions))
+    .groupBy(workoutPosts.id)
+    .orderBy(desc(workoutPosts.createdAt), desc(workoutPosts.id))
+    .limit(FEED_PAGE_SIZE + 1);
+
+  const pageRows = rows.slice(0, FEED_PAGE_SIZE);
+  const posts = await hydrateWorkoutPosts(pageRows, currentUserId);
+  const lastPost = posts[posts.length - 1];
+
+  return {
+    posts,
+    nextCursor: rows.length > FEED_PAGE_SIZE && lastPost ? { createdAt: lastPost.createdAt, id: lastPost.id } : undefined,
+    hasMore: rows.length > FEED_PAGE_SIZE,
+  };
+}
+
+function normalizeWorkoutPostCursor(cursor: WorkoutPostCursor | undefined): { createdAt: Date; id: string } | undefined {
+  if (!cursor || !/^\d+$/.test(cursor.id)) {
+    return undefined;
+  }
+
+  const createdAt = new Date(cursor.createdAt);
+  if (Number.isNaN(createdAt.getTime())) {
+    return undefined;
+  }
+
+  return { createdAt, id: cursor.id };
+}
+
+async function hydrateWorkoutPosts(
+  rows: Array<{ post: typeof workoutPosts.$inferSelect; likeCount: number | string | bigint }>,
+  currentUserId: string,
+): Promise<WorkoutPost[]> {
   const postIds = rows.map((row) => row.post.id);
   const mediaByPostId = new Map<string, PostMedia[]>();
   const commentsByPostId = new Map<string, PostComment[]>();
@@ -684,7 +796,7 @@ async function getWorkoutPosts(groupId: string, seasonId: string, currentUserId:
       isInvalid: post.isInvalid,
       invalidatedByUserId: post.invalidatedByUserId?.toString(),
       invalidatedAt: post.invalidatedAt?.toISOString(),
-      likeCount,
+      likeCount: Number(likeCount),
       likedByCurrentUser: currentUserLikedPostIds.has(postId),
       likeUserIds: likeUserIdsByPostId.get(postId) ?? [],
       commentCount: commentCounts.get(postId) ?? 0,

@@ -66,13 +66,13 @@ export function MediaCarousel({
           onClick={onOpen}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={imageSrc} alt="운동 인증" className={mediaClassName} />
+          <img src={imageSrc} alt="운동 인증" loading="lazy" className={mediaClassName} />
         </button>
       )}
       {activeMedia?.url && activeMedia.type === "image" && !onOpen && (
         <>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={imageSrc} alt="운동 인증" className={mediaClassName} />
+          <img src={imageSrc} alt="운동 인증" loading="lazy" className={mediaClassName} />
         </>
       )}
       {activeMedia?.url && activeMedia.type === "video" && onOpen && (
