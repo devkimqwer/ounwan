@@ -1,0 +1,2 @@
+DROP INDEX "idx_workout_posts_feed";--> statement-breakpoint
+CREATE INDEX "idx_workout_posts_feed" ON "workout_posts" USING btree ("group_id","season_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST) WHERE "workout_posts"."deleted_at" IS NULL;

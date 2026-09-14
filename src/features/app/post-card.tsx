@@ -66,13 +66,13 @@ export function MediaCarousel({
           onClick={onOpen}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={imageSrc} alt="운동 인증" className={mediaClassName} />
+          <img src={imageSrc} alt="운동 인증" loading="lazy" className={mediaClassName} />
         </button>
       )}
       {activeMedia?.url && activeMedia.type === "image" && !onOpen && (
         <>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={imageSrc} alt="운동 인증" className={mediaClassName} />
+          <img src={imageSrc} alt="운동 인증" loading="lazy" className={mediaClassName} />
         </>
       )}
       {activeMedia?.url && activeMedia.type === "video" && onOpen && (
@@ -279,7 +279,11 @@ export function PostCard({
         className={`space-y-3 p-4 ${openPost ? "cursor-pointer" : ""}`}
         onClick={openPost}
       >
-        {post.content && <p className="text-sm leading-5 text-slate-700">{post.content}</p>}
+        {post.content && (
+          <p className={`whitespace-pre-wrap break-words text-sm leading-5 text-slate-700 ${mediaVariant === "preview" ? "line-clamp-3" : ""}`}>
+            {post.content}
+          </p>
+        )}
         <div>
           {post.workoutType && <Badge tone="green">{post.workoutType}</Badge>}
           <div className="mt-3 flex items-center gap-2">

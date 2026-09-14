@@ -14,6 +14,7 @@ import type {
   User,
   WeeklyUserWorkoutStatus,
   WorkoutPost,
+  WorkoutPostPage,
 } from "./models";
 
 export interface OunwanAppData {
@@ -30,6 +31,7 @@ export interface OunwanAppData {
   seasons: Season[];
   seasonParticipants: SeasonParticipant[];
   posts: WorkoutPost[];
+  postPage: WorkoutPostPage;
   weeklyUserWorkoutStatus?: WeeklyUserWorkoutStatus;
   settlement?: Settlement;
   settlementSummaries: SettlementSummary[];

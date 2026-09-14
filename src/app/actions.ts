@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { getCurrentUserNotificationPage, getCurrentUserUnreadNotificationCount } from "@/db/queries";
-import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, expelGroupMember, getOrCreateCurrentGroupInvite, leaveGroup, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateGroupMemberRoles, updateSeasonRules } from "@/db/commands";
+import { getCurrentUserNotificationPage, getCurrentUserUnreadNotificationCount, getCurrentWorkoutPostById, getCurrentWorkoutPostPage } from "@/db/queries";
+import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, expelGroupMember, getOrCreateCurrentGroupInvite, leaveGroup, markAllNotificationsRead, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateGroupMemberRoles, updateSeasonRules } from "@/db/commands";
 import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
+import type { WorkoutPost, WorkoutPostCursor, WorkoutPostPage } from "@/domain/models";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
 const MAX_WORKOUT_POST_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -77,6 +78,32 @@ export type ExpelGroupMemberState = {
   message: string;
 };
 
+
+export async function getWorkoutPostPageAction(input: { cursor?: WorkoutPostCursor; mineOnly?: boolean }): Promise<WorkoutPostPage> {
+  const cursor = normalizeWorkoutPostCursor(input.cursor);
+  return getCurrentWorkoutPostPage({ cursor, mineOnly: Boolean(input.mineOnly) });
+}
+
+export async function getWorkoutPostByIdAction(postId: string): Promise<WorkoutPost | undefined> {
+  if (!/^\d+$/.test(postId)) {
+    return undefined;
+  }
+
+  return getCurrentWorkoutPostById(postId);
+}
+
+function normalizeWorkoutPostCursor(cursor: WorkoutPostCursor | undefined): WorkoutPostCursor | undefined {
+  if (!cursor || !/^\d+$/.test(cursor.id)) {
+    return undefined;
+  }
+
+  const createdAt = new Date(cursor.createdAt);
+  if (Number.isNaN(createdAt.getTime())) {
+    return undefined;
+  }
+
+  return { createdAt: createdAt.toISOString(), id: cursor.id };
+}
 export async function updateBankAccountInfoAction(
   _previousState: UpdateBankAccountInfoState,
   formData: FormData,
@@ -535,6 +562,11 @@ export async function loadNotificationsAction(offset: number) {
 
 export async function markNotificationsReadAction(notificationIds: string[]) {
   await markNotificationsRead(notificationIds);
+  revalidatePath("/");
+}
+
+export async function markAllNotificationsReadAction() {
+  await markAllNotificationsRead();
   revalidatePath("/");
 }
 

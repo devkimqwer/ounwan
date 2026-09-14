@@ -1,18 +1,21 @@
 "use client";
 import Image from "next/image";
 
-import { getUnreadNotificationCountAction, markNotificationsReadAction, switchCurrentGroupAction } from "@/app/actions";
+import { getUnreadNotificationCountAction, getWorkoutPostByIdAction, markNotificationsReadAction, switchCurrentGroupAction } from "@/app/actions";
+import { AppDialog } from "@/components/ui/app-dialog";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { OunwanAppData } from "@/domain/app-data";
-import type { AppNotification } from "@/domain/models";
+import type { AppNotification, WorkoutPost } from "@/domain/models";
 import { formatSystemDate } from "@/lib/date-format";
-import type { MoreSubPage, TabId } from "./app-types";
+import type { InitialTabId, MoreSubPage, TabId } from "./app-types";
 import { CertView } from "./cert-view";
 import { FeedView } from "./feed-view";
 import { HomeView } from "./home-view";
+import { readInitialTabPreference } from "./initial-tab-preference";
+import { SeasonRulesSummary } from "./season-rules-summary";
 import { MainMenuPanel } from "./main-menu-panel";
 import { MoreView } from "./more-view";
 import { NotificationView } from "./notification-view";
@@ -49,13 +52,19 @@ function clearInitialActionParams(params: URLSearchParams) {
 }
 export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const router = useRouter();
+  const { accountInfo, adminGroupMembers, approvedGroups, currentUser, currentUserId, group, membership, postPage, posts, season, seasonParticipants, seasons, settlementSummaries, users, weeklyUserWorkoutStatus } = appData;
   const [activeTab, setActiveTab] = useState<TabId>("home");
+  const [initialTabReady, setInitialTabReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [selectedPostSnapshot, setSelectedPostSnapshot] = useState<WorkoutPost | null>(null);
   const [pendingCreatedPostId, setPendingCreatedPostId] = useState<string | null>(null);
   const [activeMorePage, setActiveMorePage] = useState<MoreSubPage>("main");
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [seasonRulesOpen, setSeasonRulesOpen] = useState(false);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(appData.notifications.unreadCount);
+  const feedScopeKey = `${appData.currentGroupId}:${appData.currentSeasonId ?? "none"}`;
+  const [feedState, setFeedState] = useState({ scopeKey: feedScopeKey, page: appData.postPage, mineOnly: false });
   const detailHistoryActiveRef = useRef(false);
   const menuHistoryActiveRef = useRef(false);
   const tabHistoryActiveRef = useRef(false);
@@ -67,6 +76,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const pendingMenuMorePageRef = useRef<Exclude<MoreSubPage, "main"> | null>(null);
   const pendingMenuMorePageRefreshRef = useRef(false);
   const activeTabRef = useRef(activeTab);
+  const rootTabRef = useRef<InitialTabId>("home");
   const activeMorePageRef = useRef(activeMorePage);
   const menuOpenRef = useRef(menuOpen);
   const selectedPostIdRef = useRef(selectedPostId);
@@ -74,18 +84,36 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const initialUrlHandledRef = useRef(false);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTopRef = useRef(0);
-  const { accountInfo, adminGroupMembers, approvedGroups, currentUser, currentUserId, group, membership, posts, season, seasonParticipants, seasons, settlementSummaries, users, weeklyUserWorkoutStatus } = appData;
   const roles = membership.roles;
   const isAdmin = roles.includes("admin");
   const isTreasurer = roles.includes("treasurer");
-  const selectedPost = posts.find((post) => post.id === selectedPostId);
+  const selectedPost = posts.find((post) => post.id === selectedPostId) ?? (selectedPostSnapshot?.id === selectedPostId ? selectedPostSnapshot : undefined);
+  const activeFeedState = feedState.scopeKey === feedScopeKey ? feedState : { scopeKey: feedScopeKey, page: postPage, mineOnly: false };
   const pendingSeason = seasons.find((item) => item.status === "pending");
   const hasActiveSeason = Boolean(season);
+  const displayedStatusSeason = season ?? pendingSeason;
   const seasonStatusText = season
     ? `${season.name} 진행중`
     : pendingSeason
       ? `${pendingSeason.name} ${formatSystemDate(pendingSeason.startDate)} 시작 예정`
       : "진행중 시즌 없음";
+
+  useLayoutEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hasInitialAction = ["notificationId", "postId", "more", "settlementId", "groupId"].some((key) => params.has(key));
+    const preferredInitialTab = readInitialTabPreference(currentUserId);
+    rootTabRef.current = preferredInitialTab;
+    if (!hasInitialAction) {
+      activeTabRef.current = preferredInitialTab;
+      setActiveTab(preferredInitialTab);
+    }
+
+    setInitialTabReady(true);
+  }, [currentUserId]);
+
+  useEffect(() => {
+    setFeedState({ scopeKey: feedScopeKey, page: appData.postPage, mineOnly: false });
+  }, [appData.postPage, feedScopeKey]);
 
   const restoreListScroll = () => {
     requestAnimationFrame(() => {
@@ -97,6 +125,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     detailHistoryActiveRef.current = false;
     selectedPostIdRef.current = null;
     setSelectedPostId(null);
+    setSelectedPostSnapshot(null);
     restoreListScroll();
   };
 
@@ -109,6 +138,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
     selectedPostIdRef.current = null;
     setSelectedPostId(null);
+    setSelectedPostSnapshot(null);
     notificationOpenRef.current = true;
     setNotificationOpen(true);
     requestAnimationFrame(() => {
@@ -147,7 +177,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
       const targetPost = posts.find((post) => post.id === notification.actionTargetId);
       if (targetPost) {
-        openPostDetail(targetPost.id);
+        openPostDetail(targetPost.id, targetPost);
       } else {
         setPendingCreatedPostId(notification.actionTargetId);
         router.refresh();
@@ -175,12 +205,13 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     closePostDetailFromHistory();
   };
 
-  const openPostDetail = (postId: string) => {
+  const openPostDetail = (postId: string, post?: WorkoutPost) => {
     listScrollTopRef.current = contentScrollRef.current?.scrollTop ?? 0;
     detailHistoryActiveRef.current = true;
     window.history.pushState({ ounwanPostDetail: postId }, "");
     selectedPostIdRef.current = postId;
     setSelectedPostId(postId);
+    setSelectedPostSnapshot(post ?? null);
     requestAnimationFrame(() => {
       contentScrollRef.current?.scrollTo({ top: 0 });
     });
@@ -284,19 +315,21 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
     selectedPostIdRef.current = null;
     setSelectedPostId(null);
+    setSelectedPostSnapshot(null);
     if (activeMorePageRef.current !== "main") {
       closeMorePageFromHistory();
     }
 
-    if (tabId === "home") {
+    const rootTab = rootTabRef.current;
+    if (tabId === rootTab) {
       if (tabHistoryActiveRef.current) {
         tabHistoryActiveRef.current = false;
         suppressNextPopRef.current = true;
         window.history.back();
       }
 
-      activeTabRef.current = "home";
-      setActiveTab("home");
+      activeTabRef.current = rootTab;
+      setActiveTab(rootTab);
       requestAnimationFrame(() => {
         contentScrollRef.current?.scrollTo({ top: 0 });
       });
@@ -304,7 +337,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
       return;
     }
 
-    if (activeTabRef.current === "home" && !tabHistoryActiveRef.current) {
+    if (activeTabRef.current === rootTab && !tabHistoryActiveRef.current) {
       tabHistoryActiveRef.current = true;
       window.history.pushState({ ounwanTab: tabId }, "");
     } else if (tabHistoryActiveRef.current) {
@@ -328,6 +361,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     setActiveTab("feed");
     selectedPostIdRef.current = null;
     setSelectedPostId(null);
+    setSelectedPostSnapshot(null);
     if (activeMorePageRef.current !== "main") {
       closeMorePageFromHistory();
     }
@@ -485,7 +519,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     if (postId) {
       const targetPost = posts.find((post) => post.id === postId);
       if (targetPost) {
-        openPostDetail(targetPost.id);
+        openPostDetail(targetPost.id, targetPost);
       } else {
         setPendingCreatedPostId(postId);
       }
@@ -495,6 +529,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     if (morePage === "group-member-management") {
       moveToTab("more", { refreshOnEnter: true });
       openMorePage("group-member-management", { refreshOnEnter: true });
+      return;
     }
   }, []);
 
@@ -556,12 +591,14 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
         return;
       }
 
-      if (tabHistoryActiveRef.current || activeTabRef.current !== "home") {
+      const rootTab = rootTabRef.current;
+      if (tabHistoryActiveRef.current || activeTabRef.current !== rootTab) {
         tabHistoryActiveRef.current = false;
         selectedPostIdRef.current = null;
-        activeTabRef.current = "home";
+        activeTabRef.current = rootTab;
         setSelectedPostId(null);
-        setActiveTab("home");
+        setSelectedPostSnapshot(null);
+        setActiveTab(rootTab);
         requestAnimationFrame(() => {
           contentScrollRef.current?.scrollTo({ top: 0 });
         });
@@ -573,17 +610,50 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   }, []);
 
   useEffect(() => {
-    if (!pendingCreatedPostId || !posts.some((post) => post.id === pendingCreatedPostId)) {
+    if (!selectedPostId) {
       return;
     }
 
-    openPostDetail(pendingCreatedPostId);
-    setPendingCreatedPostId(null);
+    const targetPost = posts.find((post) => post.id === selectedPostId);
+    if (targetPost) {
+      setSelectedPostSnapshot(targetPost);
+    }
+  }, [posts, selectedPostId]);
+
+  useEffect(() => {
+    if (!pendingCreatedPostId) {
+      return;
+    }
+
+    const targetPost = posts.find((post) => post.id === pendingCreatedPostId);
+    if (targetPost) {
+      openPostDetail(targetPost.id, targetPost);
+      setPendingCreatedPostId(null);
+      return;
+    }
+
+    let cancelled = false;
+    getWorkoutPostByIdAction(pendingCreatedPostId)
+      .then((post) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (post) {
+          openPostDetail(post.id, post);
+          setPendingCreatedPostId(null);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
   }, [pendingCreatedPostId, posts]);
 
   return (
     <main className="min-h-dvh bg-slate-50 text-slate-950">
-      <section className="mx-auto flex h-dvh min-h-dvh w-full max-w-screen-sm flex-col overflow-hidden bg-white">
+      <section className={`mx-auto flex h-dvh min-h-dvh w-full max-w-screen-sm flex-col overflow-hidden bg-white ${initialTabReady ? "visible" : "invisible"}`}>
         <header className="z-50 flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
           <button
             type="button"
@@ -606,14 +676,21 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
               <path d="M3 13h12" />
             </svg>
           </button>
-          <Image
-            src="/assets/ounwan-logo-transparent-bg.png"
-            alt="ounwan"
-            width={122}
-            height={28}
-            priority
-            className="h-3 w-auto object-contain"
-          />
+          <button
+            type="button"
+            className="grid h-10 place-items-center px-3"
+            aria-label="처음으로 이동"
+            onClick={() => window.location.assign(window.location.origin)}
+          >
+            <Image
+              src="/assets/ounwan-logo-transparent-bg.png"
+              alt="ounwan"
+              width={122}
+              height={28}
+              priority
+              className="h-3 w-auto object-contain"
+            />
+          </button>
           <button type="button" className="relative grid h-10 w-10 place-items-center text-slate-900" aria-label="알림" onClick={openNotifications}>
             <svg
               aria-hidden="true"
@@ -645,10 +722,30 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
         />
 
         <div className="z-40 flex h-9 shrink-0 items-center justify-center border-b border-slate-200 bg-white">
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold leading-none text-slate-500">
-            {seasonStatusText}
-          </span>
+          {displayedStatusSeason ? (
+            <button
+              type="button"
+              className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold leading-none text-slate-500 active:bg-slate-200"
+              onClick={() => setSeasonRulesOpen(true)}
+            >
+              {seasonStatusText}
+            </button>
+          ) : (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold leading-none text-slate-500">
+              {seasonStatusText}
+            </span>
+          )}
         </div>
+
+        <AppDialog
+          open={seasonRulesOpen && Boolean(displayedStatusSeason)}
+          title={displayedStatusSeason ? `${displayedStatusSeason.name}의 규칙` : "시즌 규칙"}
+          onClose={() => setSeasonRulesOpen(false)}
+          dismissOnBackdrop
+          actions={[{ label: "확인", onClick: () => setSeasonRulesOpen(false) }]}
+        >
+          {displayedStatusSeason && <SeasonRulesSummary season={displayedStatusSeason} />}
+        </AppDialog>
 
         <div ref={contentScrollRef} className="min-h-0 flex-1 overflow-y-auto bg-slate-50 pb-4">
           {selectedPost ? (
@@ -687,10 +784,15 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
               {activeTab === "feed" && hasActiveSeason && (
                 <FeedView
                   isAdmin={isAdmin}
-                  posts={posts}
+                  initialPage={activeFeedState.page}
+                  currentGroupId={group.id}
+                  currentSeasonId={season?.id}
+                  initialMineOnly={activeFeedState.mineOnly}
                   currentUserId={currentUserId}
+                  scrollRootRef={contentScrollRef}
                   users={users}
                   onPostOpen={openPostDetail}
+                  onFeedStateChange={(state) => setFeedState({ scopeKey: feedScopeKey, ...state })}
                 />
               )}
               {activeTab === "feed" && !hasActiveSeason && (
@@ -719,6 +821,9 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                   activeMorePage={activeMorePage}
                   onOpenMorePage={(page) => openMorePage(page, { refreshOnEnter: true })}
                   onCloseMorePage={closeMorePage}
+                  onInitialTabChange={(tabId) => {
+                    rootTabRef.current = tabId;
+                  }}
                 />
               )}
             </>

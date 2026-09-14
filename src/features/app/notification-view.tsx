@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
-import { deleteNotificationAction, deletePushSubscriptionAction, getPushNotificationPublicKeyAction, loadNotificationsAction, markNotificationsReadAction, savePushSubscriptionAction } from "@/app/actions";
+import { deleteNotificationAction, deletePushSubscriptionAction, getPushNotificationPublicKeyAction, loadNotificationsAction, markAllNotificationsReadAction, markNotificationsReadAction, savePushSubscriptionAction } from "@/app/actions";
+import { AppDialog } from "@/components/ui/app-dialog";
 import type { AppNotification, NotificationPage } from "@/domain/models";
 import { formatSystemDateTime } from "@/lib/date-format";
 
@@ -21,6 +22,7 @@ export function NotificationView({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [markAllConfirmOpen, setMarkAllConfirmOpen] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [pushSupported, setPushSupported] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
@@ -137,6 +139,25 @@ export function NotificationView({
     }
   };
 
+  const handleMarkAllRead = async () => {
+    if (unreadCount === 0 || processing) {
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      const readAt = new Date().toISOString();
+      await markAllNotificationsReadAction();
+      setNotifications((current) =>
+        current.map((notification) => (notification.readAt ? notification : { ...notification, readAt })),
+      );
+      setSelectedIds([]);
+      updateUnreadCount(0);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const handleDelete = async (notificationId: string) => {
     if (processing) {
       return;
@@ -244,14 +265,24 @@ export function NotificationView({
           </button>
           <h2 className="text-[17px] font-extrabold">알림</h2>
         </div>
-        <button
-          type="button"
-          disabled={selectedIds.length === 0 || processing}
-          className="min-h-9 rounded-xl bg-slate-950 px-3 text-xs font-extrabold text-white disabled:bg-slate-300"
-          onClick={handleMarkRead}
-        >
-          읽음 처리
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            disabled={selectedIds.length === 0 || processing}
+            className="min-h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-700 disabled:bg-slate-100 disabled:text-slate-300"
+            onClick={handleMarkRead}
+          >
+            선택 읽음
+          </button>
+          <button
+            type="button"
+            disabled={unreadCount === 0 || processing}
+            className="min-h-9 rounded-xl bg-slate-950 px-3 text-xs font-extrabold text-white disabled:bg-slate-300"
+            onClick={() => setMarkAllConfirmOpen(true)}
+          >
+            모두 읽음
+          </button>
+        </div>
       </div>
 
       <section className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4">
@@ -343,6 +374,27 @@ export function NotificationView({
           <p className="px-4 py-12 text-center text-sm font-semibold text-slate-400">도착한 알림이 없습니다.</p>
         )}
       </section>
+
+      <AppDialog
+        open={markAllConfirmOpen}
+        title="모든 알림을 읽음 처리할까요?"
+        description="읽지 않은 모든 알림이 읽음 상태로 변경됩니다."
+        role="alertdialog"
+        dismissOnBackdrop
+        onClose={() => setMarkAllConfirmOpen(false)}
+        actions={[
+          { label: "취소", onClick: () => setMarkAllConfirmOpen(false) },
+          {
+            label: processing ? "처리 중" : "모두 읽음",
+            variant: "primary",
+            disabled: processing,
+            onClick: async () => {
+              await handleMarkAllRead();
+              setMarkAllConfirmOpen(false);
+            },
+          },
+        ]}
+      />
 
       {nextOffset !== undefined && (
         <button

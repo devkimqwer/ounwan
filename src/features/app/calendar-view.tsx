@@ -12,7 +12,7 @@ export function CalendarView({
   isAdmin: boolean;
   posts: WorkoutPost[];
   users: User[];
-  onPostOpen: (postId: string) => void;
+  onPostOpen: (postId: string, post?: WorkoutPost) => void;
 }) {
   const days = Array.from({ length: 31 }, (_, index) => index + 1);
   const certifiedDays = new Set([14, 15, 17, 18]);
@@ -48,7 +48,7 @@ export function CalendarView({
           {posts
             .filter((post) => post.workoutDate === "2026-08-18")
             .map((post) => (
-              <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} users={users} onOpen={onPostOpen} />
+              <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} users={users} onOpen={(postId) => onPostOpen(postId, post)} />
             ))}
         </div>
       </section>

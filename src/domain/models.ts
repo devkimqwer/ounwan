@@ -133,6 +133,17 @@ export interface WorkoutPost {
   media: PostMedia[];
 }
 
+export interface WorkoutPostCursor {
+  createdAt: string;
+  id: string;
+}
+
+export interface WorkoutPostPage {
+  posts: WorkoutPost[];
+  nextCursor?: WorkoutPostCursor;
+  hasMore: boolean;
+}
+
 export interface Settlement {
   id: string;
   groupId: string;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import type { FormEvent, ReactNode } from "react";
+import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import { activatePendingSeasonAction, closeSeasonAction, deletePendingSeasonAction, updateSeasonRulesAction } from "@/app/actions";
@@ -7,6 +7,8 @@ import { AppDialog } from "@/components/ui/app-dialog";
 import type { Season, SeasonParticipant } from "@/domain/models";
 import { formatSystemDate } from "@/lib/date-format";
 import { SeasonCreateForm } from "./season-create-form";
+import { weekdays } from "./season-rule-options";
+import { SeasonRulesSummary } from "./season-rules-summary";
 import { Avatar } from "./shared-ui";
 
 type SeasonManagementViewProps = {
@@ -331,29 +333,11 @@ function SeasonRulesCard({ season, onEdit }: { season: Season; onEdit: () => voi
           </button>
         )}
       </div>
-      <div className="mt-4 space-y-2.5 text-sm font-semibold leading-6 text-slate-700">
-        <p>
-          한 주는 <SeasonRuleValue>{formatWeekday(season.weekStartDay)}</SeasonRuleValue>에 시작해요.
-        </p>
-        <p>
-          하루는 <SeasonRuleValue>{formatTime(season.dayStartTime)}</SeasonRuleValue>부터 시작해요.
-        </p>
-        <p>
-          하루에 여러 번 인증하면 <SeasonRuleValue>{formatDuplicatePolicy(season.dailyDuplicatePolicy)}</SeasonRuleValue> 인정해요.
-        </p>
-        <p>
-          일주일에 최소 <SeasonRuleValue>{season.targetWorkoutCountPerWeek}회</SeasonRuleValue> 인증해야 해요.
-        </p>
-        <p>
-          인증이 1회 부족할 때마다 <SeasonRuleValue>{formatCurrency(season.finePerMiss)}</SeasonRuleValue>의 벌금이 부과돼요.
-        </p>
+      <div className="mt-4">
+        <SeasonRulesSummary season={season} />
       </div>
     </section>
   );
-}
-
-function SeasonRuleValue({ children }: { children: ReactNode }) {
-  return <span className="inline-flex rounded-full bg-[#F7F5FF] px-2.5 py-1 text-sm font-extrabold text-[#51438f]">{children}</span>;
 }
 
 function SeasonRulesDialog({
@@ -686,35 +670,12 @@ function groupParticipantsBySeason(participants: SeasonParticipant[]) {
   return map;
 }
 
-const weekdays = [
-  { value: 0, label: "월요일" },
-  { value: 1, label: "화요일" },
-  { value: 2, label: "수요일" },
-  { value: 3, label: "목요일" },
-  { value: 4, label: "금요일" },
-  { value: 5, label: "토요일" },
-  { value: 6, label: "일요일" },
-];
 
-function formatWeekday(value: number) {
-  return weekdays.find((weekday) => weekday.value === value)?.label ?? "월요일";
-}
-
-function formatTime(value: string) {
-  return formatTimeInputValue(value);
-}
 
 function formatTimeInputValue(value: string) {
   return value.slice(0, 5);
 }
 
-function formatDuplicatePolicy(value: Season["dailyDuplicatePolicy"]) {
-  return value === "count_all" ? "인증한 만큼" : "1회만";
-}
-
-function formatCurrency(value: number) {
-  return value.toLocaleString("ko-KR") + "원";
-}
 
 function compareSeasonByStartDateDesc(a: Season, b: Season) {
   return b.startDate.localeCompare(a.startDate) || b.id.localeCompare(a.id);
