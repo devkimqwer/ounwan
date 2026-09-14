@@ -676,14 +676,21 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
               <path d="M3 13h12" />
             </svg>
           </button>
-          <Image
-            src="/assets/ounwan-logo-transparent-bg.png"
-            alt="ounwan"
-            width={122}
-            height={28}
-            priority
-            className="h-3 w-auto object-contain"
-          />
+          <button
+            type="button"
+            className="grid h-10 place-items-center px-3"
+            aria-label="처음으로 이동"
+            onClick={() => window.location.assign(window.location.origin)}
+          >
+            <Image
+              src="/assets/ounwan-logo-transparent-bg.png"
+              alt="ounwan"
+              width={122}
+              height={28}
+              priority
+              className="h-3 w-auto object-contain"
+            />
+          </button>
           <button type="button" className="relative grid h-10 w-10 place-items-center text-slate-900" aria-label="알림" onClick={openNotifications}>
             <svg
               aria-hidden="true"
