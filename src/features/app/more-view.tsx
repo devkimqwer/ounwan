@@ -6,9 +6,10 @@ import type { CreateGroupState, DeleteGroupState, LeaveGroupState, RefreshCurren
 import { AppDialog } from "@/components/ui/app-dialog";
 import type { AccountInfo, AdminGroupMember, Group, Season, SeasonParticipant, SettlementSummary, User, UserGroupMembership } from "@/domain/models";
 import { TextLogoutButton } from "@/features/auth/logout-controls";
-import type { MoreSubPage } from "./app-types";
+import { initialTabOptions, type InitialTabId, type MoreSubPage } from "./app-types";
 import { BankAccountManagementView } from "./bank-account-management-view";
 import { GroupMemberManagementView } from "./group-member-management-view";
+import { readInitialTabPreference, writeInitialTabPreference } from "./initial-tab-preference";
 import { SeasonManagementView } from "./season-management-view";
 import { SettlementHistoryView } from "./settlement-history-view";
 import { Avatar, Badge, getDisplayRoles, getRoleBadgeTone, getRoleLabel, MenuBlock } from "./shared-ui";
@@ -27,6 +28,7 @@ export function MoreView({
   activeMorePage,
   onOpenMorePage,
   onCloseMorePage,
+  onInitialTabChange,
 }: {
   isAdmin: boolean;
   isTreasurer: boolean;
@@ -41,6 +43,7 @@ export function MoreView({
   activeMorePage: MoreSubPage;
   onOpenMorePage: (page: Exclude<MoreSubPage, "main">) => void;
   onCloseMorePage: () => void;
+  onInitialTabChange: (tabId: InitialTabId) => void;
 }) {
   const router = useRouter();
   const profileInitialState: UpdateCurrentUserProfileState = { status: "idle", message: "" };
@@ -71,10 +74,15 @@ export function MoreView({
   const [switchingGroupId, setSwitchingGroupId] = useState<string | null>(null);
   const [notReadyTitle, setNotReadyTitle] = useState<string | null>(null);
   const [accountNumberCopyState, setAccountNumberCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [initialTabId, setInitialTabId] = useState<InitialTabId>("home");
 
   useEffect(() => {
     setProfileName(currentUser.name);
   }, [currentUser.name]);
+
+  useEffect(() => {
+    setInitialTabId(readInitialTabPreference(currentUser.id));
+  }, [currentUser.id]);
 
   const roles = getDisplayRoles(isAdmin, isTreasurer);
 
@@ -255,6 +263,12 @@ export function MoreView({
     setNotReadyTitle(title);
   };
 
+  const handleInitialTabChange = (tabId: InitialTabId) => {
+    setInitialTabId(tabId);
+    writeInitialTabPreference(currentUser.id, tabId);
+    onInitialTabChange(tabId);
+  };
+
   const copyAccountNumber = async () => {
     if (!accountInfo.accountNumber || accountInfo.accountNumber === "미등록") {
       return;
@@ -340,6 +354,32 @@ export function MoreView({
         </div>
       </section>
 
+      <section className="rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-extrabold text-slate-950">첫 화면 설정</h2>
+            <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">앱을 열었을 때 처음 보여줄 화면을 선택해요.</p>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2 rounded-2xl bg-slate-50 p-1.5">
+          {initialTabOptions.map((option) => {
+            const selected = option.id === initialTabId;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                className={`min-h-10 rounded-xl px-3 text-sm font-extrabold transition-colors ${
+                  selected ? "bg-[#5e4ea5] text-white shadow-sm" : "text-slate-500 active:bg-white"
+                }`}
+                aria-pressed={selected}
+                onClick={() => handleInitialTabChange(option.id)}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      </section>
       <MenuBlock
         title="벌금 입금 계좌"
         rows={[

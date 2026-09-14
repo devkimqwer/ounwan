@@ -4,15 +4,16 @@ import Image from "next/image";
 import { getUnreadNotificationCountAction, getWorkoutPostByIdAction, markNotificationsReadAction, switchCurrentGroupAction } from "@/app/actions";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { OunwanAppData } from "@/domain/app-data";
 import type { AppNotification, WorkoutPost } from "@/domain/models";
 import { formatSystemDate } from "@/lib/date-format";
-import type { MoreSubPage, TabId } from "./app-types";
+import type { InitialTabId, MoreSubPage, TabId } from "./app-types";
 import { CertView } from "./cert-view";
 import { FeedView } from "./feed-view";
 import { HomeView } from "./home-view";
+import { readInitialTabPreference } from "./initial-tab-preference";
 import { MainMenuPanel } from "./main-menu-panel";
 import { MoreView } from "./more-view";
 import { NotificationView } from "./notification-view";
@@ -49,7 +50,9 @@ function clearInitialActionParams(params: URLSearchParams) {
 }
 export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const router = useRouter();
+  const { accountInfo, adminGroupMembers, approvedGroups, currentUser, currentUserId, group, membership, postPage, posts, season, seasonParticipants, seasons, settlementSummaries, users, weeklyUserWorkoutStatus } = appData;
   const [activeTab, setActiveTab] = useState<TabId>("home");
+  const [initialTabReady, setInitialTabReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [selectedPostSnapshot, setSelectedPostSnapshot] = useState<WorkoutPost | null>(null);
@@ -70,6 +73,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const pendingMenuMorePageRef = useRef<Exclude<MoreSubPage, "main"> | null>(null);
   const pendingMenuMorePageRefreshRef = useRef(false);
   const activeTabRef = useRef(activeTab);
+  const rootTabRef = useRef<InitialTabId>("home");
   const activeMorePageRef = useRef(activeMorePage);
   const menuOpenRef = useRef(menuOpen);
   const selectedPostIdRef = useRef(selectedPostId);
@@ -77,7 +81,6 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const initialUrlHandledRef = useRef(false);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTopRef = useRef(0);
-  const { accountInfo, adminGroupMembers, approvedGroups, currentUser, currentUserId, group, membership, postPage, posts, season, seasonParticipants, seasons, settlementSummaries, users, weeklyUserWorkoutStatus } = appData;
   const roles = membership.roles;
   const isAdmin = roles.includes("admin");
   const isTreasurer = roles.includes("treasurer");
@@ -90,6 +93,19 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     : pendingSeason
       ? `${pendingSeason.name} ${formatSystemDate(pendingSeason.startDate)} 시작 예정`
       : "진행중 시즌 없음";
+
+  useLayoutEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hasInitialAction = ["notificationId", "postId", "more", "settlementId", "groupId"].some((key) => params.has(key));
+    const preferredInitialTab = readInitialTabPreference(currentUserId);
+    rootTabRef.current = preferredInitialTab;
+    if (!hasInitialAction) {
+      activeTabRef.current = preferredInitialTab;
+      setActiveTab(preferredInitialTab);
+    }
+
+    setInitialTabReady(true);
+  }, [currentUserId]);
 
   useEffect(() => {
     setFeedState({ scopeKey: feedScopeKey, page: appData.postPage, mineOnly: false });
@@ -300,15 +316,16 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
       closeMorePageFromHistory();
     }
 
-    if (tabId === "home") {
+    const rootTab = rootTabRef.current;
+    if (tabId === rootTab) {
       if (tabHistoryActiveRef.current) {
         tabHistoryActiveRef.current = false;
         suppressNextPopRef.current = true;
         window.history.back();
       }
 
-      activeTabRef.current = "home";
-      setActiveTab("home");
+      activeTabRef.current = rootTab;
+      setActiveTab(rootTab);
       requestAnimationFrame(() => {
         contentScrollRef.current?.scrollTo({ top: 0 });
       });
@@ -316,7 +333,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
       return;
     }
 
-    if (activeTabRef.current === "home" && !tabHistoryActiveRef.current) {
+    if (activeTabRef.current === rootTab && !tabHistoryActiveRef.current) {
       tabHistoryActiveRef.current = true;
       window.history.pushState({ ounwanTab: tabId }, "");
     } else if (tabHistoryActiveRef.current) {
@@ -508,6 +525,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     if (morePage === "group-member-management") {
       moveToTab("more", { refreshOnEnter: true });
       openMorePage("group-member-management", { refreshOnEnter: true });
+      return;
     }
   }, []);
 
@@ -569,13 +587,14 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
         return;
       }
 
-      if (tabHistoryActiveRef.current || activeTabRef.current !== "home") {
+      const rootTab = rootTabRef.current;
+      if (tabHistoryActiveRef.current || activeTabRef.current !== rootTab) {
         tabHistoryActiveRef.current = false;
         selectedPostIdRef.current = null;
-        activeTabRef.current = "home";
+        activeTabRef.current = rootTab;
         setSelectedPostId(null);
         setSelectedPostSnapshot(null);
-        setActiveTab("home");
+        setActiveTab(rootTab);
         requestAnimationFrame(() => {
           contentScrollRef.current?.scrollTo({ top: 0 });
         });
@@ -630,7 +649,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
   return (
     <main className="min-h-dvh bg-slate-50 text-slate-950">
-      <section className="mx-auto flex h-dvh min-h-dvh w-full max-w-screen-sm flex-col overflow-hidden bg-white">
+      <section className={`mx-auto flex h-dvh min-h-dvh w-full max-w-screen-sm flex-col overflow-hidden bg-white ${initialTabReady ? "visible" : "invisible"}`}>
         <header className="z-50 flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
           <button
             type="button"
@@ -771,6 +790,9 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                   activeMorePage={activeMorePage}
                   onOpenMorePage={(page) => openMorePage(page, { refreshOnEnter: true })}
                   onCloseMorePage={closeMorePage}
+                  onInitialTabChange={(tabId) => {
+                    rootTabRef.current = tabId;
+                  }}
                 />
               )}
             </>
