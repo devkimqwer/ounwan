@@ -279,7 +279,11 @@ export function PostCard({
         className={`space-y-3 p-4 ${openPost ? "cursor-pointer" : ""}`}
         onClick={openPost}
       >
-        {post.content && <p className="text-sm leading-5 text-slate-700">{post.content}</p>}
+        {post.content && (
+          <p className={`whitespace-pre-wrap break-words text-sm leading-5 text-slate-700 ${mediaVariant === "preview" ? "line-clamp-3" : ""}`}>
+            {post.content}
+          </p>
+        )}
         <div>
           {post.workoutType && <Badge tone="green">{post.workoutType}</Badge>}
           <div className="mt-3 flex items-center gap-2">
