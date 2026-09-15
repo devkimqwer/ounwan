@@ -89,6 +89,15 @@ type ExpelGroupMemberInput = {
   userId: string;
 };
 
+type ConfirmWeeklySettlementInput = {
+  settlementId: string;
+  comment?: string;
+  rowFineAmounts: Array<{
+    userId: string;
+    finalFineAmount: number;
+  }>;
+};
+
 type CreateWorkoutPostInput = {
   workoutType?: string;
   content?: string;
@@ -815,6 +824,77 @@ export async function expelGroupMember(input: ExpelGroupMemberInput) {
     return { userId: rows[0].userId.toString() };
   });
 }
+export async function confirmWeeklySettlement(input: ConfirmWeeklySettlementInput) {
+  const context = await getCurrentGroupAdminContext();
+
+  if (!/^\d+$/.test(input.settlementId)) {
+    throw new Error("Invalid settlement id.");
+  }
+
+  const settlementId = BigInt(input.settlementId);
+  const groupId = BigInt(context.groupId);
+  const userId = BigInt(context.userId);
+  const now = new Date();
+  const comment = input.comment?.trim() || null;
+
+  await db.transaction(async (tx) => {
+    const settlementRows = await tx
+      .select({ id: weeklySettlements.id, status: weeklySettlements.status })
+      .from(weeklySettlements)
+      .where(and(eq(weeklySettlements.id, settlementId), eq(weeklySettlements.groupId, groupId)))
+      .limit(1);
+    const settlement = settlementRows[0];
+
+    if (!settlement) {
+      throw new Error("Weekly settlement not found.");
+    }
+
+    if (settlement.status !== "draft") {
+      throw new Error("Only draft settlements can be confirmed.");
+    }
+
+    const rowUserIds = input.rowFineAmounts.map((row) => BigInt(row.userId));
+    const existingRows = await tx
+      .select({ userId: weeklySettlementRows.userId })
+      .from(weeklySettlementRows)
+      .where(eq(weeklySettlementRows.settlementId, settlementId));
+    const existingUserIds = new Set(existingRows.map((row) => row.userId.toString()));
+
+    if (existingRows.length !== input.rowFineAmounts.length || rowUserIds.some((rowUserId) => !existingUserIds.has(rowUserId.toString()))) {
+      throw new Error("Settlement rows do not match.");
+    }
+
+    for (const row of input.rowFineAmounts) {
+      await tx
+        .update(weeklySettlementRows)
+        .set({
+          finalFineAmount: row.finalFineAmount,
+          updatedByUserId: userId,
+          updatedAt: now,
+        })
+        .where(and(eq(weeklySettlementRows.settlementId, settlementId), eq(weeklySettlementRows.userId, BigInt(row.userId))));
+    }
+
+    const updatedRows = await tx
+      .update(weeklySettlements)
+      .set({
+        status: "confirmed",
+        comment,
+        confirmedByUserId: userId,
+        confirmedAt: now,
+        updatedAt: now,
+      })
+      .where(and(eq(weeklySettlements.id, settlementId), eq(weeklySettlements.groupId, groupId), eq(weeklySettlements.status, "draft")))
+      .returning({ id: weeklySettlements.id });
+
+    if (!updatedRows[0]) {
+      throw new Error("Weekly settlement was not confirmed.");
+    }
+  });
+
+  await notifyWeeklySettlementCompleted(input.settlementId);
+  return { id: input.settlementId };
+}
 export async function updateBankAccountInfo(input: UpdateBankAccountInfoInput) {
   const context = await getCurrentGroupTreasurerContext();
   const bankName = input.bankName.trim();
@@ -1456,7 +1536,7 @@ async function getCurrentGroupAdminContext() {
   }
 
   if (!membership.roles.includes("admin")) {
-    throw new Error("Only admins can create group invites.");
+    throw new Error("User does not have [admin] privileges.");
   }
 
   return {

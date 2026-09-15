@@ -302,6 +302,10 @@ export function MoreView({
     return <SettlementHistoryView settlements={settlementSummaries} users={users} onBack={onCloseMorePage} />;
   }
 
+  if (activeMorePage === "settlement-management") {
+    return <SettlementHistoryView settlements={settlementSummaries} users={users} mode="admin" onBack={onCloseMorePage} />;
+  }
+
   return (
     <div className="space-y-4 p-4">
       <section className="relative rounded-2xl border border-slate-200 bg-white p-5">
@@ -428,7 +432,7 @@ export function MoreView({
           title="관리자"
           rows={[
             <MoreMenuRow key="season-management" label="시즌 관리" onClick={() => onOpenMorePage("season-management")} />,
-            <MoreMenuRow key="settlement-management" label="결산 관리" onClick={() => openNotReadyDialog("결산 관리")} />,
+            <MoreMenuRow key="settlement-management" label="결산 관리" onClick={() => onOpenMorePage("settlement-management")} />,
             <MoreMenuRow key="member-management" label="그룹 멤버 관리" onClick={() => onOpenMorePage("group-member-management")} />,
           ]}
         />

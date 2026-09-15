@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { getCurrentUserNotificationPage, getCurrentUserSettlementDetail, getCurrentUserUnreadNotificationCount, getCurrentWorkoutPostById, getCurrentWorkoutPostPage } from "@/db/queries";
-import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, expelGroupMember, getOrCreateCurrentGroupInvite, leaveGroup, markAllNotificationsRead, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateGroupMemberRoles, updateSeasonRules } from "@/db/commands";
+import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, expelGroupMember, confirmWeeklySettlement, getOrCreateCurrentGroupInvite, leaveGroup, markAllNotificationsRead, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateGroupMemberRoles, updateSeasonRules } from "@/db/commands";
 import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
 import type { SettlementDetail, WorkoutPost, WorkoutPostCursor, WorkoutPostPage } from "@/domain/models";
 
@@ -74,6 +74,11 @@ export type UpdateGroupMemberRolesState = {
 };
 
 export type ExpelGroupMemberState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
+export type ConfirmWeeklySettlementState = {
   status: "idle" | "success" | "error";
   message: string;
 };
@@ -557,6 +562,48 @@ export async function togglePostLikeAction(formData: FormData) {
 }
 
 
+export async function confirmWeeklySettlementAction(formData: FormData): Promise<ConfirmWeeklySettlementState> {
+  const settlementId = String(formData.get("settlementId") ?? "").trim();
+  const comment = String(formData.get("comment") ?? "").trim();
+  const rowFineAmounts: Array<{ userId: string; finalFineAmount: number }> = [];
+
+  if (!/^\d+$/.test(settlementId)) {
+    return { status: "error", message: "결산 정보를 확인할 수 없습니다." };
+  }
+
+  if (comment.length > 300) {
+    return { status: "error", message: "코멘트는 300자 이내로 입력해주세요." };
+  }
+
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith("finalFineAmount:")) {
+      continue;
+    }
+
+    const userId = key.slice("finalFineAmount:".length);
+    const amountText = String(value ?? "").trim();
+    const finalFineAmount = Number(amountText);
+
+    if (!/^\d+$/.test(userId) || !/^\d+$/.test(amountText) || !Number.isSafeInteger(finalFineAmount) || finalFineAmount < 0) {
+      return { status: "error", message: "총 벌금은 0 이상의 숫자만 입력해주세요." };
+    }
+
+    rowFineAmounts.push({ userId, finalFineAmount });
+  }
+
+  if (rowFineAmounts.length === 0) {
+    return { status: "error", message: "결산 대상자를 확인할 수 없습니다." };
+  }
+
+  try {
+    await confirmWeeklySettlement({ settlementId, comment, rowFineAmounts });
+    revalidatePath("/");
+    return { status: "success", message: "결산이 확정됐습니다." };
+  } catch (error) {
+    console.error("[ounwan error]", error);
+    return { status: "error", message: "결산을 확정할 수 없습니다." };
+  }
+}
 export async function getUnreadNotificationCountAction() {
   return getCurrentUserUnreadNotificationCount();
 }

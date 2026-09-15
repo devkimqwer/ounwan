@@ -89,7 +89,7 @@ export function MainMenuPanel({
               title="관리자"
               rows={[
                 { label: "시즌 관리", onClick: () => onOpenMorePage("season-management") },
-                { label: "결산 관리", onClick: () => onSelect("more") },
+                { label: "결산 관리", onClick: () => onOpenMorePage("settlement-management") },
                 { label: "그룹 멤버 관리", onClick: () => onOpenMorePage("group-member-management") },
               ]}
             />
