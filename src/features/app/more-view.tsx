@@ -4,9 +4,10 @@ import { useRouter } from "next/navigation";
 import { createGroupInAppAction, deleteGroupAction, leaveGroupAction, refreshCurrentUserAvatarAction, switchCurrentGroupAction, updateCurrentUserProfileAction } from "@/app/actions";
 import type { CreateGroupState, DeleteGroupState, LeaveGroupState, RefreshCurrentUserAvatarState, UpdateCurrentUserProfileState } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
-import type { AccountInfo, AdminGroupMember, Group, Season, SeasonParticipant, SettlementSummary, User, UserGroupMembership } from "@/domain/models";
+import type { AccountInfo, AdminGroupMember, BankRecord, Group, Season, SeasonParticipant, SettlementSummary, User, UserGroupMembership } from "@/domain/models";
 import { TextLogoutButton } from "@/features/auth/logout-controls";
 import { initialTabOptions, type InitialTabId, type MoreSubPage } from "./app-types";
+import { BalanceStatusView } from "./balance-status-view";
 import { BankAccountManagementView } from "./bank-account-management-view";
 import { GroupMemberManagementView } from "./group-member-management-view";
 import { readInitialTabPreference, writeInitialTabPreference } from "./initial-tab-preference";
@@ -27,6 +28,7 @@ export function MoreView({
   seasons,
   seasonParticipants,
   settlementSummaries,
+  bankRecords,
   activeMorePage,
   initialSettlementId,
   onInitialSettlementHandled,
@@ -47,6 +49,7 @@ export function MoreView({
   seasons: Season[];
   seasonParticipants: SeasonParticipant[];
   settlementSummaries: SettlementSummary[];
+  bankRecords: BankRecord[];
   activeMorePage: MoreSubPage;
   initialSettlementId?: string | null;
   onInitialSettlementHandled?: () => void;
@@ -306,6 +309,10 @@ export function MoreView({
     return <BankAccountManagementView accountInfo={accountInfo} onBack={onCloseMorePage} />;
   }
 
+  if (activeMorePage === "balance-status") {
+    return <BalanceStatusView bankRecords={bankRecords} users={users} onBack={onCloseMorePage} />;
+  }
+
   if (activeMorePage === "settlement-history") {
     return <SettlementHistoryView settlements={settlementSummaries} users={users} currentUserId={currentUserId} initialSettlementId={initialSettlementId} onInitialSettlementHandled={onInitialSettlementHandled} onSettlementViewed={onSettlementViewed} onBack={onCloseMorePage} />;
   }
@@ -420,7 +427,7 @@ export function MoreView({
       <MenuBlock
         rows={[
           <MoreMenuRow key="settlement-history" label="결산 내역" onClick={() => onOpenMorePage("settlement-history")} />,
-          <MoreMenuRow key="balance-status" label="잔고 현황" onClick={() => openNotReadyDialog("잔고 현황")} />,
+          <MoreMenuRow key="balance-status" label="잔고 현황" onClick={() => onOpenMorePage("balance-status")} />,
           <MoreMenuRow key="season-archive" label="이전 시즌" onClick={() => openNotReadyDialog("이전 시즌")} />,
         ]}
       />

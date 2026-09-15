@@ -53,7 +53,7 @@ function clearInitialActionParams(params: URLSearchParams) {
 }
 export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const router = useRouter();
-  const { accountInfo, adminGroupMembers, approvedGroups, currentUser, currentUserId, group, membership, postPage, posts, season, seasonParticipants, seasons, settlementSummaries, users, weeklyUserWorkoutStatus } = appData;
+  const { accountInfo, adminGroupMembers, approvedGroups, bankRecords, currentUser, currentUserId, group, membership, postPage, posts, season, seasonParticipants, seasons, settlementSummaries, users, weeklyUserWorkoutStatus } = appData;
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [initialTabReady, setInitialTabReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -877,6 +877,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                   seasons={seasons}
                   seasonParticipants={seasonParticipants}
                   settlementSummaries={settlementSummaries}
+                  bankRecords={bankRecords}
                   activeMorePage={activeMorePage}
                   initialSettlementId={settlementDetailTargetId}
                   onInitialSettlementHandled={() => setSettlementDetailTargetId(null)}

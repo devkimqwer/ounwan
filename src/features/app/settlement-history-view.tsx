@@ -4,7 +4,8 @@ import { getSettlementDetailAction } from "@/app/actions";
 import type { SettlementDetail, SettlementSummary, User } from "@/domain/models";
 import { SettlementAdminDetailView } from "./settlement-admin-detail-view";
 import { SettlementDetailView } from "./settlement-detail-view";
-import { CalendarIcon, formatCurrency, formatSettlementRange, SettlementHeader, SettlementStatusBadge } from "./settlement-detail-ui";
+import { AppSubPageHeader } from "./shared-ui";
+import { CalendarIcon, formatCurrency, formatSettlementRange, SettlementStatusBadge } from "./settlement-detail-ui";
 
 type SettlementHistoryMode = "user" | "admin";
 
@@ -137,7 +138,7 @@ export function SettlementHistoryView({
 
   return (
     <div className="min-h-full bg-slate-50">
-      <SettlementHeader title={mode === "admin" ? "결산 관리" : "결산 내역"} onBack={onBack} />
+      <AppSubPageHeader title={mode === "admin" ? "결산 관리" : "결산 내역"} onBack={onBack} />
 
       <div className="space-y-3 p-4">
         {detailError && (

@@ -2,6 +2,7 @@ import { type FormEvent, useMemo, useState } from "react";
 
 import { confirmWeeklySettlementAction, type ConfirmWeeklySettlementState } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
+import { AppSubPageHeader } from "./shared-ui";
 import type { SettlementDetail, SettlementRow, User } from "@/domain/models";
 import {
   CalendarIcon,
@@ -9,7 +10,6 @@ import {
   formatSettlementDateTime,
   formatSettlementRange,
   formatSignedCurrency,
-  SettlementHeader,
   SettlementMetric,
   SettlementParticipantTable,
   SettlementStatusBadge,
@@ -108,7 +108,7 @@ export function SettlementAdminDetailView({
 
   return (
     <div className="min-h-full bg-slate-50 pb-6">
-      <SettlementHeader title="결산 관리" onBack={onBack} right={<SettlementStatusBadge status={settlement.status} />} />
+      <AppSubPageHeader title="결산 관리" onBack={onBack} right={<SettlementStatusBadge status={settlement.status} />} />
 
       <form className="space-y-4 p-4" onSubmit={requestConfirm}>
         <section className="rounded-2xl border border-slate-200 bg-white p-4">

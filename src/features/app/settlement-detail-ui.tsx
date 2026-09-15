@@ -4,25 +4,6 @@ import type { SettlementRow, SettlementSummary, User } from "@/domain/models";
 import { formatSystemDateTime, formatSystemMonthDay } from "@/lib/date-format";
 import { Avatar, getUserById } from "./shared-ui";
 
-export function SettlementHeader({ title, onBack, right }: { title: string; onBack: () => void; right?: ReactNode }) {
-  return (
-    <div className="sticky top-0 z-10 flex h-14 items-center justify-center border-b border-slate-200 bg-white px-4">
-      <button
-        type="button"
-        className="absolute left-2 grid h-10 w-10 place-items-center rounded-full text-slate-700 transition-colors active:bg-slate-100"
-        aria-label="뒤로가기"
-        onClick={onBack}
-      >
-        <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="m15 18-6-6 6-6" />
-        </svg>
-      </button>
-      <h1 className="text-base font-extrabold text-slate-950">{title}</h1>
-      {right && <div className="absolute right-4">{right}</div>}
-    </div>
-  );
-}
-
 export function SettlementParticipantTable({
   days,
   rows,

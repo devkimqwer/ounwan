@@ -1,3 +1,4 @@
+import { AppSubPageHeader } from "./shared-ui";
 import type { SettlementDetail, User } from "@/domain/models";
 import {
   CalendarIcon,
@@ -5,7 +6,6 @@ import {
   formatSettlementDateTime,
   formatSettlementRange,
   formatSignedCurrency,
-  SettlementHeader,
   SettlementMetric,
   SettlementParticipantTable,
   SettlementStatusBadge,
@@ -18,7 +18,7 @@ export function SettlementDetailView({ settlement, users, currentUserId, onBack 
 
   return (
     <div className="min-h-full bg-slate-50 pb-6">
-      <SettlementHeader title="결산 상세" onBack={onBack} right={<SettlementStatusBadge status={settlement.status} />} />
+      <AppSubPageHeader title="결산 상세" onBack={onBack} right={<SettlementStatusBadge status={settlement.status} />} />
 
       <div className="space-y-4 p-4">
         <section className="rounded-2xl border border-slate-200 bg-white p-4">
