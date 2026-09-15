@@ -202,6 +202,7 @@ export async function initializeActiveSeason(
         missedCount: 0,
         autoFineAmount: 0,
         finalFineAmount: 0,
+        dailyResults: {},
       })),
     );
   }

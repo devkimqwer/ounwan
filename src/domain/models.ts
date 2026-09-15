@@ -175,6 +175,27 @@ export interface SettlementRow {
   missedCount: number;
   autoFineAmount: number;
   finalFineAmount: number;
+  dailyResults: SettlementDailyResults;
+  memo?: string;
+}
+
+export type SettlementDailyResults = Record<string, SettlementDailyResult>;
+
+export interface SettlementDailyResult {
+  count: number;
+  countedPostIds: string[];
+}
+
+export interface SettlementDetail extends Settlement {
+  seasonName: string;
+  targetWorkoutCountPerWeek: number;
+  finePerMiss: number;
+  participantCount: number;
+  autoFineAmountTotal: number;
+  finalFineAmountTotal: number;
+  adjustmentAmountTotal: number;
+  days: string[];
+  rows: SettlementRow[];
 }
 export interface WeeklyUserWorkoutStatus {
   weekStartDate: string;

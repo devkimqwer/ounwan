@@ -815,6 +815,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                   approvedGroups={approvedGroups}
                   accountInfo={accountInfo}
                   adminGroupMembers={adminGroupMembers}
+                  users={users}
                   seasons={seasons}
                   seasonParticipants={seasonParticipants}
                   settlementSummaries={settlementSummaries}

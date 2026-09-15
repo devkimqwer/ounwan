@@ -149,6 +149,7 @@ export function PostCard({
   onOpen?: (postId: string) => void;
 }) {
   const user = getUserById(users, post.userId);
+  const displayUser = user ?? { name: "알 수 없는 사용자", avatarUrl: undefined };
   const createdAt = new Date(post.createdAt);
   const createdAtText = formatPostDateTime(createdAt);
   const isOwnPost = currentUserId === post.userId;
@@ -211,10 +212,10 @@ export function PostCard({
   return (
     <article className="relative rounded-2xl border border-slate-200 bg-white">
       <div className="flex items-center gap-3 p-4 pb-3">
-        <Avatar name={user.name} imageUrl={user.avatarUrl} />
+        <Avatar name={displayUser.name} imageUrl={displayUser.avatarUrl} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-bold">{user.name}</p>
+            <p className="truncate text-sm font-bold">{displayUser.name}</p>
             {post.isInvalid && <Badge tone="red">노인정</Badge>}
           </div>
           <p className="text-xs text-slate-400">

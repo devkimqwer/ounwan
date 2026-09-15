@@ -22,6 +22,7 @@ export function MoreView({
   approvedGroups,
   accountInfo,
   adminGroupMembers,
+  users,
   seasons,
   seasonParticipants,
   settlementSummaries,
@@ -37,6 +38,7 @@ export function MoreView({
   approvedGroups: UserGroupMembership[];
   accountInfo: AccountInfo;
   adminGroupMembers: AdminGroupMember[];
+  users: User[];
   seasons: Season[];
   seasonParticipants: SeasonParticipant[];
   settlementSummaries: SettlementSummary[];
@@ -297,7 +299,7 @@ export function MoreView({
   }
 
   if (activeMorePage === "settlement-history") {
-    return <SettlementHistoryView settlements={settlementSummaries} onBack={onCloseMorePage} />;
+    return <SettlementHistoryView settlements={settlementSummaries} users={users} onBack={onCloseMorePage} />;
   }
 
   return (

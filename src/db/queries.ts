@@ -20,6 +20,7 @@ import type {
   Season,
   SeasonParticipant,
   Settlement,
+  SettlementDetail,
   SettlementRow,
   SettlementSummary,
   User,
@@ -872,6 +873,75 @@ async function getSettlementSummaries(groupId: string): Promise<SettlementSummar
     finalFineAmountTotal: Number(row.finalFineAmountTotal),
   }));
 }
+
+export async function getCurrentUserSettlementDetail(settlementId: string): Promise<SettlementDetail | undefined> {
+  if (!/^\d+$/.test(settlementId)) {
+    return undefined;
+  }
+
+  const currentUserId = await requireCurrentUserId();
+  const selectedGroupId = await getCurrentGroupIdForUser(currentUserId);
+  const membershipRows = await db
+    .select({ groupId: groupMembers.groupId })
+    .from(groupMembers)
+    .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+    .where(and(eq(groupMembers.userId, BigInt(currentUserId)), isNull(groupMembers.leftAt), isNull(groups.deletedAt)));
+  const membership = membershipRows.find((row) => row.groupId.toString() === selectedGroupId) ?? membershipRows[0];
+
+  if (!membership) {
+    throw new CurrentUserMembershipNotFoundError();
+  }
+
+  const rows = await db
+    .select({
+      id: weeklySettlements.id,
+      groupId: weeklySettlements.groupId,
+      seasonId: weeklySettlements.seasonId,
+      seasonName: seasons.name,
+      targetWorkoutCountPerWeek: seasons.targetWorkoutCountPerWeek,
+      finePerMiss: seasons.finePerMiss,
+      weekStartDate: weeklySettlements.weekStartDate,
+      weekEndDate: weeklySettlements.weekEndDate,
+      status: weeklySettlements.status,
+      confirmedAt: weeklySettlements.confirmedAt,
+      comment: weeklySettlements.comment,
+    })
+    .from(weeklySettlements)
+    .innerJoin(seasons, eq(weeklySettlements.seasonId, seasons.id))
+    .where(and(eq(weeklySettlements.id, BigInt(settlementId)), eq(weeklySettlements.groupId, membership.groupId)))
+    .limit(1);
+  const settlement = rows[0];
+
+  if (!settlement) {
+    return undefined;
+  }
+
+  const detailRows = await getSettlementRows(settlement.id.toString());
+  const days = getDateRange(settlement.weekStartDate, settlement.weekEndDate);
+  const autoFineAmountTotal = detailRows.reduce((total, row) => total + row.autoFineAmount, 0);
+  const finalFineAmountTotal = detailRows.reduce((total, row) => total + row.finalFineAmount, 0);
+
+  return {
+    id: settlement.id.toString(),
+    groupId: settlement.groupId.toString(),
+    seasonId: settlement.seasonId.toString(),
+    seasonName: settlement.seasonName,
+    weekStartDate: settlement.weekStartDate,
+    weekEndDate: settlement.weekEndDate,
+    status: settlement.status,
+    confirmedAt: settlement.confirmedAt?.toISOString(),
+    comment: settlement.comment ?? undefined,
+    targetWorkoutCountPerWeek: settlement.targetWorkoutCountPerWeek,
+    finePerMiss: settlement.finePerMiss,
+    participantCount: detailRows.length,
+    autoFineAmountTotal,
+    finalFineAmountTotal,
+    adjustmentAmountTotal: finalFineAmountTotal - autoFineAmountTotal,
+    days,
+    rows: detailRows,
+  };
+}
+
 async function getWeeklyUserWorkoutStatus(groupId: string, season: Season, userId: string): Promise<WeeklyUserWorkoutStatus> {
   const weekRange = getKoreanWeekRange(getKoreanWorkoutDate(new Date(), season.dayStartTime), season.weekStartDay);
   const rows = await db
@@ -917,9 +987,23 @@ async function getSettlementRows(settlementId: string): Promise<SettlementRow[]>
     missedCount: row.missedCount,
     autoFineAmount: row.autoFineAmount,
     finalFineAmount: row.finalFineAmount,
+    dailyResults: row.dailyResults,
+    memo: row.memo ?? undefined,
   }));
 }
 
+function getDateRange(startDate: string, endDate: string) {
+  const dates: string[] = [];
+  const cursor = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+
+  while (cursor <= end) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return dates;
+}
 async function getBankRecords(groupId: string): Promise<BankRecord[]> {
   const rows = await db
     .select()

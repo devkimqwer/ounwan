@@ -153,10 +153,42 @@ export const settlement: Settlement = {
 };
 
 export const settlementRows: SettlementRow[] = [
-  { settlementId: settlement.id, userId: "user-1", validWorkoutCount: 4, missedCount: 0, autoFineAmount: 0, finalFineAmount: 0 },
-  { settlementId: settlement.id, userId: "user-2", validWorkoutCount: 2, missedCount: 1, autoFineAmount: 5000, finalFineAmount: 5000 },
-  { settlementId: settlement.id, userId: "user-3", validWorkoutCount: 1, missedCount: 2, autoFineAmount: 10000, finalFineAmount: 10000 },
-  { settlementId: settlement.id, userId: "user-5", validWorkoutCount: 0, missedCount: 3, autoFineAmount: 15000, finalFineAmount: 15000 },
+  {
+    settlementId: settlement.id,
+    userId: "user-1",
+    validWorkoutCount: 4,
+    missedCount: 0,
+    autoFineAmount: 0,
+    finalFineAmount: 0,
+    dailyResults: { "2026-08-10": { count: 1, countedPostIds: ["post-1"] }, "2026-08-11": { count: 1, countedPostIds: [] }, "2026-08-13": { count: 1, countedPostIds: [] }, "2026-08-15": { count: 1, countedPostIds: [] } },
+  },
+  {
+    settlementId: settlement.id,
+    userId: "user-2",
+    validWorkoutCount: 2,
+    missedCount: 1,
+    autoFineAmount: 5000,
+    finalFineAmount: 5000,
+    dailyResults: { "2026-08-11": { count: 1, countedPostIds: [] }, "2026-08-12": { count: 1, countedPostIds: [] } },
+  },
+  {
+    settlementId: settlement.id,
+    userId: "user-3",
+    validWorkoutCount: 1,
+    missedCount: 2,
+    autoFineAmount: 10000,
+    finalFineAmount: 10000,
+    dailyResults: { "2026-08-10": { count: 1, countedPostIds: [] } },
+  },
+  {
+    settlementId: settlement.id,
+    userId: "user-5",
+    validWorkoutCount: 0,
+    missedCount: 3,
+    autoFineAmount: 15000,
+    finalFineAmount: 15000,
+    dailyResults: {},
+  },
 ];
 
 export const bankRecords: BankRecord[] = [

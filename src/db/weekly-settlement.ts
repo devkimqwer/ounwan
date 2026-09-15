@@ -1,7 +1,9 @@
 import { and, asc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 
+import type { SettlementDailyResults } from "../domain/models";
 import {
   getKoreanWorkoutDate,
+  getKoreanWeekRange,
   getNextSettlementAt,
   getNextSettlementAtAfter,
   getPreviousSettlementPeriod,
@@ -20,7 +22,7 @@ export type WeeklySettlementBatchResult = {
   initializedCount: number;
 };
 
-type DueSeason = {
+type SettlementSeason = {
   id: bigint;
   groupId: bigint;
   name: string;
@@ -29,8 +31,33 @@ type DueSeason = {
   weekStartDay: number;
   dayStartTime: string;
   dailyDuplicatePolicy: "count_once" | "count_all";
+};
+
+type DueSeason = SettlementSeason & {
   nextSettlementAt: Date | null;
 };
+
+type SettlementPeriod = {
+  weekStartDate: string;
+  weekEndDate: string;
+};
+
+type SettlementWorkoutPost = {
+  id: bigint;
+  userId: bigint;
+  createdAt: Date;
+};
+
+type CalculatedSettlementRow = {
+  userId: bigint;
+  validWorkoutCount: number;
+  missedCount: number;
+  autoFineAmount: number;
+  finalFineAmount: number;
+  dailyResults: SettlementDailyResults;
+};
+
+type BatchTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export async function runWeeklySettlementBatch(now = new Date()): Promise<WeeklySettlementBatchResult> {
   log("start", { now: now.toISOString() });
@@ -75,6 +102,75 @@ export async function runWeeklySettlementBatch(now = new Date()): Promise<Weekly
   }
 }
 
+export async function syncDraftSettlementRowForWorkoutPost(postId: bigint) {
+  await db.transaction(async (tx) => {
+    const postRows = await tx
+      .select({
+        id: workoutPosts.id,
+        userId: workoutPosts.userId,
+        seasonId: workoutPosts.seasonId,
+        createdAt: workoutPosts.createdAt,
+      })
+      .from(workoutPosts)
+      .where(eq(workoutPosts.id, postId))
+      .limit(1);
+    const post = postRows[0];
+
+    if (!post) {
+      return;
+    }
+
+    const seasonRows = await tx
+      .select({
+        id: seasons.id,
+        groupId: seasons.groupId,
+        name: seasons.name,
+        targetWorkoutCountPerWeek: seasons.targetWorkoutCountPerWeek,
+        finePerMiss: seasons.finePerMiss,
+        weekStartDay: seasons.weekStartDay,
+        dayStartTime: seasons.dayStartTime,
+        dailyDuplicatePolicy: seasons.dailyDuplicatePolicy,
+      })
+      .from(seasons)
+      .where(eq(seasons.id, post.seasonId))
+      .limit(1);
+    const season = seasonRows[0];
+
+    if (!season) {
+      return;
+    }
+
+    const workoutDate = getKoreanWorkoutDate(post.createdAt, season.dayStartTime);
+    const period = getKoreanWeekRange(workoutDate, season.weekStartDay);
+    const settlementRows = await tx
+      .select({ id: weeklySettlements.id, status: weeklySettlements.status })
+      .from(weeklySettlements)
+      .where(and(eq(weeklySettlements.seasonId, season.id), eq(weeklySettlements.weekStartDate, period.weekStartDate)))
+      .limit(1);
+    const settlement = settlementRows[0];
+
+    if (!settlement || settlement.status !== "draft") {
+      return;
+    }
+
+    const calculatedRow = await calculateSettlementRowForUser(tx, season, post.userId, period);
+    await tx
+      .insert(weeklySettlementRows)
+      .values({ settlementId: settlement.id, ...calculatedRow, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: [weeklySettlementRows.settlementId, weeklySettlementRows.userId],
+        set: {
+          validWorkoutCount: calculatedRow.validWorkoutCount,
+          missedCount: calculatedRow.missedCount,
+          autoFineAmount: calculatedRow.autoFineAmount,
+          finalFineAmount: calculatedRow.finalFineAmount,
+          dailyResults: calculatedRow.dailyResults,
+          updatedAt: new Date(),
+        },
+      });
+  });
+}
+
 async function getDueSeasons(now: Date): Promise<DueSeason[]> {
   return db
     .select({
@@ -107,30 +203,12 @@ async function processDueSeason(season: DueSeason, now: Date) {
 
     const period = getPreviousSettlementPeriod(season.nextSettlementAt, season.weekStartDay, season.dayStartTime);
     const window = getSettlementWindow(period.weekStartDate, season.dayStartTime);
-    const settlementId = await getOrCreateSettlement(tx, season, period);
+    const settlement = await getOrCreateSettlement(tx, season, period);
     const participantUserIds = await getParticipantUserIds(tx, season.id, period.weekStartDate, period.weekEndDate);
-    const workoutCounts = await getWorkoutCounts(tx, season, participantUserIds, period.weekStartDate, period.weekEndDate, window.startAt, window.endAt);
 
-    if (participantUserIds.length > 0) {
-      await tx
-        .insert(weeklySettlementRows)
-        .values(
-          participantUserIds.map((userId) => {
-            const validWorkoutCount = workoutCounts.get(userId.toString()) ?? 0;
-            const missedCount = Math.max(season.targetWorkoutCountPerWeek - validWorkoutCount, 0);
-            const autoFineAmount = missedCount * season.finePerMiss;
-
-            return {
-              settlementId,
-              userId,
-              validWorkoutCount,
-              missedCount,
-              autoFineAmount,
-              finalFineAmount: autoFineAmount,
-            };
-          }),
-        )
-        .onConflictDoNothing();
+    if (settlement.status === "draft") {
+      const settlementRows = await calculateSettlementRows(tx, season, participantUserIds, period, window.startAt, window.endAt);
+      await upsertDraftSettlementRows(tx, settlement.id, settlementRows);
     }
 
     const nextSettlementAt = getNextSettlementAtAfter(season.nextSettlementAt, season.weekStartDay, season.dayStartTime);
@@ -149,9 +227,7 @@ async function processDueSeason(season: DueSeason, now: Date) {
   });
 }
 
-type BatchTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-async function getOrCreateSettlement(tx: BatchTransaction, season: DueSeason, period: { weekStartDate: string; weekEndDate: string }) {
+async function getOrCreateSettlement(tx: BatchTransaction, season: DueSeason, period: SettlementPeriod) {
   const insertedRows = await tx
     .insert(weeklySettlements)
     .values({
@@ -162,14 +238,14 @@ async function getOrCreateSettlement(tx: BatchTransaction, season: DueSeason, pe
       status: "draft",
     })
     .onConflictDoNothing()
-    .returning({ id: weeklySettlements.id });
+    .returning({ id: weeklySettlements.id, status: weeklySettlements.status });
 
   if (insertedRows[0]) {
-    return insertedRows[0].id;
+    return insertedRows[0];
   }
 
   const existingRows = await tx
-    .select({ id: weeklySettlements.id })
+    .select({ id: weeklySettlements.id, status: weeklySettlements.status })
     .from(weeklySettlements)
     .where(and(eq(weeklySettlements.seasonId, season.id), eq(weeklySettlements.weekStartDate, period.weekStartDate)))
     .limit(1);
@@ -178,7 +254,28 @@ async function getOrCreateSettlement(tx: BatchTransaction, season: DueSeason, pe
     throw new Error("Weekly settlement was not created.");
   }
 
-  return existingRows[0].id;
+  return existingRows[0];
+}
+
+async function upsertDraftSettlementRows(tx: BatchTransaction, settlementId: bigint, settlementRows: CalculatedSettlementRow[]) {
+  if (settlementRows.length === 0) {
+    return;
+  }
+
+  await tx
+    .insert(weeklySettlementRows)
+    .values(settlementRows.map((row) => ({ settlementId, ...row, updatedAt: new Date() })))
+    .onConflictDoUpdate({
+      target: [weeklySettlementRows.settlementId, weeklySettlementRows.userId],
+      set: {
+        validWorkoutCount: sql.raw(`excluded.${weeklySettlementRows.validWorkoutCount.name}`),
+        missedCount: sql.raw(`excluded.${weeklySettlementRows.missedCount.name}`),
+        autoFineAmount: sql.raw(`excluded.${weeklySettlementRows.autoFineAmount.name}`),
+        finalFineAmount: sql.raw(`excluded.${weeklySettlementRows.finalFineAmount.name}`),
+        dailyResults: sql.raw(`excluded.${weeklySettlementRows.dailyResults.name}`),
+        updatedAt: new Date(),
+      },
+    });
 }
 
 async function getParticipantUserIds(tx: BatchTransaction, seasonId: bigint, weekStartDate: string, weekEndDate: string) {
@@ -197,23 +294,37 @@ async function getParticipantUserIds(tx: BatchTransaction, seasonId: bigint, wee
   return Array.from(new Map(rows.map((row) => [row.userId.toString(), row.userId])).values());
 }
 
-async function getWorkoutCounts(
+async function calculateSettlementRows(
   tx: BatchTransaction,
-  season: DueSeason,
+  season: SettlementSeason,
   participantUserIds: bigint[],
-  weekStartDate: string,
-  weekEndDate: string,
+  period: SettlementPeriod,
   windowStartAt: Date,
   windowEndAt: Date,
 ) {
-  const counts = new Map<string, number>();
-
   if (participantUserIds.length === 0) {
-    return counts;
+    return [];
   }
 
-  const rows = await tx
-    .select({ userId: workoutPosts.userId, createdAt: workoutPosts.createdAt })
+  const posts = await getWorkoutPostsForSettlement(tx, season, participantUserIds, windowStartAt, windowEndAt);
+  return participantUserIds.map((userId) => calculateSettlementRow(season, userId, period, posts.filter((post) => post.userId === userId)));
+}
+
+async function calculateSettlementRowForUser(tx: BatchTransaction, season: SettlementSeason, userId: bigint, period: SettlementPeriod) {
+  const window = getSettlementWindow(period.weekStartDate, season.dayStartTime);
+  const posts = await getWorkoutPostsForSettlement(tx, season, [userId], window.startAt, window.endAt);
+  return calculateSettlementRow(season, userId, period, posts);
+}
+
+async function getWorkoutPostsForSettlement(
+  tx: BatchTransaction,
+  season: SettlementSeason,
+  participantUserIds: bigint[],
+  windowStartAt: Date,
+  windowEndAt: Date,
+) {
+  return tx
+    .select({ id: workoutPosts.id, userId: workoutPosts.userId, createdAt: workoutPosts.createdAt })
     .from(workoutPosts)
     .where(
       and(
@@ -225,41 +336,63 @@ async function getWorkoutCounts(
         gte(workoutPosts.createdAt, windowStartAt),
         lt(workoutPosts.createdAt, windowEndAt),
       ),
-    );
+    )
+    .orderBy(asc(workoutPosts.createdAt), asc(workoutPosts.id));
+}
 
-  if (season.dailyDuplicatePolicy === "count_all") {
-    for (const row of rows) {
-      const userId = row.userId.toString();
-      const businessDate = getKoreanWorkoutDate(row.createdAt, season.dayStartTime);
+function calculateSettlementRow(
+  season: SettlementSeason,
+  userId: bigint,
+  period: SettlementPeriod,
+  posts: SettlementWorkoutPost[],
+): CalculatedSettlementRow {
+  const dailyResults = createEmptyDailyResults(period.weekStartDate, period.weekEndDate);
 
-      if (businessDate >= weekStartDate && businessDate <= weekEndDate) {
-        counts.set(userId, (counts.get(userId) ?? 0) + 1);
-      }
-    }
+  for (const post of posts) {
+    const businessDate = getKoreanWorkoutDate(post.createdAt, season.dayStartTime);
 
-    return counts;
-  }
-
-  const datesByUserId = new Map<string, Set<string>>();
-
-  for (const row of rows) {
-    const userId = row.userId.toString();
-    const businessDate = getKoreanWorkoutDate(row.createdAt, season.dayStartTime);
-
-    if (businessDate < weekStartDate || businessDate > weekEndDate) {
+    if (businessDate < period.weekStartDate || businessDate > period.weekEndDate) {
       continue;
     }
 
-    const dates = datesByUserId.get(userId) ?? new Set<string>();
-    dates.add(businessDate);
-    datesByUserId.set(userId, dates);
+    const dailyResult = dailyResults[businessDate] ?? { count: 0, countedPostIds: [] };
+
+    if (season.dailyDuplicatePolicy === "count_all") {
+      dailyResult.count += 1;
+      dailyResult.countedPostIds.push(post.id.toString());
+    } else if (dailyResult.count === 0) {
+      dailyResult.count = 1;
+      dailyResult.countedPostIds = [post.id.toString()];
+    }
+
+    dailyResults[businessDate] = dailyResult;
   }
 
-  for (const [userId, dates] of datesByUserId.entries()) {
-    counts.set(userId, dates.size);
+  const validWorkoutCount = Object.values(dailyResults).reduce((total, result) => total + result.count, 0);
+  const missedCount = Math.max(season.targetWorkoutCountPerWeek - validWorkoutCount, 0);
+  const autoFineAmount = missedCount * season.finePerMiss;
+
+  return {
+    userId,
+    validWorkoutCount,
+    missedCount,
+    autoFineAmount,
+    finalFineAmount: autoFineAmount,
+    dailyResults,
+  };
+}
+
+function createEmptyDailyResults(weekStartDate: string, weekEndDate: string): SettlementDailyResults {
+  const dailyResults: SettlementDailyResults = {};
+  const cursor = new Date(`${weekStartDate}T00:00:00Z`);
+  const end = new Date(`${weekEndDate}T00:00:00Z`);
+
+  while (cursor <= end) {
+    dailyResults[formatUtcDate(cursor)] = { count: 0, countedPostIds: [] };
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
-  return counts;
+  return dailyResults;
 }
 
 async function acquireBatchLock() {
@@ -269,6 +402,10 @@ async function acquireBatchLock() {
 
 async function releaseBatchLock() {
   await db.execute(sql`SELECT pg_advisory_unlock(${WEEKLY_SETTLEMENT_BATCH_LOCK_KEY})`);
+}
+
+function formatUtcDate(date: Date) {
+  return date.toISOString().slice(0, 10);
 }
 
 function log(message: string, data: Record<string, unknown> = {}) {

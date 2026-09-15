@@ -123,14 +123,15 @@ export function PostDetailView({
           {post.comments.length > 0 ? (
             post.comments.map((comment) => {
               const user = getUserById(users, comment.userId);
+              const displayUser = user ?? { name: "알 수 없는 사용자", avatarUrl: undefined };
               return (
                 <div key={comment.id} className="flex gap-3">
-                  <Avatar name={user.name} imageUrl={user.avatarUrl} size="sm" />
+                  <Avatar name={displayUser.name} imageUrl={displayUser.avatarUrl} size="sm" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-2">
-                          <p className="text-sm font-extrabold text-slate-950">{user.name}</p>
+                          <p className="text-sm font-extrabold text-slate-950">{displayUser.name}</p>
                           <p className="text-xs font-semibold text-slate-400">{formatPostDateTime(new Date(comment.createdAt))}</p>
                         </div>
                         <p className="mt-1 whitespace-pre-wrap break-words text-sm font-medium leading-5 text-slate-700">{comment.content}</p>

@@ -120,6 +120,13 @@
       "when": 1789313060344,
       "tag": "0016_watery_namora",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789380381763,
+      "tag": "0017_same_puppet_master",
+      "breakpoints": true
     }
   ]
 }

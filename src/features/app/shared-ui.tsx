@@ -4,7 +4,7 @@ import type { Role, User } from "@/domain/models";
 import { formatSystemDateTime } from "@/lib/date-format";
 
 export function getUserById(users: User[], userId: string) {
-  return users.find((user) => user.id === userId) ?? users[0];
+  return users.find((user) => user.id === userId);
 }
 export function formatPostDateTime(date: Date) {
   return formatSystemDateTime(date);

@@ -12,6 +12,7 @@ import { db } from "./client";
 import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError, GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, SeasonStartDateInPastError } from "./errors";
 import { bankAccounts, groupInvites, groupJoinRequests, groupMembers, groups, notifications, postComments, postLikes, postMedia, pushSubscriptions, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
 import { activatePendingSeasonForGroup, initializeActiveSeason, runPendingSeasonActivationBatch } from "./season-activation";
+import { syncDraftSettlementRowForWorkoutPost } from "./weekly-settlement";
 
 const GROUP_INVITE_EXPIRES_HOURS = 72;
 const DEFAULT_SEASON_DAY_START_TIME = "03:00";
@@ -1219,6 +1220,8 @@ export async function toggleWorkoutPostInvalid(postId: string) {
     })
     .where(eq(workoutPosts.id, targetPost.id))
     .returning({ id: workoutPosts.id, isInvalid: workoutPosts.isInvalid });
+
+  await syncDraftSettlementRowForWorkoutPost(targetPost.id);
 
   if (nextIsInvalid) {
     await createNotification(db, {
