@@ -18,6 +18,7 @@ export function MoreView({
   isAdmin,
   isTreasurer,
   currentUser,
+  currentUserId,
   currentGroup,
   approvedGroups,
   accountInfo,
@@ -27,6 +28,9 @@ export function MoreView({
   seasonParticipants,
   settlementSummaries,
   activeMorePage,
+  initialSettlementId,
+  onInitialSettlementHandled,
+  onSettlementViewed,
   onOpenMorePage,
   onCloseMorePage,
   onInitialTabChange,
@@ -34,6 +38,7 @@ export function MoreView({
   isAdmin: boolean;
   isTreasurer: boolean;
   currentUser: User;
+  currentUserId: string;
   currentGroup: Group;
   approvedGroups: UserGroupMembership[];
   accountInfo: AccountInfo;
@@ -43,6 +48,9 @@ export function MoreView({
   seasonParticipants: SeasonParticipant[];
   settlementSummaries: SettlementSummary[];
   activeMorePage: MoreSubPage;
+  initialSettlementId?: string | null;
+  onInitialSettlementHandled?: () => void;
+  onSettlementViewed?: (settlementId: string) => void;
   onOpenMorePage: (page: Exclude<MoreSubPage, "main">) => void;
   onCloseMorePage: () => void;
   onInitialTabChange: (tabId: InitialTabId) => void;
@@ -299,11 +307,11 @@ export function MoreView({
   }
 
   if (activeMorePage === "settlement-history") {
-    return <SettlementHistoryView settlements={settlementSummaries} users={users} onBack={onCloseMorePage} />;
+    return <SettlementHistoryView settlements={settlementSummaries} users={users} currentUserId={currentUserId} initialSettlementId={initialSettlementId} onInitialSettlementHandled={onInitialSettlementHandled} onSettlementViewed={onSettlementViewed} onBack={onCloseMorePage} />;
   }
 
   if (activeMorePage === "settlement-management") {
-    return <SettlementHistoryView settlements={settlementSummaries} users={users} mode="admin" onBack={onCloseMorePage} />;
+    return <SettlementHistoryView settlements={settlementSummaries} users={users} currentUserId={currentUserId} mode="admin" onSettlementViewed={onSettlementViewed} onBack={onCloseMorePage} />;
   }
 
   return (

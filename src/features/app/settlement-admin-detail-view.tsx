@@ -22,11 +22,13 @@ const settlementInitialState: ConfirmWeeklySettlementState = { status: "idle", m
 export function SettlementAdminDetailView({
   settlement,
   users,
+  currentUserId,
   onBack,
   onChanged,
 }: {
   settlement: SettlementDetail;
   users: User[];
+  currentUserId: string;
   onBack: () => void;
   onChanged: () => void;
 }) {
@@ -147,7 +149,7 @@ export function SettlementAdminDetailView({
               onChange={(event) => setComment(event.target.value)}
             />
           ) : (
-            <p className="mt-3 whitespace-pre-wrap break-words rounded-xl bg-slate-50 p-3 text-sm font-semibold leading-6 text-slate-600">
+            <p className="mt-3 whitespace-pre-wrap break-words rounded-xl bg-slate-50 p-3 text-sm font-normal leading-6 text-slate-600">
               {settlement.comment?.trim() || "등록된 코멘트가 없습니다."}
             </p>
           )}
@@ -165,6 +167,7 @@ export function SettlementAdminDetailView({
               days={settlement.days}
               rows={sortedRows}
               users={users}
+              currentUserId={currentUserId}
               renderFinalFine={
                 isDraft
                   ? (row) => (

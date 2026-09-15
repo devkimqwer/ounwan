@@ -27,11 +27,13 @@ export function SettlementParticipantTable({
   days,
   rows,
   users,
+  currentUserId,
   renderFinalFine,
 }: {
   days: string[];
   rows: SettlementRow[];
   users: User[];
+  currentUserId?: string;
   renderFinalFine?: (row: SettlementRow) => ReactNode;
 }) {
   return (
@@ -55,15 +57,19 @@ export function SettlementParticipantTable({
             const user = getUserById(users, row.userId);
             const displayUser = user ?? { name: "알 수 없는 사용자", avatarUrl: undefined };
             const adjustmentAmount = row.finalFineAmount - row.autoFineAmount;
+            const isCurrentUser = row.userId === currentUserId;
 
             return (
-              <tr key={row.userId} className="border-b border-slate-100 last:border-b-0">
-                <td className="sticky left-0 z-[1] min-w-32 bg-white px-4 py-3">
+              <tr key={row.userId} className={`border-b border-slate-100 last:border-b-0 ${isCurrentUser ? "bg-[#F7F5FF]" : ""}`}>
+                <td className={`sticky left-0 z-[1] min-w-32 px-4 py-3 ${isCurrentUser ? "bg-[#F7F5FF]" : "bg-white"}`}>
                   <div className="flex items-center gap-2">
                     <Avatar name={displayUser.name} imageUrl={displayUser.avatarUrl} size="sm" />
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-extrabold text-slate-950">{displayUser.name}</p>
-                      <p className="text-[11px] font-semibold text-slate-400">인증 {row.validWorkoutCount}회</p>
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <p className="truncate text-sm font-bold text-slate-950">{displayUser.name}</p>
+                        {isCurrentUser && <span className="shrink-0 rounded-full bg-[#5e4ea5] px-1 py-1 text-[10px] font-extrabold leading-none text-white">나</span>}
+                      </div>
+                      <p className="text-[11px] font-normal text-slate-400">인증 {row.validWorkoutCount}회</p>
                     </div>
                   </div>
                   {row.memo && <p className="mt-2 rounded-lg bg-slate-50 px-2 py-1.5 text-[11px] font-semibold leading-4 text-slate-500">{row.memo}</p>}
@@ -73,7 +79,7 @@ export function SettlementParticipantTable({
                     <DailyWorkoutMark count={row.dailyResults[day]?.count ?? 0} />
                   </td>
                 ))}
-                <td className={`px-2 py-3 text-center text-sm font-extrabold ${row.missedCount > 0 ? "text-red-500" : "text-slate-400"}`}>
+                <td className={`px-2 py-3 text-center text-sm font-bold ${row.missedCount > 0 ? "text-red-500" : "text-slate-400"}`}>
                   {row.missedCount}
                 </td>
                 <td className="px-3 py-3 text-right">
@@ -81,8 +87,8 @@ export function SettlementParticipantTable({
                     renderFinalFine(row)
                   ) : (
                     <>
-                      <p className={`text-sm font-extrabold ${row.finalFineAmount > 0 ? "text-red-500" : "text-slate-500"}`}>{formatCurrency(row.finalFineAmount)}</p>
-                      {adjustmentAmount !== 0 && <p className="mt-0.5 text-[11px] font-bold text-slate-400">조정 {formatSignedCurrency(adjustmentAmount)}</p>}
+                      <p className={`text-sm font-bold ${row.finalFineAmount > 0 ? "text-red-500" : "text-slate-500"}`}>{formatCurrency(row.finalFineAmount)}</p>
+                      {adjustmentAmount !== 0 && <p className="mt-0.5 text-[11px] font-normal text-slate-400">조정 {formatSignedCurrency(adjustmentAmount)}</p>}
                     </>
                   )}
                 </td>
@@ -94,7 +100,6 @@ export function SettlementParticipantTable({
     </div>
   );
 }
-
 export function DailyWorkoutMark({ count }: { count: number }) {
   if (count <= 0) {
     return <span className="inline-grid h-6 w-6 place-items-center rounded-full text-xs font-bold text-slate-300">-</span>;
@@ -111,7 +116,7 @@ export function SettlementMetric({ label, value }: { label: string; value: strin
   return (
     <div className="rounded-xl bg-slate-50 px-3 py-3">
       <p className="text-xs font-bold text-slate-400">{label}</p>
-      <p className="mt-1 text-sm font-extrabold text-slate-950">{value}</p>
+      <p className="mt-1 text-sm font-medium text-slate-950">{value}</p>
     </div>
   );
 }
@@ -120,7 +125,7 @@ export function SettlementTotalCell({ label, value, strong = false }: { label: s
   return (
     <div className="border-r border-slate-100 px-3 py-4 text-center last:border-r-0">
       <p className="text-[11px] font-bold text-slate-400">{label}</p>
-      <p className={`mt-1 text-sm ${strong ? "font-extrabold text-slate-950" : "font-bold text-slate-600"}`}>{value}</p>
+      <p className={`mt-1 text-sm ${strong ? "font-extrabold text-slate-950" : "font-medium text-slate-600"}`}>{value}</p>
     </div>
   );
 }

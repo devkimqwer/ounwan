@@ -11,12 +11,20 @@ type SettlementHistoryMode = "user" | "admin";
 export function SettlementHistoryView({
   settlements,
   users,
+  currentUserId,
   mode = "user",
+  initialSettlementId,
+  onInitialSettlementHandled,
+  onSettlementViewed,
   onBack,
 }: {
   settlements: SettlementSummary[];
   users: User[];
+  currentUserId: string;
   mode?: SettlementHistoryMode;
+  initialSettlementId?: string | null;
+  onInitialSettlementHandled?: () => void;
+  onSettlementViewed?: (settlementId: string) => void;
   onBack: () => void;
 }) {
   const [selectedSettlement, setSelectedSettlement] = useState<SettlementDetail | null>(null);
@@ -79,6 +87,7 @@ export function SettlementHistoryView({
       }
 
       selectedSettlementIdRef.current = detail.id;
+      onSettlementViewed?.(detail.id);
       setSelectedSettlement(detail);
     } catch {
       setDetailError("결산 내역을 불러올 수 없습니다.");
@@ -90,6 +99,15 @@ export function SettlementHistoryView({
   const openSettlementDetail = (settlementId: string) => {
     void loadSettlementDetail(settlementId, { pushHistory: true });
   };
+
+  useEffect(() => {
+    if (!initialSettlementId || selectedSettlementIdRef.current === initialSettlementId) {
+      return;
+    }
+
+    onInitialSettlementHandled?.();
+    void loadSettlementDetail(initialSettlementId, { pushHistory: true });
+  }, [initialSettlementId, onInitialSettlementHandled]);
 
   const reloadSelectedSettlement = () => {
     const settlementId = selectedSettlementIdRef.current;
@@ -111,10 +129,10 @@ export function SettlementHistoryView({
 
   if (selectedSettlement) {
     if (modeRef.current === "admin") {
-      return <SettlementAdminDetailView settlement={selectedSettlement} users={users} onBack={closeSettlementDetail} onChanged={reloadSelectedSettlement} />;
+      return <SettlementAdminDetailView settlement={selectedSettlement} users={users} currentUserId={currentUserId} onBack={closeSettlementDetail} onChanged={reloadSelectedSettlement} />;
     }
 
-    return <SettlementDetailView settlement={selectedSettlement} users={users} onBack={closeSettlementDetail} />;
+    return <SettlementDetailView settlement={selectedSettlement} users={users} currentUserId={currentUserId} onBack={closeSettlementDetail} />;
   }
 
   return (

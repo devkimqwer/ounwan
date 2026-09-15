@@ -12,7 +12,7 @@ import {
   SettlementTotalCell,
 } from "./settlement-detail-ui";
 
-export function SettlementDetailView({ settlement, users, onBack }: { settlement: SettlementDetail; users: User[]; onBack: () => void }) {
+export function SettlementDetailView({ settlement, users, currentUserId, onBack }: { settlement: SettlementDetail; users: User[]; currentUserId: string; onBack: () => void }) {
   const rows = [...settlement.rows].sort((a, b) => b.finalFineAmount - a.finalFineAmount || b.missedCount - a.missedCount || a.userId.localeCompare(b.userId));
   const confirmedText = settlement.confirmedAt ? formatSettlementDateTime(settlement.confirmedAt) : undefined;
 
@@ -56,7 +56,7 @@ export function SettlementDetailView({ settlement, users, onBack }: { settlement
           </div>
 
           {rows.length > 0 ? (
-            <SettlementParticipantTable days={settlement.days} rows={rows} users={users} />
+            <SettlementParticipantTable days={settlement.days} rows={rows} users={users} currentUserId={currentUserId} />
           ) : (
             <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">결산 대상자가 없습니다.</p>
           )}
