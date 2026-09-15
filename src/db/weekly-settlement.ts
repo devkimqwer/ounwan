@@ -9,8 +9,9 @@ import {
   getPreviousSettlementPeriod,
   getSettlementWindow,
 } from "../lib/season-time";
+import { sendPushForNotifications } from "../push-service";
 import { db } from "./database";
-import { seasonParticipantPeriods, seasons, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
+import { groups, notifications, seasonParticipantPeriods, seasons, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
 
 const WEEKLY_SETTLEMENT_BATCH_LOCK_KEY = 90314001;
 
@@ -209,6 +210,9 @@ async function processDueSeason(season: DueSeason, now: Date) {
     if (settlement.status === "draft") {
       const settlementRows = await calculateSettlementRows(tx, season, participantUserIds, period, window.startAt, window.endAt);
       await upsertDraftSettlementRows(tx, settlement.id, settlementRows);
+      if (settlement.created) {
+        await notifyWeeklySettlementCreated(tx, settlement.id, season.groupId, participantUserIds);
+      }
     }
 
     const nextSettlementAt = getNextSettlementAtAfter(season.nextSettlementAt, season.weekStartDay, season.dayStartTime);
@@ -241,7 +245,7 @@ async function getOrCreateSettlement(tx: BatchTransaction, season: DueSeason, pe
     .returning({ id: weeklySettlements.id, status: weeklySettlements.status });
 
   if (insertedRows[0]) {
-    return insertedRows[0];
+    return { ...insertedRows[0], created: true };
   }
 
   const existingRows = await tx
@@ -254,7 +258,39 @@ async function getOrCreateSettlement(tx: BatchTransaction, season: DueSeason, pe
     throw new Error("Weekly settlement was not created.");
   }
 
-  return existingRows[0];
+  return { ...existingRows[0], created: false };
+}
+
+async function notifyWeeklySettlementCreated(tx: BatchTransaction, settlementId: bigint, groupId: bigint, participantUserIds: bigint[]) {
+  if (participantUserIds.length === 0) {
+    return;
+  }
+
+  const groupRows = await tx.select({ name: groups.name }).from(groups).where(eq(groups.id, groupId)).limit(1);
+  const groupName = groupRows[0]?.name;
+  const message = groupName ? `[${groupName}] 지난 주 결산이 도착했어요.` : "지난 주 결산이 도착했어요.";
+  const rows = await tx
+    .insert(notifications)
+    .values(
+      participantUserIds.map((userId) => ({
+        recipientUserId: userId,
+        groupId,
+        type: "weekly_settlement_created",
+        message,
+        actionType: "settlement_detail",
+        actionTargetId: settlementId.toString(),
+      })),
+    )
+    .returning({
+      notificationId: notifications.id,
+      recipientUserId: notifications.recipientUserId,
+      message: notifications.message,
+      actionType: notifications.actionType,
+      actionTargetId: notifications.actionTargetId,
+      groupId: notifications.groupId,
+    });
+
+  await sendPushForNotifications(rows);
 }
 
 async function upsertDraftSettlementRows(tx: BatchTransaction, settlementId: bigint, settlementRows: CalculatedSettlementRow[]) {

@@ -175,6 +175,14 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const openNotificationTarget = async (notification: AppNotification) => {
     const switchedGroup = await switchToNotificationGroup(notification.groupId).catch(() => false);
 
+    if (notification.actionType === "settlement_detail" && notification.actionTargetId) {
+      openSettlementBannerDetail(notification.actionTargetId, notification.groupId);
+      if (switchedGroup) {
+        router.refresh();
+      }
+      return;
+    }
+
     if (notification.actionType === "post_detail" && notification.actionTargetId) {
       closeNotifications();
 
@@ -398,17 +406,24 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     openMorePage("season-management", { refreshOnEnter: true });
   };
 
-  const openSettlementBannerDetail = (settlementId: string) => {
-    dismissSettlementBanner(settlementId);
+  const openSettlementBannerDetail = (settlementId: string, targetGroupId = group.id) => {
+    dismissSettlementBanner(settlementId, targetGroupId);
     setSettlementDetailTargetId(settlementId);
     moveToTab("more");
     openMorePage("settlement-history", { refreshOnEnter: true });
   };
 
-  const dismissSettlementBanner = (settlementId: string) => {
+  const dismissSettlementBanner = (settlementId: string, targetGroupId = group.id) => {
+    if (targetGroupId !== group.id) {
+      const current = readDismissedSettlementBannerIds(currentUserId, targetGroupId);
+      const next = current.includes(settlementId) ? current : [...current, settlementId];
+      writeDismissedSettlementBannerIds(currentUserId, targetGroupId, next);
+      return;
+    }
+
     setDismissedSettlementBannerIds((current) => {
       const next = current.includes(settlementId) ? current : [...current, settlementId];
-      writeDismissedSettlementBannerIds(currentUserId, group.id, next);
+      writeDismissedSettlementBannerIds(currentUserId, targetGroupId, next);
       return next;
     });
   };
@@ -510,6 +525,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     const notificationId = params.get("notificationId");
     const groupId = params.get("groupId");
     const postId = params.get("postId");
+    const settlementId = params.get("settlementId");
     const morePage = params.get("more");
 
     clearInitialActionParams(params);
@@ -527,6 +543,10 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
             setPendingCreatedPostId(postId);
           }
 
+          if (settlementId) {
+            openSettlementBannerDetail(settlementId, groupId);
+          }
+
           if (morePage === "group-member-management") {
             moveToTab("more", { refreshOnEnter: true });
             openMorePage("group-member-management", { refreshOnEnter: true });
@@ -537,6 +557,11 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
           }
         })
         .catch(() => undefined);
+      return;
+    }
+
+    if (settlementId) {
+      openSettlementBannerDetail(settlementId, groupId ?? group.id);
       return;
     }
 
