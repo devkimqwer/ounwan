@@ -67,9 +67,15 @@ export const posts: WorkoutPost[] = [
     content: "오늘도 달렸다. 5km 완주.",
     workoutType: "러닝",
     isInvalid: false,
-    likeCount: 4,
-    likedByCurrentUser: false,
-    likeUserIds: ["user-2", "user-3", "user-4", "user-5"],
+    reactionCount: 4,
+    currentUserReactionTypes: [],
+    reactionSummaries: [{ type: "cheer", count: 4 }],
+    reactions: [
+      { userId: "user-2", type: "cheer", createdAt: "2026-08-18T08:10:00+09:00" },
+      { userId: "user-3", type: "cheer", createdAt: "2026-08-18T08:20:00+09:00" },
+      { userId: "user-4", type: "cheer", createdAt: "2026-08-18T08:30:00+09:00" },
+      { userId: "user-5", type: "cheer", createdAt: "2026-08-18T08:40:00+09:00" },
+    ],
     commentCount: 2,
     comments: [
       { id: "comment-1", postId: "post-1", userId: "user-2", content: "오오 5km 대단하다!", createdAt: "2026-08-18T08:10:00+09:00" },
@@ -95,9 +101,17 @@ export const posts: WorkoutPost[] = [
     content: "상체 위주로 운동. 벤치프레스 개인 최고 기록.",
     workoutType: "헬스",
     isInvalid: false,
-    likeCount: 6,
-    likedByCurrentUser: true,
-    likeUserIds: ["user-1", "user-3", "user-4", "user-5", "user-6", "user-7"],
+    reactionCount: 6,
+    currentUserReactionTypes: ["cheer"],
+    reactionSummaries: [{ type: "cheer", count: 6 }],
+    reactions: [
+      { userId: "user-1", type: "cheer", createdAt: "2026-08-18T19:03:00+09:00" },
+      { userId: "user-3", type: "cheer", createdAt: "2026-08-18T19:13:00+09:00" },
+      { userId: "user-4", type: "cheer", createdAt: "2026-08-18T19:23:00+09:00" },
+      { userId: "user-5", type: "cheer", createdAt: "2026-08-18T19:33:00+09:00" },
+      { userId: "user-6", type: "cheer", createdAt: "2026-08-18T19:43:00+09:00" },
+      { userId: "user-7", type: "cheer", createdAt: "2026-08-18T19:53:00+09:00" },
+    ],
     commentCount: 3,
     comments: [
       { id: "comment-3", postId: "post-2", userId: "user-1", content: "개인 최고 기록 축하!", createdAt: "2026-08-18T19:03:00+09:00" },
@@ -126,9 +140,13 @@ export const posts: WorkoutPost[] = [
     isInvalid: true,
     invalidatedByUserId: "user-1",
     invalidatedAt: "2026-08-15T13:20:00+09:00",
-    likeCount: 2,
-    likedByCurrentUser: true,
-    likeUserIds: ["user-1", "user-2"],
+    reactionCount: 2,
+    currentUserReactionTypes: ["cheer"],
+    reactionSummaries: [{ type: "cheer", count: 2 }],
+    reactions: [
+      { userId: "user-1", type: "cheer", createdAt: "2026-08-15T12:10:00+09:00" },
+      { userId: "user-2", type: "cheer", createdAt: "2026-08-15T12:20:00+09:00" },
+    ],
     commentCount: 0,
     comments: [],
     media: [
@@ -153,10 +171,42 @@ export const settlement: Settlement = {
 };
 
 export const settlementRows: SettlementRow[] = [
-  { settlementId: settlement.id, userId: "user-1", validWorkoutCount: 4, missedCount: 0, autoFineAmount: 0, finalFineAmount: 0 },
-  { settlementId: settlement.id, userId: "user-2", validWorkoutCount: 2, missedCount: 1, autoFineAmount: 5000, finalFineAmount: 5000 },
-  { settlementId: settlement.id, userId: "user-3", validWorkoutCount: 1, missedCount: 2, autoFineAmount: 10000, finalFineAmount: 10000 },
-  { settlementId: settlement.id, userId: "user-5", validWorkoutCount: 0, missedCount: 3, autoFineAmount: 15000, finalFineAmount: 15000 },
+  {
+    settlementId: settlement.id,
+    userId: "user-1",
+    validWorkoutCount: 4,
+    missedCount: 0,
+    autoFineAmount: 0,
+    finalFineAmount: 0,
+    dailyResults: { "2026-08-10": { count: 1, countedPostIds: ["post-1"] }, "2026-08-11": { count: 1, countedPostIds: [] }, "2026-08-13": { count: 1, countedPostIds: [] }, "2026-08-15": { count: 1, countedPostIds: [] } },
+  },
+  {
+    settlementId: settlement.id,
+    userId: "user-2",
+    validWorkoutCount: 2,
+    missedCount: 1,
+    autoFineAmount: 5000,
+    finalFineAmount: 5000,
+    dailyResults: { "2026-08-11": { count: 1, countedPostIds: [] }, "2026-08-12": { count: 1, countedPostIds: [] } },
+  },
+  {
+    settlementId: settlement.id,
+    userId: "user-3",
+    validWorkoutCount: 1,
+    missedCount: 2,
+    autoFineAmount: 10000,
+    finalFineAmount: 10000,
+    dailyResults: { "2026-08-10": { count: 1, countedPostIds: [] } },
+  },
+  {
+    settlementId: settlement.id,
+    userId: "user-5",
+    validWorkoutCount: 0,
+    missedCount: 3,
+    autoFineAmount: 15000,
+    finalFineAmount: 15000,
+    dailyResults: {},
+  },
 ];
 
 export const bankRecords: BankRecord[] = [

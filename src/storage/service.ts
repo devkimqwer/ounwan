@@ -3,7 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 
-import { buildUserAvatarStorageKey, buildWorkoutPostMediaStorageKey, buildWorkoutPostThumbnailStorageKey } from "./paths";
+import { buildBankBalanceRecordImageStorageKey, buildUserAvatarStorageKey, buildWorkoutPostMediaStorageKey, buildWorkoutPostThumbnailStorageKey } from "./paths";
 import { localStorageAdapter } from "./local";
 import { createS3StorageAdapter } from "./s3";
 import type { StorageAdapter, StorageProvider, StoredMediaFile } from "./types";
@@ -66,6 +66,25 @@ export async function saveWorkoutPostMediaFiles(input: {
   return savedFiles;
 }
 
+
+export async function saveBankBalanceRecordImage(input: { file: File; groupId: string; recordId: string }) {
+  const adapter = getConfiguredStorageAdapter();
+  const fileId = randomUUID();
+  const storageKey = buildBankBalanceRecordImageStorageKey({
+    groupId: input.groupId,
+    recordId: input.recordId,
+    fileId,
+    originalName: input.file.name,
+  });
+  const buffer = Buffer.from(await input.file.arrayBuffer());
+  await adapter.put({ storageKey, body: buffer, contentType: input.file.type || undefined });
+
+  return {
+    storageKey,
+    fileSizeBytes: BigInt(input.file.size),
+    contentType: input.file.type || undefined,
+  };
+}
 export async function saveUserAvatarSvg(userId: string) {
   const avatarApiUrl = process.env.OUNWAN_AVATAR_API_URL;
   if (!avatarApiUrl) {

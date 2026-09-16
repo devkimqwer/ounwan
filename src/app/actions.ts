@@ -3,10 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { getCurrentUserNotificationPage, getCurrentUserUnreadNotificationCount, getCurrentWorkoutPostById, getCurrentWorkoutPostPage } from "@/db/queries";
-import { activateCurrentGroupPendingSeason, closeActiveSeason, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, expelGroupMember, getOrCreateCurrentGroupInvite, leaveGroup, markAllNotificationsRead, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostLike, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateGroupMemberRoles, updateSeasonRules } from "@/db/commands";
+import { getCurrentUserNotificationPage, getCurrentUserSettlementDetail, getCurrentUserUnreadNotificationCount, getCurrentWorkoutPostById, getCurrentWorkoutPostPage } from "@/db/queries";
+import { activateCurrentGroupPendingSeason, closeActiveSeason, createBankBalanceRecord, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, expelGroupMember, confirmWeeklySettlement, getOrCreateCurrentGroupInvite, leaveGroup, markAllNotificationsRead, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostReaction, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateGroupMemberRoles, updateSeasonRules } from "@/db/commands";
 import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
-import type { WorkoutPost, WorkoutPostCursor, WorkoutPostPage } from "@/domain/models";
+import type { SettlementDetail, WorkoutPost, WorkoutPostCursor, WorkoutPostPage } from "@/domain/models";
+import { isPostReactionType } from "@/domain/post-reactions";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
 const MAX_WORKOUT_POST_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -15,6 +16,8 @@ const MAX_DISPLAY_NAME_LENGTH = 20;
 const MAX_GROUP_NAME_LENGTH = 30;
 const MAX_SEASON_NAME_LENGTH = 30;
 const MAX_BANK_ACCOUNT_FIELD_LENGTH = 100;
+const MAX_BANK_BALANCE_RECORD_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_BANK_BALANCE_RECORD_MEMO_LENGTH = 500;
 
 export type CreateGroupState = {
   status: "idle" | "success" | "error";
@@ -56,6 +59,12 @@ export type UpdateBankAccountInfoState = {
   message: string;
 };
 
+export type CreateBankBalanceRecordState = {
+  status: "idle" | "success" | "error";
+  message: string;
+  recordId?: string;
+};
+
 export type CreateGroupInviteState = {
   status: "idle" | "success" | "error";
   message: string;
@@ -78,6 +87,11 @@ export type ExpelGroupMemberState = {
   message: string;
 };
 
+export type ConfirmWeeklySettlementState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
 
 export async function getWorkoutPostPageAction(input: { cursor?: WorkoutPostCursor; mineOnly?: boolean }): Promise<WorkoutPostPage> {
   const cursor = normalizeWorkoutPostCursor(input.cursor);
@@ -90,6 +104,10 @@ export async function getWorkoutPostByIdAction(postId: string): Promise<WorkoutP
   }
 
   return getCurrentWorkoutPostById(postId);
+}
+
+export async function getSettlementDetailAction(settlementId: string): Promise<SettlementDetail | undefined> {
+  return getCurrentUserSettlementDetail(settlementId);
 }
 
 function normalizeWorkoutPostCursor(cursor: WorkoutPostCursor | undefined): WorkoutPostCursor | undefined {
@@ -541,18 +559,65 @@ export async function deletePostCommentAction(formData: FormData) {
   await deletePostComment(commentId);
   revalidatePath("/");
 }
-export async function togglePostLikeAction(formData: FormData) {
+export async function togglePostReactionAction(formData: FormData) {
   const postId = String(formData.get("postId") ?? "").trim();
+  const reactionType = String(formData.get("reactionType") ?? "").trim();
 
   if (!postId) {
     throw new Error("postId is required.");
   }
 
-  await togglePostLike(postId);
+  if (!isPostReactionType(reactionType)) {
+    throw new Error("reactionType is invalid.");
+  }
+
+  await togglePostReaction(postId, reactionType);
   revalidatePath("/");
 }
 
 
+export async function confirmWeeklySettlementAction(formData: FormData): Promise<ConfirmWeeklySettlementState> {
+  const settlementId = String(formData.get("settlementId") ?? "").trim();
+  const comment = String(formData.get("comment") ?? "").trim();
+  const rowFineAmounts: Array<{ userId: string; finalFineAmount: number }> = [];
+
+  if (!/^\d+$/.test(settlementId)) {
+    return { status: "error", message: "결산 정보를 확인할 수 없습니다." };
+  }
+
+  if (comment.length > 300) {
+    return { status: "error", message: "코멘트는 300자 이내로 입력해주세요." };
+  }
+
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith("finalFineAmount:")) {
+      continue;
+    }
+
+    const userId = key.slice("finalFineAmount:".length);
+    const amountText = String(value ?? "").trim();
+    const finalFineAmount = Number(amountText);
+
+    if (!/^\d+$/.test(userId) || !/^\d+$/.test(amountText) || !Number.isSafeInteger(finalFineAmount) || finalFineAmount < 0) {
+      return { status: "error", message: "총 벌금은 0 이상의 숫자만 입력해주세요." };
+    }
+
+    rowFineAmounts.push({ userId, finalFineAmount });
+  }
+
+  if (rowFineAmounts.length === 0) {
+    return { status: "error", message: "결산 대상자를 확인할 수 없습니다." };
+  }
+
+  try {
+    await confirmWeeklySettlement({ settlementId, comment, rowFineAmounts });
+    revalidatePath("/");
+    return { status: "success", message: "결산이 확정됐습니다." };
+  } catch (error) {
+    console.error("[ounwan error]", error);
+    return { status: "error", message: "결산을 확정할 수 없습니다." };
+  }
+}
 export async function getUnreadNotificationCountAction() {
   return getCurrentUserUnreadNotificationCount();
 }
@@ -635,6 +700,46 @@ export async function deleteWorkoutPostAction(formData: FormData) {
   revalidatePath("/");
 }
 
+
+export async function createBankBalanceRecordAction(
+  _previousState: CreateBankBalanceRecordState,
+  formData: FormData,
+): Promise<CreateBankBalanceRecordState> {
+  const memo = String(formData.get("memo") ?? "").trim();
+  const imageFiles = formData
+    .getAll("imageFile")
+    .filter((value): value is File => value instanceof File && value.size > 0);
+  const imageFile = imageFiles[0];
+
+  if (!imageFile) {
+    return { status: "error", message: "잔고 이미지를 선택해주세요." };
+  }
+
+  if (imageFiles.length > 1) {
+    return { status: "error", message: "잔고 이미지는 1개만 등록할 수 있습니다." };
+  }
+
+  if (imageFile.size > MAX_BANK_BALANCE_RECORD_IMAGE_BYTES) {
+    return { status: "error", message: "잔고 이미지는 5MB 이하로 선택해주세요." };
+  }
+
+  if (!isSupportedImageFile(imageFile)) {
+    return { status: "error", message: "이미지 파일만 업로드할 수 있습니다." };
+  }
+
+  if (memo.length > MAX_BANK_BALANCE_RECORD_MEMO_LENGTH) {
+    return { status: "error", message: `내용은 ${MAX_BANK_BALANCE_RECORD_MEMO_LENGTH}자 이내로 입력해주세요.` };
+  }
+
+  try {
+    const record = await createBankBalanceRecord({ memo: memo.length > 0 ? memo : undefined, imageFile });
+    revalidatePath("/");
+    return { status: "success", message: "잔고 현황이 등록됐습니다.", recordId: record.id };
+  } catch (error) {
+    console.error("[ounwan error]", error);
+    return { status: "error", message: "잔고 현황을 등록할 수 없습니다." };
+  }
+}
 export async function createWorkoutPostAction(
   _previousState: CreateWorkoutPostState,
   formData: FormData,
@@ -682,6 +787,10 @@ function getTotalFileSize(files: File[]) {
 
 function isSupportedMediaFile(file: File) {
   return file.type.startsWith("image/") || file.type.startsWith("video/") || isPhoneMediaFile(file);
+}
+
+function isSupportedImageFile(file: File) {
+  return file.type.startsWith("image/") || /\.(heic|heif)$/i.test(file.name);
 }
 
 function isPhoneMediaFile(file: File) {

@@ -6,6 +6,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -325,9 +326,10 @@ export const postLikes = pgTable(
     userId: bigint("user_id", { mode: "bigint" })
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    reactionType: varchar("reaction_type", { length: 20 }).notNull().default("cheer"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.postId, table.userId] })],
+  (table) => [primaryKey({ columns: [table.postId, table.userId, table.reactionType] })],
 );
 
 export const postComments = pgTable(
@@ -389,6 +391,7 @@ export const weeklySettlementRows = pgTable(
     missedCount: integer("missed_count").notNull(),
     autoFineAmount: integer("auto_fine_amount").notNull(),
     finalFineAmount: integer("final_fine_amount").notNull(),
+    dailyResults: jsonb("daily_results").$type<Record<string, { count: number; countedPostIds: string[] }>>().notNull().default(sql`'{}'::jsonb`),
     memo: text("memo"),
     updatedByUserId: bigint("updated_by_user_id", { mode: "bigint" }).references(() => users.id),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

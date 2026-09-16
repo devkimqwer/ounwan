@@ -4,9 +4,11 @@ import { useRouter } from "next/navigation";
 import { createGroupInAppAction, deleteGroupAction, leaveGroupAction, refreshCurrentUserAvatarAction, switchCurrentGroupAction, updateCurrentUserProfileAction } from "@/app/actions";
 import type { CreateGroupState, DeleteGroupState, LeaveGroupState, RefreshCurrentUserAvatarState, UpdateCurrentUserProfileState } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
-import type { AccountInfo, AdminGroupMember, Group, Season, SeasonParticipant, SettlementSummary, User, UserGroupMembership } from "@/domain/models";
+import type { AccountInfo, AdminGroupMember, BankRecord, Group, Season, SeasonParticipant, SettlementSummary, User, UserGroupMembership } from "@/domain/models";
 import { TextLogoutButton } from "@/features/auth/logout-controls";
 import { initialTabOptions, type InitialTabId, type MoreSubPage } from "./app-types";
+import { BalanceRegistrationView } from "./balance-registration-view";
+import { BalanceStatusView } from "./balance-status-view";
 import { BankAccountManagementView } from "./bank-account-management-view";
 import { GroupMemberManagementView } from "./group-member-management-view";
 import { readInitialTabPreference, writeInitialTabPreference } from "./initial-tab-preference";
@@ -18,14 +20,20 @@ export function MoreView({
   isAdmin,
   isTreasurer,
   currentUser,
+  currentUserId,
   currentGroup,
   approvedGroups,
   accountInfo,
   adminGroupMembers,
+  users,
   seasons,
   seasonParticipants,
   settlementSummaries,
+  bankRecords,
   activeMorePage,
+  initialSettlementId,
+  onInitialSettlementHandled,
+  onSettlementViewed,
   onOpenMorePage,
   onCloseMorePage,
   onInitialTabChange,
@@ -33,14 +41,20 @@ export function MoreView({
   isAdmin: boolean;
   isTreasurer: boolean;
   currentUser: User;
+  currentUserId: string;
   currentGroup: Group;
   approvedGroups: UserGroupMembership[];
   accountInfo: AccountInfo;
   adminGroupMembers: AdminGroupMember[];
+  users: User[];
   seasons: Season[];
   seasonParticipants: SeasonParticipant[];
   settlementSummaries: SettlementSummary[];
+  bankRecords: BankRecord[];
   activeMorePage: MoreSubPage;
+  initialSettlementId?: string | null;
+  onInitialSettlementHandled?: () => void;
+  onSettlementViewed?: (settlementId: string) => void;
   onOpenMorePage: (page: Exclude<MoreSubPage, "main">) => void;
   onCloseMorePage: () => void;
   onInitialTabChange: (tabId: InitialTabId) => void;
@@ -296,8 +310,20 @@ export function MoreView({
     return <BankAccountManagementView accountInfo={accountInfo} onBack={onCloseMorePage} />;
   }
 
+  if (activeMorePage === "balance-registration") {
+    return <BalanceRegistrationView onBack={onCloseMorePage} onCreated={() => onOpenMorePage("balance-status")} />;
+  }
+
+  if (activeMorePage === "balance-status") {
+    return <BalanceStatusView bankRecords={bankRecords} users={users} onBack={onCloseMorePage} />;
+  }
+
   if (activeMorePage === "settlement-history") {
-    return <SettlementHistoryView settlements={settlementSummaries} onBack={onCloseMorePage} />;
+    return <SettlementHistoryView settlements={settlementSummaries} users={users} currentUserId={currentUserId} initialSettlementId={initialSettlementId} onInitialSettlementHandled={onInitialSettlementHandled} onSettlementViewed={onSettlementViewed} onBack={onCloseMorePage} />;
+  }
+
+  if (activeMorePage === "settlement-management") {
+    return <SettlementHistoryView settlements={settlementSummaries} users={users} currentUserId={currentUserId} mode="admin" onSettlementViewed={onSettlementViewed} onBack={onCloseMorePage} />;
   }
 
   return (
@@ -406,7 +432,7 @@ export function MoreView({
       <MenuBlock
         rows={[
           <MoreMenuRow key="settlement-history" label="결산 내역" onClick={() => onOpenMorePage("settlement-history")} />,
-          <MoreMenuRow key="balance-status" label="잔고 현황" onClick={() => openNotReadyDialog("잔고 현황")} />,
+          <MoreMenuRow key="balance-status" label="잔고 현황" onClick={() => onOpenMorePage("balance-status")} />,
           <MoreMenuRow key="season-archive" label="이전 시즌" onClick={() => openNotReadyDialog("이전 시즌")} />,
         ]}
       />
@@ -416,7 +442,7 @@ export function MoreView({
           title="총무"
           rows={[
             <MoreMenuRow key="account-management" label="계좌 정보 관리" onClick={() => onOpenMorePage("bank-account-management")} />,
-            <MoreMenuRow key="balance-registration" label="잔고 등록" onClick={() => openNotReadyDialog("잔고 등록")} />,
+            <MoreMenuRow key="balance-registration" label="잔고 등록" onClick={() => onOpenMorePage("balance-registration")} />,
           ]}
         />
       )}
@@ -426,7 +452,7 @@ export function MoreView({
           title="관리자"
           rows={[
             <MoreMenuRow key="season-management" label="시즌 관리" onClick={() => onOpenMorePage("season-management")} />,
-            <MoreMenuRow key="settlement-management" label="결산 관리" onClick={() => openNotReadyDialog("결산 관리")} />,
+            <MoreMenuRow key="settlement-management" label="결산 관리" onClick={() => onOpenMorePage("settlement-management")} />,
             <MoreMenuRow key="member-management" label="그룹 멤버 관리" onClick={() => onOpenMorePage("group-member-management")} />,
           ]}
         />

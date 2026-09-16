@@ -69,7 +69,7 @@ export function MainMenuPanel({
               { label: "인증", onClick: () => onSelect("cert") },
               { label: "캘린더", onClick: () => onSelect("calendar") },
               { label: "결산 내역", onClick: () => onOpenMorePage("settlement-history") },
-              { label: "잔고 현황", onClick: () => onSelect("more") },
+              { label: "잔고 현황", onClick: () => onOpenMorePage("balance-status") },
               { label: "이전 시즌", onClick: () => onSelect("more") },
             ]}
           />
@@ -79,7 +79,7 @@ export function MainMenuPanel({
               title="총무"
               rows={[
                 { label: "계좌 정보 관리", onClick: () => onOpenMorePage("bank-account-management") },
-                { label: "잔고 등록", onClick: () => onSelect("more") },
+                { label: "잔고 등록", onClick: () => onOpenMorePage("balance-registration") },
               ]}
             />
           )}
@@ -89,7 +89,7 @@ export function MainMenuPanel({
               title="관리자"
               rows={[
                 { label: "시즌 관리", onClick: () => onOpenMorePage("season-management") },
-                { label: "결산 관리", onClick: () => onSelect("more") },
+                { label: "결산 관리", onClick: () => onOpenMorePage("settlement-management") },
                 { label: "그룹 멤버 관리", onClick: () => onOpenMorePage("group-member-management") },
               ]}
             />
@@ -105,14 +105,14 @@ export function MainMenuPanel({
 
 function MainMenuSection({ title, rows }: { title: string; rows: Array<{ label: string; onClick: () => void }> }) {
   return (
-    <section className="mb-8 border-t border-dashed border-slate-300 pt-5 first:border-t-0 first:pt-0">
+    <section className="mb-3 border-t border-dashed border-slate-300 pt-5 first:border-t-0 first:pt-0">
       <h2 className="mb-3 text-base font-extrabold tracking-normal text-slate-950">{title}</h2>
       <div className="space-y-1">
         {rows.map((row) => (
           <button
             key={row.label}
             type="button"
-            className="flex min-h-11 w-full items-center justify-between rounded-lg px-1 text-left text-lg font-semibold text-slate-800 transition-colors hover:bg-[#F6F3FF] active:bg-[#EFE9FF]"
+            className="flex min-h-10 w-full items-center justify-between rounded-lg px-1 text-left text-md font-medium text-slate-800 transition-colors hover:bg-[#F6F3FF] active:bg-[#EFE9FF]"
             onClick={row.onClick}
           >
             <span>{row.label}</span>

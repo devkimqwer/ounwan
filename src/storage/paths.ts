@@ -23,7 +23,6 @@ export function buildWorkoutPostMediaStorageKey(input: {
   );
 }
 
-
 export function buildWorkoutPostThumbnailStorageKey(input: {
   groupId: string;
   seasonId: string;
@@ -42,6 +41,19 @@ export function buildWorkoutPostThumbnailStorageKey(input: {
 export function buildUserAvatarStorageKey(userId: string) {
   return path.posix.join("user-avatars", userId, "avatar.svg");
 }
+
+export function buildBankBalanceRecordImageStorageKey(input: {
+  groupId: string;
+  recordId: string;
+  fileId: string;
+  originalName: string;
+}) {
+  const extension = getSafeExtension(input.originalName);
+  const fileName = `${input.fileId}${extension}`;
+
+  return path.posix.join("bank-records", input.groupId, input.recordId, fileName);
+}
+
 function getSafeExtension(fileName: string) {
   const extension = path.extname(fileName).toLowerCase().replace(/[^a-z0-9.]/g, "");
   return extension.length > 0 && extension.length <= 12 ? extension : "";

@@ -1,5 +1,13 @@
 export type TabId = "home" | "feed" | "cert" | "calendar" | "more";
-export type MoreSubPage = "main" | "season-management" | "group-member-management" | "bank-account-management" | "settlement-history";
+export type MoreSubPage =
+  | "main"
+  | "season-management"
+  | "group-member-management"
+  | "bank-account-management"
+  | "balance-registration"
+  | "balance-status"
+  | "settlement-history"
+  | "settlement-management";
 
 export type InitialTabId = Extract<TabId, "home" | "feed" | "cert" | "calendar">;
 

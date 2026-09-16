@@ -4,14 +4,16 @@ import { and, desc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 import { clearCurrentGroupId, getCurrentGroupIdForUser, requireCurrentUserId, setCurrentGroupIdForUser } from "@/auth/session";
 import { generateInviteToken, isInviteTokenFormat } from "@/invites/tokens";
+import type { PostReactionType } from "@/domain/post-reactions";
 import { sendPushForNotifications } from "@/push-service";
 import { getKoreanDate, getKoreanWorkoutDate, getNextSettlementAt, isSeasonStartDue } from "@/lib/season-time";
-import { deleteStorageFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/service";
+import { deleteStorageFiles, saveBankBalanceRecordImage, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/service";
 
 import { db } from "./client";
 import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError, GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, SeasonStartDateInPastError } from "./errors";
-import { bankAccounts, groupInvites, groupJoinRequests, groupMembers, groups, notifications, postComments, postLikes, postMedia, pushSubscriptions, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
+import { bankAccounts, bankBalanceRecords, groupInvites, groupJoinRequests, groupMembers, groups, notifications, postComments, postLikes, postMedia, pushSubscriptions, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
 import { activatePendingSeasonForGroup, initializeActiveSeason, runPendingSeasonActivationBatch } from "./season-activation";
+import { syncDraftSettlementRowForWorkoutPost } from "./weekly-settlement";
 
 const GROUP_INVITE_EXPIRES_HOURS = 72;
 const DEFAULT_SEASON_DAY_START_TIME = "03:00";
@@ -78,6 +80,11 @@ type UpdateBankAccountInfoInput = {
   holderName: string;
 };
 
+type CreateBankBalanceRecordInput = {
+  memo?: string;
+  imageFile: File;
+};
+
 type UpdateGroupMemberRolesInput = {
   userId: string;
   grantTreasurer: boolean;
@@ -86,6 +93,15 @@ type UpdateGroupMemberRolesInput = {
 
 type ExpelGroupMemberInput = {
   userId: string;
+};
+
+type ConfirmWeeklySettlementInput = {
+  settlementId: string;
+  comment?: string;
+  rowFineAmounts: Array<{
+    userId: string;
+    finalFineAmount: number;
+  }>;
 };
 
 type CreateWorkoutPostInput = {
@@ -814,6 +830,119 @@ export async function expelGroupMember(input: ExpelGroupMemberInput) {
     return { userId: rows[0].userId.toString() };
   });
 }
+export async function confirmWeeklySettlement(input: ConfirmWeeklySettlementInput) {
+  const context = await getCurrentGroupAdminContext();
+
+  if (!/^\d+$/.test(input.settlementId)) {
+    throw new Error("Invalid settlement id.");
+  }
+
+  const settlementId = BigInt(input.settlementId);
+  const groupId = BigInt(context.groupId);
+  const userId = BigInt(context.userId);
+  const now = new Date();
+  const comment = input.comment?.trim() || null;
+
+  await db.transaction(async (tx) => {
+    const settlementRows = await tx
+      .select({ id: weeklySettlements.id, status: weeklySettlements.status })
+      .from(weeklySettlements)
+      .where(and(eq(weeklySettlements.id, settlementId), eq(weeklySettlements.groupId, groupId)))
+      .limit(1);
+    const settlement = settlementRows[0];
+
+    if (!settlement) {
+      throw new Error("Weekly settlement not found.");
+    }
+
+    if (settlement.status !== "draft") {
+      throw new Error("Only draft settlements can be confirmed.");
+    }
+
+    const rowUserIds = input.rowFineAmounts.map((row) => BigInt(row.userId));
+    const existingRows = await tx
+      .select({ userId: weeklySettlementRows.userId })
+      .from(weeklySettlementRows)
+      .where(eq(weeklySettlementRows.settlementId, settlementId));
+    const existingUserIds = new Set(existingRows.map((row) => row.userId.toString()));
+
+    if (existingRows.length !== input.rowFineAmounts.length || rowUserIds.some((rowUserId) => !existingUserIds.has(rowUserId.toString()))) {
+      throw new Error("Settlement rows do not match.");
+    }
+
+    for (const row of input.rowFineAmounts) {
+      await tx
+        .update(weeklySettlementRows)
+        .set({
+          finalFineAmount: row.finalFineAmount,
+          updatedByUserId: userId,
+          updatedAt: now,
+        })
+        .where(and(eq(weeklySettlementRows.settlementId, settlementId), eq(weeklySettlementRows.userId, BigInt(row.userId))));
+    }
+
+    const updatedRows = await tx
+      .update(weeklySettlements)
+      .set({
+        status: "confirmed",
+        comment,
+        confirmedByUserId: userId,
+        confirmedAt: now,
+        updatedAt: now,
+      })
+      .where(and(eq(weeklySettlements.id, settlementId), eq(weeklySettlements.groupId, groupId), eq(weeklySettlements.status, "draft")))
+      .returning({ id: weeklySettlements.id });
+
+    if (!updatedRows[0]) {
+      throw new Error("Weekly settlement was not confirmed.");
+    }
+  });
+  return { id: input.settlementId };
+}
+
+export async function createBankBalanceRecord(input: CreateBankBalanceRecordInput) {
+  const context = await getCurrentGroupTreasurerContext();
+  const groupId = BigInt(context.groupId);
+  const userId = BigInt(context.userId);
+  const memo = input.memo?.trim() || null;
+  const insertedRows = await db
+    .insert(bankBalanceRecords)
+    .values({
+      groupId,
+      createdByUserId: userId,
+      memo,
+      imageStorageKey: "__pending__",
+      imageUrl: null,
+    })
+    .returning({ id: bankBalanceRecords.id });
+  const recordId = insertedRows[0]?.id;
+
+  if (!recordId) {
+    throw new Error("Bank balance record was not created.");
+  }
+
+  let storageKey: string | undefined;
+
+  try {
+    const storedImage = await saveBankBalanceRecordImage({
+      file: input.imageFile,
+      groupId: context.groupId,
+      recordId: recordId.toString(),
+    });
+    storageKey = storedImage.storageKey;
+
+    await db
+      .update(bankBalanceRecords)
+      .set({ imageStorageKey: storedImage.storageKey, imageUrl: null })
+      .where(and(eq(bankBalanceRecords.id, recordId), eq(bankBalanceRecords.groupId, groupId)));
+  } catch (error) {
+    await deleteStorageFiles([storageKey]);
+    await db.delete(bankBalanceRecords).where(and(eq(bankBalanceRecords.id, recordId), eq(bankBalanceRecords.groupId, groupId)));
+    throw error;
+  }
+
+  return { id: recordId.toString() };
+}
 export async function updateBankAccountInfo(input: UpdateBankAccountInfoInput) {
   const context = await getCurrentGroupTreasurerContext();
   const bankName = input.bankName.trim();
@@ -1067,7 +1196,7 @@ export async function createWorkoutPost(input: CreateWorkoutPostInput) {
 
 
 
-export async function togglePostLike(postId: string) {
+export async function togglePostReaction(postId: string, reactionType: PostReactionType) {
   const context = await getCurrentSeedContext();
   const targetPostRows = await db
     .select({ id: workoutPosts.id })
@@ -1083,20 +1212,20 @@ export async function togglePostLike(postId: string) {
     .limit(1);
 
   if (!targetPostRows[0]) {
-    throw new Error("Workout post not found or not allowed to like.");
+    throw new Error("Workout post not found or not allowed to react.");
   }
 
   const deletedRows = await db
     .delete(postLikes)
-    .where(and(eq(postLikes.postId, targetPostRows[0].id), eq(postLikes.userId, BigInt(context.userId))))
+    .where(and(eq(postLikes.postId, targetPostRows[0].id), eq(postLikes.userId, BigInt(context.userId)), eq(postLikes.reactionType, reactionType)))
     .returning({ postId: postLikes.postId });
 
   if (deletedRows[0]) {
-    return { liked: false };
+    return { selected: false };
   }
 
-  await db.insert(postLikes).values({ postId: targetPostRows[0].id, userId: BigInt(context.userId) });
-  return { liked: true };
+  await db.insert(postLikes).values({ postId: targetPostRows[0].id, userId: BigInt(context.userId), reactionType });
+  return { selected: true };
 }
 
 export async function createPostComment(postId: string, content: string) {
@@ -1219,6 +1348,8 @@ export async function toggleWorkoutPostInvalid(postId: string) {
     })
     .where(eq(workoutPosts.id, targetPost.id))
     .returning({ id: workoutPosts.id, isInvalid: workoutPosts.isInvalid });
+
+  await syncDraftSettlementRowForWorkoutPost(targetPost.id);
 
   if (nextIsInvalid) {
     await createNotification(db, {
@@ -1359,42 +1490,6 @@ export async function deleteCurrentUserPushSubscription(endpoint: string) {
   return { endpoint: trimmedEndpoint };
 }
 
-export async function notifyWeeklySettlementCompleted(settlementId: string) {
-  if (!/^\d+$/.test(settlementId)) {
-    throw new Error("Invalid settlement id.");
-  }
-
-  await db.transaction(async (tx) => {
-    const settlementRows = await tx
-      .select({ id: weeklySettlements.id, groupId: weeklySettlements.groupId })
-      .from(weeklySettlements)
-      .where(eq(weeklySettlements.id, BigInt(settlementId)))
-      .limit(1);
-    const settlement = settlementRows[0];
-
-    if (!settlement) {
-      throw new Error("Weekly settlement not found.");
-    }
-
-    const rowUsers = await tx
-      .select({ userId: weeklySettlementRows.userId })
-      .from(weeklySettlementRows)
-      .where(eq(weeklySettlementRows.settlementId, settlement.id));
-
-    await createNotifications(
-      tx,
-      rowUsers.map((row) => ({
-        recipientUserId: row.userId,
-        groupId: settlement.groupId,
-        type: "weekly_settlement_completed",
-        message: "지난 주 결산이 도착했어요.",
-        actionType: "settlement_detail",
-        actionTargetId: settlement.id.toString(),
-      })),
-    );
-  });
-}
-
 function updateTreasurerRole(roles: Array<"admin" | "treasurer" | "member">, grantTreasurer: boolean) {
   return grantTreasurer ? ensureRole(roles, "treasurer") : roles.filter((role) => role !== "treasurer");
 }
@@ -1410,7 +1505,7 @@ async function getCurrentGroupTreasurerContext() {
   const context = await getCurrentMemberGroupContext();
 
   if (!context.roles.includes("treasurer")) {
-    throw new Error("Only treasurers can manage bank account info.");
+    throw new Error("User does not have [treasurer] privileges.");
   }
 
   return context;
@@ -1453,7 +1548,7 @@ async function getCurrentGroupAdminContext() {
   }
 
   if (!membership.roles.includes("admin")) {
-    throw new Error("Only admins can create group invites.");
+    throw new Error("User does not have [admin] privileges.");
   }
 
   return {

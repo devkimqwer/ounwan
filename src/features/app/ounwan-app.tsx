@@ -8,13 +8,14 @@ import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { OunwanAppData } from "@/domain/app-data";
-import type { AppNotification, WorkoutPost } from "@/domain/models";
+import type { AppNotification, SettlementSummary, WorkoutPost } from "@/domain/models";
 import { formatSystemDate } from "@/lib/date-format";
 import type { InitialTabId, MoreSubPage, TabId } from "./app-types";
 import { CertView } from "./cert-view";
 import { FeedView } from "./feed-view";
 import { HomeView } from "./home-view";
 import { readInitialTabPreference } from "./initial-tab-preference";
+import { readDismissedSettlementBannerIds, writeDismissedSettlementBannerIds } from "./settlement-banner-preference";
 import { SeasonRulesSummary } from "./season-rules-summary";
 import { MainMenuPanel } from "./main-menu-panel";
 import { MoreView } from "./more-view";
@@ -52,7 +53,7 @@ function clearInitialActionParams(params: URLSearchParams) {
 }
 export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const router = useRouter();
-  const { accountInfo, adminGroupMembers, approvedGroups, currentUser, currentUserId, group, membership, postPage, posts, season, seasonParticipants, seasons, settlementSummaries, users, weeklyUserWorkoutStatus } = appData;
+  const { accountInfo, adminGroupMembers, approvedGroups, bankRecords, currentUser, currentUserId, group, membership, postPage, posts, season, seasonParticipants, seasons, settlementSummaries, users, weeklyUserWorkoutStatus } = appData;
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [initialTabReady, setInitialTabReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -62,6 +63,8 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const [activeMorePage, setActiveMorePage] = useState<MoreSubPage>("main");
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [seasonRulesOpen, setSeasonRulesOpen] = useState(false);
+  const [dismissedSettlementBannerIds, setDismissedSettlementBannerIds] = useState<string[]>([]);
+  const [settlementDetailTargetId, setSettlementDetailTargetId] = useState<string | null>(null);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(appData.notifications.unreadCount);
   const feedScopeKey = `${appData.currentGroupId}:${appData.currentSeasonId ?? "none"}`;
   const [feedState, setFeedState] = useState({ scopeKey: feedScopeKey, page: appData.postPage, mineOnly: false });
@@ -97,6 +100,8 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     : pendingSeason
       ? `${pendingSeason.name} ${formatSystemDate(pendingSeason.startDate)} 시작 예정`
       : "진행중 시즌 없음";
+  const latestSettlementBanner = settlementSummaries[0];
+  const shouldShowSettlementBanner = Boolean(latestSettlementBanner && !dismissedSettlementBannerIds.includes(latestSettlementBanner.id));
 
   useLayoutEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -114,6 +119,10 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   useEffect(() => {
     setFeedState({ scopeKey: feedScopeKey, page: appData.postPage, mineOnly: false });
   }, [appData.postPage, feedScopeKey]);
+
+  useEffect(() => {
+    setDismissedSettlementBannerIds(readDismissedSettlementBannerIds(currentUserId, group.id));
+  }, [currentUserId, group.id]);
 
   const restoreListScroll = () => {
     requestAnimationFrame(() => {
@@ -165,6 +174,14 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
   const openNotificationTarget = async (notification: AppNotification) => {
     const switchedGroup = await switchToNotificationGroup(notification.groupId).catch(() => false);
+
+    if (notification.actionType === "settlement_detail" && notification.actionTargetId) {
+      openSettlementBannerDetail(notification.actionTargetId, notification.groupId);
+      if (switchedGroup) {
+        router.refresh();
+      }
+      return;
+    }
 
     if (notification.actionType === "post_detail" && notification.actionTargetId) {
       closeNotifications();
@@ -389,6 +406,28 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     openMorePage("season-management", { refreshOnEnter: true });
   };
 
+  const openSettlementBannerDetail = (settlementId: string, targetGroupId = group.id) => {
+    dismissSettlementBanner(settlementId, targetGroupId);
+    setSettlementDetailTargetId(settlementId);
+    moveToTab("more");
+    openMorePage("settlement-history", { refreshOnEnter: true });
+  };
+
+  const dismissSettlementBanner = (settlementId: string, targetGroupId = group.id) => {
+    if (targetGroupId !== group.id) {
+      const current = readDismissedSettlementBannerIds(currentUserId, targetGroupId);
+      const next = current.includes(settlementId) ? current : [...current, settlementId];
+      writeDismissedSettlementBannerIds(currentUserId, targetGroupId, next);
+      return;
+    }
+
+    setDismissedSettlementBannerIds((current) => {
+      const next = current.includes(settlementId) ? current : [...current, settlementId];
+      writeDismissedSettlementBannerIds(currentUserId, targetGroupId, next);
+      return next;
+    });
+  };
+
   const selectTab = (tabId: TabId, options: RefreshOnEnterOptions = {}) => {
     if (menuHistoryActiveRef.current) {
       pendingMenuSelectionRef.current = tabId;
@@ -486,6 +525,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     const notificationId = params.get("notificationId");
     const groupId = params.get("groupId");
     const postId = params.get("postId");
+    const settlementId = params.get("settlementId");
     const morePage = params.get("more");
 
     clearInitialActionParams(params);
@@ -503,6 +543,10 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
             setPendingCreatedPostId(postId);
           }
 
+          if (settlementId) {
+            openSettlementBannerDetail(settlementId, groupId);
+          }
+
           if (morePage === "group-member-management") {
             moveToTab("more", { refreshOnEnter: true });
             openMorePage("group-member-management", { refreshOnEnter: true });
@@ -513,6 +557,11 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
           }
         })
         .catch(() => undefined);
+      return;
+    }
+
+    if (settlementId) {
+      openSettlementBannerDetail(settlementId, groupId ?? group.id);
       return;
     }
 
@@ -737,6 +786,14 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
           )}
         </div>
 
+        {shouldShowSettlementBanner && latestSettlementBanner && (
+          <SettlementBanner
+            settlement={latestSettlementBanner}
+            onOpen={() => openSettlementBannerDetail(latestSettlementBanner.id)}
+            onDismiss={() => dismissSettlementBanner(latestSettlementBanner.id)}
+          />
+        )}
+
         <AppDialog
           open={seasonRulesOpen && Boolean(displayedStatusSeason)}
           title={displayedStatusSeason ? `${displayedStatusSeason.name}의 규칙` : "시즌 규칙"}
@@ -811,14 +868,20 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                   isAdmin={isAdmin}
                   isTreasurer={isTreasurer}
                   currentUser={currentUser}
+                  currentUserId={currentUserId}
                   currentGroup={group}
                   approvedGroups={approvedGroups}
                   accountInfo={accountInfo}
                   adminGroupMembers={adminGroupMembers}
+                  users={users}
                   seasons={seasons}
                   seasonParticipants={seasonParticipants}
                   settlementSummaries={settlementSummaries}
+                  bankRecords={bankRecords}
                   activeMorePage={activeMorePage}
+                  initialSettlementId={settlementDetailTargetId}
+                  onInitialSettlementHandled={() => setSettlementDetailTargetId(null)}
+                  onSettlementViewed={dismissSettlementBanner}
                   onOpenMorePage={(page) => openMorePage(page, { refreshOnEnter: true })}
                   onCloseMorePage={closeMorePage}
                   onInitialTabChange={(tabId) => {
@@ -853,6 +916,48 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   );
 }
 
+function SettlementBanner({ settlement, onOpen, onDismiss }: { settlement: SettlementSummary; onOpen: () => void; onDismiss: () => void }) {
+  return (
+    <div className="shrink-0 border-b border-amber-100 bg-amber-50">
+      <div className="flex w-full items-center gap-2 rounded-2xl px-3 py-2 active:bg-amber-100/70">
+        <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={onOpen}>
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-amber-600 shadow-sm shadow-amber-100">
+            <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 2v4" />
+              <path d="M16 2v4" />
+              <rect width="18" height="18" x="3" y="4" rx="2" />
+              <path d="M3 10h18" />
+            </svg>
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-extrabold text-amber-800">주간 결산이 도착했어요!</span>
+            <span className="mt-0.5 block text-xs font-semibold text-amber-700">기간: {formatBannerMonthDay(settlement.weekStartDate)} ~ {formatBannerMonthDay(settlement.weekEndDate)}</span>
+          </span>
+        </button>
+        <button
+          type="button"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-amber-700 active:bg-white/70"
+          aria-label="결산 배너 닫기"
+          onClick={onDismiss}
+        >
+          <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function formatBannerMonthDay(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    return value;
+  }
+
+  return `${Number(match[2])}.${match[3]}`;
+}
 function NoActiveSeasonInApp({
   groupName,
   isAdmin,

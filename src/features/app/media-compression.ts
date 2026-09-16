@@ -49,6 +49,17 @@ async function compressMediaFileForUpload(file: File): Promise<MediaCompressionR
   }
 }
 
+export async function compressImageFileForUpload(file: File): Promise<MediaCompressionResult> {
+  try {
+    if (!isCompressibleImage(file)) {
+      return createResult(file, file, false, "not-supported");
+    }
+
+    return await compressImageFile(file);
+  } catch {
+    return createResult(file, file, false, "failed");
+  }
+}
 async function compressImageFile(file: File): Promise<MediaCompressionResult> {
   const decodedImage = await decodeImage(file);
   const longSide = Math.max(decodedImage.width, decodedImage.height);

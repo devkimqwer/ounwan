@@ -3,8 +3,27 @@ import type { ReactNode } from "react";
 import type { Role, User } from "@/domain/models";
 import { formatSystemDateTime } from "@/lib/date-format";
 
+export function AppSubPageHeader({ title, onBack, right }: { title: string; onBack: () => void; right?: ReactNode }) {
+  return (
+    <div className="relative flex h-14 items-center justify-between px-4">
+      <button
+        type="button"
+        className="h-10 place-items-center rounded-full text-slate-700 transition-colors active:bg-slate-100"
+        aria-label="뒤로가기"
+        onClick={onBack}
+      >
+        <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m15 18-6-6 6-6" />
+        </svg>
+      </button>
+      <h1 className="text-base font-extrabold text-slate-950">{title}</h1>
+      <div></div>
+      {right && <div className="absolute right-4">{right}</div>}
+    </div>
+  );
+}
 export function getUserById(users: User[], userId: string) {
-  return users.find((user) => user.id === userId) ?? users[0];
+  return users.find((user) => user.id === userId);
 }
 export function formatPostDateTime(date: Date) {
   return formatSystemDateTime(date);

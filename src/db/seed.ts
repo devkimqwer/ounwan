@@ -287,6 +287,7 @@ async function main() {
         missedCount: row.missedCount,
         autoFineAmount: row.autoFineAmount,
         finalFineAmount: row.finalFineAmount,
+        dailyResults: {},
       })),
     );
 

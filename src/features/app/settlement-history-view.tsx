@@ -1,47 +1,161 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { AppDialog } from "@/components/ui/app-dialog";
-import type { SettlementSummary } from "@/domain/models";
-import { formatSystemDateTime, formatSystemMonthDay } from "@/lib/date-format";
+import { getSettlementDetailAction } from "@/app/actions";
+import type { SettlementDetail, SettlementSummary, User } from "@/domain/models";
+import { SettlementAdminDetailView } from "./settlement-admin-detail-view";
+import { SettlementDetailView } from "./settlement-detail-view";
+import { AppSubPageHeader } from "./shared-ui";
+import { CalendarIcon, formatCurrency, formatSettlementRange, SettlementStatusBadge } from "./settlement-detail-ui";
 
-export function SettlementHistoryView({ settlements, onBack }: { settlements: SettlementSummary[]; onBack: () => void }) {
-  const [selectedSettlement, setSelectedSettlement] = useState<SettlementSummary | null>(null);
+type SettlementHistoryMode = "user" | "admin";
+
+export function SettlementHistoryView({
+  settlements,
+  users,
+  currentUserId,
+  mode = "user",
+  initialSettlementId,
+  onInitialSettlementHandled,
+  onSettlementViewed,
+  onBack,
+}: {
+  settlements: SettlementSummary[];
+  users: User[];
+  currentUserId: string;
+  mode?: SettlementHistoryMode;
+  initialSettlementId?: string | null;
+  onInitialSettlementHandled?: () => void;
+  onSettlementViewed?: (settlementId: string) => void;
+  onBack: () => void;
+}) {
+  const [selectedSettlement, setSelectedSettlement] = useState<SettlementDetail | null>(null);
+  const [loadingSettlementId, setLoadingSettlementId] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState("");
+  const settlementDetailHistoryActiveRef = useRef(false);
+  const selectedSettlementIdRef = useRef<string | null>(null);
+  const modeRef = useRef(mode);
+  const morePageName = mode === "admin" ? "settlement-management" : "settlement-history";
+
+  useEffect(() => {
+    selectedSettlementIdRef.current = selectedSettlement?.id ?? null;
+  }, [selectedSettlement?.id]);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const settlementDetailId = event.state?.ounwanSettlementDetail as string | undefined;
+      if (settlementDetailId) {
+        settlementDetailHistoryActiveRef.current = true;
+        if (selectedSettlementIdRef.current !== settlementDetailId) {
+          void loadSettlementDetail(settlementDetailId, { pushHistory: false });
+        }
+        return;
+      }
+
+      if (settlementDetailHistoryActiveRef.current || selectedSettlementIdRef.current) {
+        settlementDetailHistoryActiveRef.current = false;
+        selectedSettlementIdRef.current = null;
+        setSelectedSettlement(null);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const loadSettlementDetail = async (settlementId: string, { pushHistory }: { pushHistory: boolean }) => {
+    if (loadingSettlementId) {
+      return;
+    }
+
+    setDetailError("");
+    setLoadingSettlementId(settlementId);
+
+    try {
+      const detail = await getSettlementDetailAction(settlementId);
+      if (!detail) {
+        setDetailError("결산 내역을 찾을 수 없습니다.");
+        return;
+      }
+
+      if (pushHistory) {
+        settlementDetailHistoryActiveRef.current = true;
+        window.history.replaceState({ ounwanMorePage: morePageName }, "");
+        window.history.pushState({ ounwanMorePage: morePageName, ounwanSettlementDetail: settlementId }, "");
+      }
+
+      selectedSettlementIdRef.current = detail.id;
+      onSettlementViewed?.(detail.id);
+      setSelectedSettlement(detail);
+    } catch {
+      setDetailError("결산 내역을 불러올 수 없습니다.");
+    } finally {
+      setLoadingSettlementId(null);
+    }
+  };
+
+  const openSettlementDetail = (settlementId: string) => {
+    void loadSettlementDetail(settlementId, { pushHistory: true });
+  };
+
+  useEffect(() => {
+    if (!initialSettlementId || selectedSettlementIdRef.current === initialSettlementId) {
+      return;
+    }
+
+    onInitialSettlementHandled?.();
+    void loadSettlementDetail(initialSettlementId, { pushHistory: true });
+  }, [initialSettlementId, onInitialSettlementHandled]);
+
+  const reloadSelectedSettlement = () => {
+    const settlementId = selectedSettlementIdRef.current;
+    if (settlementId) {
+      void loadSettlementDetail(settlementId, { pushHistory: false });
+    }
+  };
+
+  const closeSettlementDetail = () => {
+    if (settlementDetailHistoryActiveRef.current) {
+      settlementDetailHistoryActiveRef.current = false;
+      window.history.back();
+      return;
+    }
+
+    selectedSettlementIdRef.current = null;
+    setSelectedSettlement(null);
+  };
+
+  if (selectedSettlement) {
+    if (modeRef.current === "admin") {
+      return <SettlementAdminDetailView settlement={selectedSettlement} users={users} currentUserId={currentUserId} onBack={closeSettlementDetail} onChanged={reloadSelectedSettlement} />;
+    }
+
+    return <SettlementDetailView settlement={selectedSettlement} users={users} currentUserId={currentUserId} onBack={closeSettlementDetail} />;
+  }
 
   return (
     <div className="min-h-full bg-slate-50">
-      <div className="sticky top-0 z-10 flex h-14 items-center justify-center border-b border-slate-200 bg-white px-4">
-        <button
-          type="button"
-          className="absolute left-2 grid h-10 w-10 place-items-center rounded-full text-slate-700 transition-colors active:bg-slate-100"
-          aria-label="뒤로가기"
-          onClick={onBack}
-        >
-          <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m15 18-6-6 6-6" />
-          </svg>
-        </button>
-        <h1 className="text-base font-extrabold text-slate-950">결산 내역</h1>
-      </div>
+      <AppSubPageHeader title={mode === "admin" ? "결산 관리" : "결산 내역"} onBack={onBack} />
 
       <div className="space-y-3 p-4">
+        {detailError && (
+          <p className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">{detailError}</p>
+        )}
+
         {settlements.length > 0 ? (
           settlements.map((settlement) => (
             <button
               key={settlement.id}
               type="button"
-              className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm shadow-slate-200/40 transition-colors active:bg-slate-50"
-              onClick={() => setSelectedSettlement(settlement)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm shadow-slate-200/40 transition-colors active:bg-slate-50 disabled:cursor-wait disabled:opacity-70"
+              onClick={() => openSettlementDetail(settlement.id)}
+              disabled={loadingSettlementId === settlement.id}
             >
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-slate-100 text-slate-700">
-                <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M8 2v4" />
-                  <path d="M16 2v4" />
-                  <rect width="18" height="18" x="3" y="4" rx="2" />
-                  <path d="M3 10h18" />
-                  <path d="M8 14h.01" />
-                  <path d="M12 14h.01" />
-                  <path d="M16 14h.01" />
-                </svg>
+                <CalendarIcon />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-base font-extrabold leading-5 text-slate-950">
@@ -50,7 +164,7 @@ export function SettlementHistoryView({ settlements, onBack }: { settlements: Se
                 <span className="mt-1 block truncate text-xs font-semibold text-slate-500">{settlement.seasonName} 주간 결산</span>
                 <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-slate-400">
                   <span>{settlement.participantCount}명</span>
-                  <span>{settlement.finalFineAmountTotal.toLocaleString("ko-KR")}원</span>
+                  <span>{formatCurrency(settlement.finalFineAmountTotal)}</span>
                 </span>
               </span>
               <SettlementStatusBadge status={settlement.status} />
@@ -62,44 +176,13 @@ export function SettlementHistoryView({ settlements, onBack }: { settlements: Se
         ) : (
           <section className="rounded-2xl border border-slate-200 bg-white px-5 py-10 text-center">
             <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#F2F0FA] text-[#5e4ea5]">
-              <svg aria-hidden="true" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M8 2v4" />
-                <path d="M16 2v4" />
-                <rect width="18" height="18" x="3" y="4" rx="2" />
-                <path d="M3 10h18" />
-              </svg>
+              <CalendarIcon className="h-6 w-6" />
             </span>
             <h2 className="mt-4 text-base font-extrabold text-slate-950">결산 내역이 없습니다.</h2>
             <p className="mt-1 text-sm font-semibold text-slate-500">주간 결산이 생성되면 이곳에 표시됩니다.</p>
           </section>
         )}
       </div>
-
-      <AppDialog
-        open={Boolean(selectedSettlement)}
-        title="결산 상세"
-        description={selectedSettlement ? getSettlementDescription(selectedSettlement) : ""}
-        onClose={() => setSelectedSettlement(null)}
-        dismissOnBackdrop
-        actions={[{ label: "확인", onClick: () => setSelectedSettlement(null) }]}
-      />
     </div>
   );
-}
-
-function SettlementStatusBadge({ status }: { status: SettlementSummary["status"] }) {
-  if (status === "confirmed") {
-    return <span className="shrink-0 rounded-full bg-[#1db9a6] px-3 py-1.5 text-xs font-extrabold leading-none text-white">확정</span>;
-  }
-
-  return <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-extrabold leading-none text-amber-700">미확정</span>;
-}
-
-function formatSettlementRange(startDate: string, endDate: string) {
-  return `${formatSystemMonthDay(startDate)} ~ ${formatSystemMonthDay(endDate)}`;
-}
-
-function getSettlementDescription(settlement: SettlementSummary) {
-  const confirmedText = settlement.confirmedAt ? `확정일: ${formatSystemDateTime(settlement.confirmedAt)}` : "아직 확정되지 않았습니다.";
-  return `${formatSettlementRange(settlement.weekStartDate, settlement.weekEndDate)} · ${settlement.finalFineAmountTotal.toLocaleString("ko-KR")}원 · ${confirmedText}`;
 }

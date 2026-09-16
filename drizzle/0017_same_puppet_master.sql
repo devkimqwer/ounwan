@@ -1,0 +1,1 @@
+ALTER TABLE "weekly_settlement_rows" ADD COLUMN "daily_results" jsonb DEFAULT '{}'::jsonb NOT NULL;

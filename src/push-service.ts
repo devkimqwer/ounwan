@@ -1,9 +1,7 @@
-import "server-only";
-
 import { and, inArray, isNull } from "drizzle-orm";
 import webpush, { type PushSubscription } from "web-push";
 
-import { db } from "@/db/client";
+import { db } from "./db/database";
 import { pushSubscriptions } from "@/db/schema";
 
 export type NotificationPushPayload = {
