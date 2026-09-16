@@ -287,7 +287,7 @@ export function PostCard({
         )}
         <div>
           {post.workoutType && <Badge tone="green">{post.workoutType}</Badge>}
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 flex items-center justify-between gap-2">
             <div className={`inline-flex min-h-9 items-center rounded-full text-sm font-bold ${post.likedByCurrentUser ? "text-[#F4B000]" : "text-slate-700"}`}>
               <button
                 type="button"

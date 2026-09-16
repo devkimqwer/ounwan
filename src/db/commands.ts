@@ -6,11 +6,11 @@ import { clearCurrentGroupId, getCurrentGroupIdForUser, requireCurrentUserId, se
 import { generateInviteToken, isInviteTokenFormat } from "@/invites/tokens";
 import { sendPushForNotifications } from "@/push-service";
 import { getKoreanDate, getKoreanWorkoutDate, getNextSettlementAt, isSeasonStartDue } from "@/lib/season-time";
-import { deleteStorageFiles, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/service";
+import { deleteStorageFiles, saveBankBalanceRecordImage, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/service";
 
 import { db } from "./client";
 import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError, GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, SeasonStartDateInPastError } from "./errors";
-import { bankAccounts, groupInvites, groupJoinRequests, groupMembers, groups, notifications, postComments, postLikes, postMedia, pushSubscriptions, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
+import { bankAccounts, bankBalanceRecords, groupInvites, groupJoinRequests, groupMembers, groups, notifications, postComments, postLikes, postMedia, pushSubscriptions, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
 import { activatePendingSeasonForGroup, initializeActiveSeason, runPendingSeasonActivationBatch } from "./season-activation";
 import { syncDraftSettlementRowForWorkoutPost } from "./weekly-settlement";
 
@@ -77,6 +77,11 @@ type UpdateBankAccountInfoInput = {
   bankName: string;
   accountNumber: string;
   holderName: string;
+};
+
+type CreateBankBalanceRecordInput = {
+  memo?: string;
+  imageFile: File;
 };
 
 type UpdateGroupMemberRolesInput = {
@@ -893,6 +898,50 @@ export async function confirmWeeklySettlement(input: ConfirmWeeklySettlementInpu
   });
   return { id: input.settlementId };
 }
+
+export async function createBankBalanceRecord(input: CreateBankBalanceRecordInput) {
+  const context = await getCurrentGroupTreasurerContext();
+  const groupId = BigInt(context.groupId);
+  const userId = BigInt(context.userId);
+  const memo = input.memo?.trim() || null;
+  const insertedRows = await db
+    .insert(bankBalanceRecords)
+    .values({
+      groupId,
+      createdByUserId: userId,
+      memo,
+      imageStorageKey: "__pending__",
+      imageUrl: null,
+    })
+    .returning({ id: bankBalanceRecords.id });
+  const recordId = insertedRows[0]?.id;
+
+  if (!recordId) {
+    throw new Error("Bank balance record was not created.");
+  }
+
+  let storageKey: string | undefined;
+
+  try {
+    const storedImage = await saveBankBalanceRecordImage({
+      file: input.imageFile,
+      groupId: context.groupId,
+      recordId: recordId.toString(),
+    });
+    storageKey = storedImage.storageKey;
+
+    await db
+      .update(bankBalanceRecords)
+      .set({ imageStorageKey: storedImage.storageKey, imageUrl: null })
+      .where(and(eq(bankBalanceRecords.id, recordId), eq(bankBalanceRecords.groupId, groupId)));
+  } catch (error) {
+    await deleteStorageFiles([storageKey]);
+    await db.delete(bankBalanceRecords).where(and(eq(bankBalanceRecords.id, recordId), eq(bankBalanceRecords.groupId, groupId)));
+    throw error;
+  }
+
+  return { id: recordId.toString() };
+}
 export async function updateBankAccountInfo(input: UpdateBankAccountInfoInput) {
   const context = await getCurrentGroupTreasurerContext();
   const bankName = input.bankName.trim();
@@ -1455,7 +1504,7 @@ async function getCurrentGroupTreasurerContext() {
   const context = await getCurrentMemberGroupContext();
 
   if (!context.roles.includes("treasurer")) {
-    throw new Error("Only treasurers can manage bank account info.");
+    throw new Error("User does not have [treasurer] privileges.");
   }
 
   return context;

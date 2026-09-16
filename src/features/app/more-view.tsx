@@ -7,6 +7,7 @@ import { AppDialog } from "@/components/ui/app-dialog";
 import type { AccountInfo, AdminGroupMember, BankRecord, Group, Season, SeasonParticipant, SettlementSummary, User, UserGroupMembership } from "@/domain/models";
 import { TextLogoutButton } from "@/features/auth/logout-controls";
 import { initialTabOptions, type InitialTabId, type MoreSubPage } from "./app-types";
+import { BalanceRegistrationView } from "./balance-registration-view";
 import { BalanceStatusView } from "./balance-status-view";
 import { BankAccountManagementView } from "./bank-account-management-view";
 import { GroupMemberManagementView } from "./group-member-management-view";
@@ -309,6 +310,10 @@ export function MoreView({
     return <BankAccountManagementView accountInfo={accountInfo} onBack={onCloseMorePage} />;
   }
 
+  if (activeMorePage === "balance-registration") {
+    return <BalanceRegistrationView onBack={onCloseMorePage} onCreated={() => onOpenMorePage("balance-status")} />;
+  }
+
   if (activeMorePage === "balance-status") {
     return <BalanceStatusView bankRecords={bankRecords} users={users} onBack={onCloseMorePage} />;
   }
@@ -437,7 +442,7 @@ export function MoreView({
           title="총무"
           rows={[
             <MoreMenuRow key="account-management" label="계좌 정보 관리" onClick={() => onOpenMorePage("bank-account-management")} />,
-            <MoreMenuRow key="balance-registration" label="잔고 등록" onClick={() => openNotReadyDialog("잔고 등록")} />,
+            <MoreMenuRow key="balance-registration" label="잔고 등록" onClick={() => onOpenMorePage("balance-registration")} />,
           ]}
         />
       )}

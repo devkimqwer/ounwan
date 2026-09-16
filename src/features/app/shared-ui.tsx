@@ -5,10 +5,10 @@ import { formatSystemDateTime } from "@/lib/date-format";
 
 export function AppSubPageHeader({ title, onBack, right }: { title: string; onBack: () => void; right?: ReactNode }) {
   return (
-    <div className="sticky top-0 z-10 flex h-14 items-center justify-center border-b border-slate-200 bg-white px-4">
+    <div className="relative flex h-14 items-center justify-between px-4">
       <button
         type="button"
-        className="absolute left-2 grid h-10 w-10 place-items-center rounded-full text-slate-700 transition-colors active:bg-slate-100"
+        className="h-10 place-items-center rounded-full text-slate-700 transition-colors active:bg-slate-100"
         aria-label="뒤로가기"
         onClick={onBack}
       >
@@ -17,6 +17,7 @@ export function AppSubPageHeader({ title, onBack, right }: { title: string; onBa
         </svg>
       </button>
       <h1 className="text-base font-extrabold text-slate-950">{title}</h1>
+      <div></div>
       {right && <div className="absolute right-4">{right}</div>}
     </div>
   );
