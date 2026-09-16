@@ -326,9 +326,10 @@ export const postLikes = pgTable(
     userId: bigint("user_id", { mode: "bigint" })
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    reactionType: varchar("reaction_type", { length: 20 }).notNull().default("cheer"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.postId, table.userId] })],
+  (table) => [primaryKey({ columns: [table.postId, table.userId, table.reactionType] })],
 );
 
 export const postComments = pgTable(

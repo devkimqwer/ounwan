@@ -1,9 +1,10 @@
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { deleteWorkoutPostAction, togglePostLikeAction, toggleWorkoutPostInvalidAction } from "@/app/actions";
+import { deleteWorkoutPostAction, togglePostReactionAction, toggleWorkoutPostInvalidAction } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
 import type { User, WorkoutPost } from "@/domain/models";
+import { getPostReactionOption, POST_REACTION_OPTIONS, PostReactionIcon, type PostReactionType } from "@/domain/post-reactions";
 import { Avatar, Badge, formatPostDateTime, getUserById } from "./shared-ui";
 
 export function MediaCarousel({
@@ -131,6 +132,7 @@ export function MediaCarousel({
     </div>
   );
 }
+
 export function PostCard({
   post,
   users,
@@ -155,30 +157,34 @@ export function PostCard({
   const isOwnPost = currentUserId === post.userId;
   const canOpenPostMenu = isAdmin || isOwnPost;
   const adminMenuRef = useRef<HTMLDivElement>(null);
+  const reactionPickerRef = useRef<HTMLDivElement>(null);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [likeUsersDialogOpen, setLikeUsersDialogOpen] = useState(false);
-  const [isLikeSubmitting, setIsLikeSubmitting] = useState(false);
+  const [reactionUsersDialogOpen, setReactionUsersDialogOpen] = useState(false);
+  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
+  const [submittingReactionType, setSubmittingReactionType] = useState<PostReactionType | null>(null);
   const router = useRouter();
   const openPost = onOpen ? () => onOpen(post.id) : undefined;
-  const likedUsers = post.likeUserIds
-    .map((userId) => users.find((candidate) => candidate.id === userId))
-    .filter((candidate): candidate is User => Boolean(candidate));
+  const selectedReactionTypes = new Set(post.currentUserReactionTypes);
+  const visibleReactionSummaries = POST_REACTION_OPTIONS
+    .filter((option) => post.reactionSummaries.some((summary) => summary.type === option.type))
+    .slice(0, 3);
 
-  const handleToggleLike = async () => {
-    if (isLikeSubmitting) {
+  const handleToggleReaction = async (reactionType: PostReactionType) => {
+    if (submittingReactionType) {
       return;
     }
 
     const formData = new FormData();
     formData.append("postId", post.id);
-    setIsLikeSubmitting(true);
+    formData.append("reactionType", reactionType);
+    setSubmittingReactionType(reactionType);
 
     try {
-      await togglePostLikeAction(formData);
+      await togglePostReactionAction(formData);
       router.refresh();
     } finally {
-      setIsLikeSubmitting(false);
+      setSubmittingReactionType(null);
     }
   };
 
@@ -208,6 +214,21 @@ export function PostCard({
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [adminMenuOpen]);
+
+  useEffect(() => {
+    if (!reactionPickerOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!reactionPickerRef.current?.contains(event.target as Node)) {
+        setReactionPickerOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [reactionPickerOpen]);
 
   return (
     <article className="relative rounded-2xl border border-slate-200 bg-white">
@@ -288,43 +309,82 @@ export function PostCard({
         <div>
           {post.workoutType && <Badge tone="green">{post.workoutType}</Badge>}
           <div className="mt-3 flex items-center justify-between gap-2">
-            <div className={`inline-flex min-h-9 items-center rounded-full text-sm font-bold ${post.likedByCurrentUser ? "text-[#F4B000]" : "text-slate-700"}`}>
-              <button
-                type="button"
-                className="grid h-9 w-8 place-items-center rounded-full disabled:opacity-50"
-                aria-label={post.likedByCurrentUser ? "따봉 취소" : "따봉"}
-                aria-pressed={post.likedByCurrentUser}
-                disabled={isLikeSubmitting}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleToggleLike();
-                }}
-              >
-                <svg
-                  aria-hidden="true"
-                  className={`h-5 w-5 ${post.likedByCurrentUser ? "fill-current stroke-current" : "text-slate-500"}`}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+            <div ref={reactionPickerRef} className="relative min-w-0">
+              <div className="flex items-center gap-1.5">
+                {post.reactionCount > 0 ? (
+                  <button
+                    type="button"
+                    className="inline-flex min-h-9 items-center gap-1 rounded-full px-3 text-xs font-bold text-slate-700 ring-1 ring-slate-200"
+                    aria-label={`반응한 사람 ${post.reactionCount}명 보기`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setReactionUsersDialogOpen(true);
+                    }}
+                  >
+                    <span className="flex items-center gap-1">
+                      {visibleReactionSummaries.map((option) => (
+                        <PostReactionIcon key={option.type} type={option.type} size={18} />
+                      ))}
+                    </span>
+                    <span>{post.reactionCount}</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-slate-50 px-3 text-xs font-bold text-slate-500 ring-1 ring-slate-200"
+                    aria-label="반응 남기기"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setReactionPickerOpen((open) => !open);
+                    }}
+                  >
+                    <PostReactionIcon type="fun" size={18} />
+                    <span>어떤 반응을 남겨볼까요?</span>
+                  </button>
+                )}
+                {post.reactionCount > 0 && (
+                  <button
+                    type="button"
+                    className="grid h-9 w-9 place-items-center rounded-full bg-slate-50 text-sm ring-1 ring-slate-200"
+                    aria-label="반응 추가 또는 해제"
+                    aria-expanded={reactionPickerOpen}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setReactionPickerOpen((open) => !open);
+                    }}
+                  >
+                    <PostReactionIcon type="fun" size={18} />
+                  </button>
+                )}
+              </div>
+
+              {reactionPickerOpen && (
+                <div
+                  className="absolute bottom-11 left-0 z-40 w-[min(88vw,22rem)] rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-500/10"
+                  onClick={(event) => event.stopPropagation()}
                 >
-                  <path d="M7 10v11" />
-                  <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                className="min-h-9 rounded-full px-1.5 text-sm font-bold"
-                aria-label={`따봉한 사람 ${post.likeCount}명 보기`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setLikeUsersDialogOpen(true);
-                }}
-              >
-                {post.likeCount}
-              </button>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {POST_REACTION_OPTIONS.map((option) => {
+                      const selected = selectedReactionTypes.has(option.type);
+                      return (
+                        <button
+                          key={option.type}
+                          type="button"
+                          disabled={Boolean(submittingReactionType)}
+                          className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl px-1 text-center transition-colors disabled:opacity-50 ${
+                            selected ? "bg-[#F2F0FA] text-[#51438f] ring-1 ring-[#8B7ED0]" : "text-slate-600 active:bg-slate-50"
+                          }`}
+                          aria-pressed={selected}
+                          onClick={() => handleToggleReaction(option.type)}
+                        >
+                          <PostReactionIcon type={option.type} size={28}/>
+                          <span className="text-[11px] font-extrabold leading-4">{option.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
             <button
               type="button"
@@ -350,29 +410,34 @@ export function PostCard({
         </div>
       </div>
       <AppDialog
-        open={likeUsersDialogOpen}
-        title="따봉한 사람"
+        open={reactionUsersDialogOpen}
+        title="반응한 사람"
         dismissOnBackdrop
-        onClose={() => setLikeUsersDialogOpen(false)}
+        onClose={() => setReactionUsersDialogOpen(false)}
         actions={[
           {
             label: "닫기",
             variant: "primary",
-            onClick: () => setLikeUsersDialogOpen(false),
+            onClick: () => setReactionUsersDialogOpen(false),
           },
         ]}
       >
-        {likedUsers.length > 0 ? (
+        {post.reactions.length > 0 ? (
           <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
-            {likedUsers.map((likedUser) => (
-              <div key={likedUser.id} className="flex items-center gap-3">
-                <Avatar name={likedUser.name} imageUrl={likedUser.avatarUrl} />
-                <span className="text-sm font-bold text-slate-950">{likedUser.name}</span>
-              </div>
-            ))}
+            {post.reactions.map((reaction, index) => {
+              const reactionUser = users.find((candidate) => candidate.id === reaction.userId);
+              const reactionOption = getPostReactionOption(reaction.type);
+              return (
+                <div key={`${reaction.userId}-${reaction.type}-${reaction.createdAt}-${index}`} className="flex items-center gap-3">
+                  <Avatar name={reactionUser?.name ?? "알 수 없는 사용자"} imageUrl={reactionUser?.avatarUrl} />
+                  <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-950">{reactionUser?.name ?? "알 수 없는 사용자"}</span>
+                  <PostReactionIcon type={reaction.type} size={28} />
+                </div>
+              );
+            })}
           </div>
         ) : (
-          <p className="text-sm font-semibold text-slate-500">아직 따봉을 누른 사람이 없습니다.</p>
+          <p className="text-sm font-semibold text-slate-500">아직 반응이 없습니다.</p>
         )}
       </AppDialog>
       <AppDialog

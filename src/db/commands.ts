@@ -4,6 +4,7 @@ import { and, desc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 import { clearCurrentGroupId, getCurrentGroupIdForUser, requireCurrentUserId, setCurrentGroupIdForUser } from "@/auth/session";
 import { generateInviteToken, isInviteTokenFormat } from "@/invites/tokens";
+import type { PostReactionType } from "@/domain/post-reactions";
 import { sendPushForNotifications } from "@/push-service";
 import { getKoreanDate, getKoreanWorkoutDate, getNextSettlementAt, isSeasonStartDue } from "@/lib/season-time";
 import { deleteStorageFiles, saveBankBalanceRecordImage, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/service";
@@ -1195,7 +1196,7 @@ export async function createWorkoutPost(input: CreateWorkoutPostInput) {
 
 
 
-export async function togglePostLike(postId: string) {
+export async function togglePostReaction(postId: string, reactionType: PostReactionType) {
   const context = await getCurrentSeedContext();
   const targetPostRows = await db
     .select({ id: workoutPosts.id })
@@ -1211,20 +1212,20 @@ export async function togglePostLike(postId: string) {
     .limit(1);
 
   if (!targetPostRows[0]) {
-    throw new Error("Workout post not found or not allowed to like.");
+    throw new Error("Workout post not found or not allowed to react.");
   }
 
   const deletedRows = await db
     .delete(postLikes)
-    .where(and(eq(postLikes.postId, targetPostRows[0].id), eq(postLikes.userId, BigInt(context.userId))))
+    .where(and(eq(postLikes.postId, targetPostRows[0].id), eq(postLikes.userId, BigInt(context.userId)), eq(postLikes.reactionType, reactionType)))
     .returning({ postId: postLikes.postId });
 
   if (deletedRows[0]) {
-    return { liked: false };
+    return { selected: false };
   }
 
-  await db.insert(postLikes).values({ postId: targetPostRows[0].id, userId: BigInt(context.userId) });
-  return { liked: true };
+  await db.insert(postLikes).values({ postId: targetPostRows[0].id, userId: BigInt(context.userId), reactionType });
+  return { selected: true };
 }
 
 export async function createPostComment(postId: string, content: string) {

@@ -1,3 +1,5 @@
+import type { PostReactionType } from "./post-reactions";
+
 export type Role = "admin" | "treasurer" | "member";
 
 export type GroupVisibility = "private" | "public";
@@ -113,6 +115,17 @@ export interface PostComment {
   createdAt: string;
 }
 
+export interface PostReaction {
+  userId: string;
+  type: PostReactionType;
+  createdAt: string;
+}
+
+export interface PostReactionSummary {
+  type: PostReactionType;
+  count: number;
+}
+
 export interface WorkoutPost {
   id: string;
   groupId: string;
@@ -125,9 +138,10 @@ export interface WorkoutPost {
   isInvalid: boolean;
   invalidatedByUserId?: string;
   invalidatedAt?: string;
-  likeCount: number;
-  likedByCurrentUser: boolean;
-  likeUserIds: string[];
+  reactionCount: number;
+  currentUserReactionTypes: PostReactionType[];
+  reactionSummaries: PostReactionSummary[];
+  reactions: PostReaction[];
   commentCount: number;
   comments: PostComment[];
   media: PostMedia[];

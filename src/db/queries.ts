@@ -2,6 +2,7 @@ import "server-only";
 
 import { and, count, desc, eq, gt, gte, ilike, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 
+import { POST_REACTION_OPTIONS, isPostReactionType } from "@/domain/post-reactions";
 import type {
   AdminGroupMember,
   AdminGroupMemberStatusFilter,
@@ -623,12 +624,8 @@ export async function getCurrentWorkoutPostById(postId: string): Promise<Workout
   }
 
   const rows = await db
-    .select({
-      post: workoutPosts,
-      likeCount: count(postLikes.userId),
-    })
+    .select({ post: workoutPosts })
     .from(workoutPosts)
-    .leftJoin(postLikes, eq(postLikes.postId, workoutPosts.id))
     .where(
       and(
         eq(workoutPosts.id, BigInt(postId)),
@@ -637,7 +634,6 @@ export async function getCurrentWorkoutPostById(postId: string): Promise<Workout
         isNull(workoutPosts.deletedAt),
       ),
     )
-    .groupBy(workoutPosts.id)
     .limit(1);
 
   return (await hydrateWorkoutPosts(rows, currentUser.id))[0];
@@ -670,14 +666,9 @@ async function getWorkoutPostPage(
   }
 
   const rows = await db
-    .select({
-      post: workoutPosts,
-      likeCount: count(postLikes.userId),
-    })
+    .select({ post: workoutPosts })
     .from(workoutPosts)
-    .leftJoin(postLikes, eq(postLikes.postId, workoutPosts.id))
     .where(and(...conditions))
-    .groupBy(workoutPosts.id)
     .orderBy(desc(workoutPosts.createdAt), desc(workoutPosts.id))
     .limit(FEED_PAGE_SIZE + 1);
 
@@ -706,15 +697,16 @@ function normalizeWorkoutPostCursor(cursor: WorkoutPostCursor | undefined): { cr
 }
 
 async function hydrateWorkoutPosts(
-  rows: Array<{ post: typeof workoutPosts.$inferSelect; likeCount: number | string | bigint }>,
+  rows: Array<{ post: typeof workoutPosts.$inferSelect }>,
   currentUserId: string,
 ): Promise<WorkoutPost[]> {
   const postIds = rows.map((row) => row.post.id);
   const mediaByPostId = new Map<string, PostMedia[]>();
   const commentsByPostId = new Map<string, PostComment[]>();
   const commentCounts = new Map<string, number>();
-  const currentUserLikedPostIds = new Set<string>();
-  const likeUserIdsByPostId = new Map<string, string[]>();
+  const currentUserReactionTypesByPostId = new Map<string, Set<string>>();
+  const reactionsByPostId = new Map<string, Array<{ userId: string; type: string; createdAt: string }>>();
+  const reactionSummariesByPostId = new Map<string, Map<string, number>>();
 
   if (postIds.length > 0) {
     const mediaRows = await db
@@ -760,30 +752,33 @@ async function hydrateWorkoutPosts(
       commentCounts.set(postId, comments.length);
     }
 
-    const currentUserLikeRows = await db
-      .select({ postId: postLikes.postId })
-      .from(postLikes)
-      .where(and(inArray(postLikes.postId, postIds), eq(postLikes.userId, BigInt(currentUserId))));
-
-    for (const row of currentUserLikeRows) {
-      currentUserLikedPostIds.add(row.postId.toString());
-    }
-
-    const likeRows = await db
-      .select({ postId: postLikes.postId, userId: postLikes.userId })
+    const reactionRows = await db
+      .select({ postId: postLikes.postId, userId: postLikes.userId, reactionType: postLikes.reactionType, createdAt: postLikes.createdAt })
       .from(postLikes)
       .where(inArray(postLikes.postId, postIds))
       .orderBy(postLikes.postId, desc(postLikes.createdAt));
 
-    for (const like of likeRows) {
-      const postId = like.postId.toString();
-      const list = likeUserIdsByPostId.get(postId) ?? [];
-      list.push(like.userId.toString());
-      likeUserIdsByPostId.set(postId, list);
+    for (const reaction of reactionRows) {
+      const postId = reaction.postId.toString();
+      const userId = reaction.userId.toString();
+      const reactionType = isPostReactionType(reaction.reactionType) ? reaction.reactionType : "cheer";
+      const reactions = reactionsByPostId.get(postId) ?? [];
+      reactions.push({ userId, type: reactionType, createdAt: reaction.createdAt.toISOString() });
+      reactionsByPostId.set(postId, reactions);
+
+      const summaries = reactionSummariesByPostId.get(postId) ?? new Map<string, number>();
+      summaries.set(reactionType, (summaries.get(reactionType) ?? 0) + 1);
+      reactionSummariesByPostId.set(postId, summaries);
+
+      if (userId === currentUserId) {
+        const currentUserReactions = currentUserReactionTypesByPostId.get(postId) ?? new Set<string>();
+        currentUserReactions.add(reactionType);
+        currentUserReactionTypesByPostId.set(postId, currentUserReactions);
+      }
     }
   }
 
-  return rows.map(({ post, likeCount }) => {
+  return rows.map(({ post }) => {
     const postId = post.id.toString();
     return {
       id: postId,
@@ -797,16 +792,18 @@ async function hydrateWorkoutPosts(
       isInvalid: post.isInvalid,
       invalidatedByUserId: post.invalidatedByUserId?.toString(),
       invalidatedAt: post.invalidatedAt?.toISOString(),
-      likeCount: Number(likeCount),
-      likedByCurrentUser: currentUserLikedPostIds.has(postId),
-      likeUserIds: likeUserIdsByPostId.get(postId) ?? [],
+      reactionCount: reactionsByPostId.get(postId)?.length ?? 0,
+      currentUserReactionTypes: Array.from(currentUserReactionTypesByPostId.get(postId) ?? []).filter(isPostReactionType),
+      reactionSummaries: POST_REACTION_OPTIONS
+        .map((option) => ({ type: option.type, count: reactionSummariesByPostId.get(postId)?.get(option.type) ?? 0 }))
+        .filter((summary) => summary.count > 0),
+      reactions: (reactionsByPostId.get(postId) ?? []).filter((reaction) => isPostReactionType(reaction.type)) as WorkoutPost["reactions"],
       commentCount: commentCounts.get(postId) ?? 0,
       comments: commentsByPostId.get(postId) ?? [],
       media: mediaByPostId.get(postId) ?? [],
     };
   });
 }
-
 async function getLatestSettlement(groupId: string, season: Season): Promise<Settlement> {
   const rows = await db
     .select()
