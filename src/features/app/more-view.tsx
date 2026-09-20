@@ -14,6 +14,7 @@ import { GroupMemberManagementView } from "./group-member-management-view";
 import { readInitialTabPreference, writeInitialTabPreference } from "./initial-tab-preference";
 import { SeasonManagementView } from "./season-management-view";
 import { SettlementHistoryView } from "./settlement-history-view";
+import { MemberWorkoutStatusView } from "./member-workout-status-view";
 import { Avatar, Badge, getDisplayRoles, getRoleBadgeTone, getRoleLabel, MenuBlock } from "./shared-ui";
 
 export function MoreView({
@@ -314,6 +315,10 @@ export function MoreView({
     return <BalanceRegistrationView onBack={onCloseMorePage} onCreated={() => onOpenMorePage("balance-status")} />;
   }
 
+  if (activeMorePage === "member-workout-status") {
+    return <MemberWorkoutStatusView key={currentGroup.id} groupId={currentGroup.id} onBack={onCloseMorePage} />;
+  }
+
   if (activeMorePage === "balance-status") {
     return <BalanceStatusView bankRecords={bankRecords} users={users} onBack={onCloseMorePage} />;
   }
@@ -433,6 +438,7 @@ export function MoreView({
         rows={[
           <MoreMenuRow key="settlement-history" label="결산 내역" onClick={() => onOpenMorePage("settlement-history")} />,
           <MoreMenuRow key="balance-status" label="잔고 현황" onClick={() => onOpenMorePage("balance-status")} />,
+          <MoreMenuRow key="member-workout-status" label="멤버 인증 현황" onClick={() => onOpenMorePage("member-workout-status")} />,
           <MoreMenuRow key="season-archive" label="이전 시즌" onClick={() => openNotReadyDialog("이전 시즌")} />,
         ]}
       />

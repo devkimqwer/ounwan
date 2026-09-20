@@ -70,6 +70,7 @@ export function MainMenuPanel({
               { label: "캘린더", onClick: () => onSelect("calendar") },
               { label: "결산 내역", onClick: () => onOpenMorePage("settlement-history") },
               { label: "잔고 현황", onClick: () => onOpenMorePage("balance-status") },
+              { label: "멤버 인증 현황", onClick: () => onOpenMorePage("member-workout-status") },
               { label: "이전 시즌", onClick: () => onSelect("more") },
             ]}
           />

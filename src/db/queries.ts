@@ -13,6 +13,7 @@ import type {
   Group,
   GroupInvite,
   GroupMembership,
+  MemberWorkoutStatus,
   NotificationActionType,
   NotificationPage,
   PostMedia,
@@ -32,7 +33,8 @@ import type {
   WorkoutPostPage,
 } from "@/domain/models";
 import { getCurrentGroupIdForUser, requireCurrentUserId } from "@/auth/session";
-import { getKoreanWeekRange, getKoreanWorkoutDate } from "@/lib/season-time";
+import { getKoreanWeekRange, getKoreanWorkoutDate, getSettlementWindow } from "@/lib/season-time";
+import { calculateDailyWorkouts } from "@/lib/workout-count";
 import { isInviteTokenFormat } from "@/invites/tokens";
 import type { OunwanAppData } from "@/domain/app-data";
 import { db } from "./client";
@@ -57,6 +59,82 @@ import {
   workoutPosts,
 } from "./schema";
 
+
+export async function getCurrentMemberWorkoutStatus(): Promise<MemberWorkoutStatus> {
+  const currentUser = await getCurrentUser();
+  const memberships = await getApprovedGroupMemberships(currentUser.id);
+  const selectedGroupId = await getCurrentGroupIdForUser(currentUser.id);
+  const membership = memberships.find(({ group }) => group.id === selectedGroupId) ?? memberships[0];
+
+  if (!membership) {
+    throw new CurrentUserMembershipNotFoundError();
+  }
+
+  const groupId = membership.group.id;
+  const [season, memberRows] = await Promise.all([
+    getActiveSeason(groupId),
+    db
+      .select({
+        id: users.id,
+        name: users.displayName,
+        avatarStorageKey: users.avatarStorageKey,
+        updatedAt: users.updatedAt,
+      })
+      .from(groupMembers)
+      .innerJoin(users, eq(groupMembers.userId, users.id))
+      .where(
+        and(
+          eq(groupMembers.groupId, BigInt(groupId)),
+          isNull(groupMembers.leftAt),
+          isNull(users.deletedAt),
+          eq(users.status, "active"),
+        ),
+      )
+      .orderBy(users.displayName, users.id),
+  ]);
+  const now = new Date();
+  const today = season ? getKoreanWorkoutDate(now, season.dayStartTime) : undefined;
+  const period = season && today ? getKoreanWeekRange(today, season.weekStartDay) : undefined;
+  const workoutWindow = season && period ? getSettlementWindow(period.weekStartDate, season.dayStartTime) : undefined;
+  const posts = season && workoutWindow && memberRows.length > 0
+    ? await db
+        .select({ id: workoutPosts.id, userId: workoutPosts.userId, createdAt: workoutPosts.createdAt })
+        .from(workoutPosts)
+        .where(
+          and(
+            eq(workoutPosts.groupId, BigInt(groupId)),
+            eq(workoutPosts.seasonId, BigInt(season.id)),
+            inArray(workoutPosts.userId, memberRows.map((member) => member.id)),
+            eq(workoutPosts.isInvalid, false),
+            isNull(workoutPosts.deletedAt),
+            gte(workoutPosts.createdAt, workoutWindow.startAt),
+            lt(workoutPosts.createdAt, workoutWindow.endAt),
+            lte(workoutPosts.createdAt, now),
+          ),
+        )
+        .orderBy(workoutPosts.createdAt, workoutPosts.id)
+    : [];
+  const postsByUser = new Map<bigint, typeof posts>();
+
+  for (const post of posts) {
+    const bucket = postsByUser.get(post.userId) ?? [];
+    bucket.push(post);
+    postsByUser.set(post.userId, bucket);
+  }
+  return {
+    groupId,
+    currentUserId: currentUser.id,
+    seasonName: season?.name,
+    today,
+    days: season && period ? Object.keys(calculateDailyWorkouts([], season, period).dailyResults) : [],
+    members: memberRows.map((member) => ({
+      id: member.id.toString(),
+      name: member.name,
+      avatarUrl: member.avatarStorageKey ? `/uploads/${member.avatarStorageKey}?v=${member.updatedAt.getTime()}` : undefined,
+      ...(season && period ? calculateDailyWorkouts(postsByUser.get(member.id) ?? [], season, period) : { dailyResults: {}, validWorkoutCount: 0 }),
+    })),
+  };
+}
 
 export async function getOunwanAppData(): Promise<OunwanAppData> {
   const currentUser = await getCurrentUser();
