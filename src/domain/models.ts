@@ -211,6 +211,21 @@ export interface SettlementDetail extends Settlement {
   days: string[];
   rows: SettlementRow[];
 }
+export interface MemberWorkoutStatus {
+  groupId: string;
+  currentUserId: string;
+  seasonName?: string;
+  today?: string;
+  days: string[];
+  members: Array<{
+    id: string;
+    name: string;
+    avatarUrl?: string;
+    dailyResults: SettlementDailyResults;
+    validWorkoutCount: number;
+  }>;
+}
+
 export interface WeeklyUserWorkoutStatus {
   weekStartDate: string;
   weekEndDate: string;

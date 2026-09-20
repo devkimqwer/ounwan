@@ -1,6 +1,7 @@
 export type TabId = "home" | "feed" | "cert" | "calendar" | "more";
 export type MoreSubPage =
   | "main"
+  | "member-workout-status"
   | "season-management"
   | "group-member-management"
   | "bank-account-management"

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { getCurrentUserNotificationPage, getCurrentUserSettlementDetail, getCurrentUserUnreadNotificationCount, getCurrentWorkoutPostById, getCurrentWorkoutPostPage } from "@/db/queries";
+import { getCurrentMemberWorkoutStatus, getCurrentUserNotificationPage, getCurrentUserSettlementDetail, getCurrentUserUnreadNotificationCount, getCurrentWorkoutPostById, getCurrentWorkoutPostPage } from "@/db/queries";
 import { activateCurrentGroupPendingSeason, closeActiveSeason, createBankBalanceRecord, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, expelGroupMember, confirmWeeklySettlement, getOrCreateCurrentGroupInvite, leaveGroup, markAllNotificationsRead, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostReaction, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateGroupMemberRoles, updateSeasonRules } from "@/db/commands";
 import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
 import type { SettlementDetail, WorkoutPost, WorkoutPostCursor, WorkoutPostPage } from "@/domain/models";
@@ -96,6 +96,10 @@ export type ConfirmWeeklySettlementState = {
 export async function getWorkoutPostPageAction(input: { cursor?: WorkoutPostCursor; mineOnly?: boolean }): Promise<WorkoutPostPage> {
   const cursor = normalizeWorkoutPostCursor(input.cursor);
   return getCurrentWorkoutPostPage({ cursor, mineOnly: Boolean(input.mineOnly) });
+}
+
+export async function getMemberWorkoutStatusAction() {
+  return getCurrentMemberWorkoutStatus();
 }
 
 export async function getWorkoutPostByIdAction(postId: string): Promise<WorkoutPost | undefined> {

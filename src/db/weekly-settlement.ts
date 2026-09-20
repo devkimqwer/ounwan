@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 
 import type { SettlementDailyResults } from "../domain/models";
+import { calculateDailyWorkouts } from "../lib/workout-count";
 import {
   getKoreanWorkoutDate,
   getKoreanWeekRange,
@@ -382,29 +383,7 @@ function calculateSettlementRow(
   period: SettlementPeriod,
   posts: SettlementWorkoutPost[],
 ): CalculatedSettlementRow {
-  const dailyResults = createEmptyDailyResults(period.weekStartDate, period.weekEndDate);
-
-  for (const post of posts) {
-    const businessDate = getKoreanWorkoutDate(post.createdAt, season.dayStartTime);
-
-    if (businessDate < period.weekStartDate || businessDate > period.weekEndDate) {
-      continue;
-    }
-
-    const dailyResult = dailyResults[businessDate] ?? { count: 0, countedPostIds: [] };
-
-    if (season.dailyDuplicatePolicy === "count_all") {
-      dailyResult.count += 1;
-      dailyResult.countedPostIds.push(post.id.toString());
-    } else if (dailyResult.count === 0) {
-      dailyResult.count = 1;
-      dailyResult.countedPostIds = [post.id.toString()];
-    }
-
-    dailyResults[businessDate] = dailyResult;
-  }
-
-  const validWorkoutCount = Object.values(dailyResults).reduce((total, result) => total + result.count, 0);
+  const { dailyResults, validWorkoutCount } = calculateDailyWorkouts(posts, season, period);
   const missedCount = Math.max(season.targetWorkoutCountPerWeek - validWorkoutCount, 0);
   const autoFineAmount = missedCount * season.finePerMiss;
 
@@ -418,19 +397,6 @@ function calculateSettlementRow(
   };
 }
 
-function createEmptyDailyResults(weekStartDate: string, weekEndDate: string): SettlementDailyResults {
-  const dailyResults: SettlementDailyResults = {};
-  const cursor = new Date(`${weekStartDate}T00:00:00Z`);
-  const end = new Date(`${weekEndDate}T00:00:00Z`);
-
-  while (cursor <= end) {
-    dailyResults[formatUtcDate(cursor)] = { count: 0, countedPostIds: [] };
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-
-  return dailyResults;
-}
-
 async function acquireBatchLock() {
   const rows = await db.execute(sql`SELECT pg_try_advisory_lock(${WEEKLY_SETTLEMENT_BATCH_LOCK_KEY}) AS locked`);
   return Boolean((rows as unknown as Array<{ locked: boolean }>)[0]?.locked);
@@ -438,10 +404,6 @@ async function acquireBatchLock() {
 
 async function releaseBatchLock() {
   await db.execute(sql`SELECT pg_advisory_unlock(${WEEKLY_SETTLEMENT_BATCH_LOCK_KEY})`);
-}
-
-function formatUtcDate(date: Date) {
-  return date.toISOString().slice(0, 10);
 }
 
 function log(message: string, data: Record<string, unknown> = {}) {
