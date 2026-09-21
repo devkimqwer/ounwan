@@ -1191,6 +1191,45 @@ export async function createWorkoutPost(input: CreateWorkoutPostInput) {
     throw error;
   }
 
+  try {
+    const [actorRows, recipientRows] = await Promise.all([
+      db
+        .select({ displayName: users.displayName })
+        .from(users)
+        .where(eq(users.id, BigInt(context.userId)))
+        .limit(1),
+      db
+        .select({ userId: groupMembers.userId })
+        .from(groupMembers)
+        .innerJoin(users, eq(users.id, groupMembers.userId))
+        .where(
+          and(
+            eq(groupMembers.groupId, BigInt(context.groupId)),
+            ne(groupMembers.userId, BigInt(context.userId)),
+            isNull(groupMembers.leftAt),
+            eq(users.status, "active"),
+            isNull(users.deletedAt),
+          ),
+        ),
+    ]);
+
+    await createNotifications(
+      db,
+      recipientRows.map(({ userId }) => ({
+        recipientUserId: userId,
+        actorUserId: BigInt(context.userId),
+        groupId: BigInt(context.groupId),
+        type: "workout_post_created",
+        message: `${actorRows[0]?.displayName ?? "사용자"}님이 인증 게시글을 등록했어요.`,
+        actionType: "post_detail",
+        actionTargetId: postId.toString(),
+      })),
+    );
+  } catch (error) {
+    // Keep a saved post successful even when notification delivery fails.
+    console.error("[ounwan workout post notification error]", error);
+  }
+
   return { id: postId.toString() };
 }
 
