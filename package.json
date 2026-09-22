@@ -19,7 +19,9 @@
     "batch:weekly-settlement": "tsx src/batch/weekly-settlement.ts",
     "batch:weekly-settlement:local": "node --env-file=.env.local --import tsx src/batch/weekly-settlement.ts",
     "batch:activate-pending-seasons": "tsx src/batch/activate-pending-seasons.ts",
-    "batch:activate-pending-seasons:local": "node --env-file=.env.local --import tsx src/batch/activate-pending-seasons.ts"
+    "batch:activate-pending-seasons:local": "node --env-file=.env.local --import tsx src/batch/activate-pending-seasons.ts",
+    "batch:cleanup-storage": "tsx src/batch/cleanup-storage.ts",
+    "batch:cleanup-storage:local": "node --env-file=.env.local --import tsx src/batch/cleanup-storage.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",

@@ -1,11 +1,9 @@
-import "server-only";
-
 import path from "node:path";
 
 import { eq } from "drizzle-orm";
 
-import { db } from "@/db/client";
-import { appSettings } from "@/db/schema";
+import { db } from "../db/database";
+import { appSettings } from "../db/schema";
 
 export const localUploadRootSettingKey = "local_upload_root";
 

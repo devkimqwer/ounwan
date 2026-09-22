@@ -4,9 +4,10 @@ import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 
 import { buildBankBalanceRecordImageStorageKey, buildUserAvatarStorageKey, buildWorkoutPostMediaStorageKey, buildWorkoutPostThumbnailStorageKey } from "./paths";
-import { localStorageAdapter } from "./local";
-import { createS3StorageAdapter } from "./s3";
-import type { StorageAdapter, StorageProvider, StoredMediaFile } from "./types";
+import { getConfiguredStorageAdapter } from "./adapter";
+import type { StoredMediaFile } from "./types";
+
+export { getConfiguredStorageProvider } from "./adapter";
 
 export async function saveWorkoutPostMediaFiles(input: {
   files: File[];
@@ -121,30 +122,6 @@ export async function deleteStorageFiles(storageKeys: Array<string | undefined>)
 
 export async function readStorageFile(storageKey: string) {
   return getConfiguredStorageAdapter().get(storageKey);
-}
-
-function getConfiguredStorageAdapter() {
-  return getStorageAdapter(getConfiguredStorageProvider());
-}
-
-function getStorageAdapter(provider: StorageProvider): StorageAdapter {
-  switch (provider) {
-    case "local":
-      return localStorageAdapter;
-    case "s3":
-      return createS3StorageAdapter();
-    default:
-      provider satisfies never;
-      throw new Error("Unsupported storage provider.");
-  }
-}
-
-export function getConfiguredStorageProvider(): StorageProvider {
-  const provider = process.env.OUNWAN_STORAGE_PROVIDER?.trim() || "local";
-  if (provider === "local" || provider === "s3") {
-    return provider;
-  }
-  throw new Error("OUNWAN_STORAGE_PROVIDER must be local or s3.");
 }
 
 function getMediaType(file: File) {

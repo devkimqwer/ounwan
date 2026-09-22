@@ -1,0 +1,5 @@
+# /etc/cron.d/ounwan-storage-cleanup 에 설치한다. UTC 20:10은 한국시간 다음 날 05:10이다.
+# 이 설정은 UTC 시간대를 사용하는 EC2 기준이다.
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+10 20 * * * root docker exec ounwan-app npm run batch:cleanup-storage >> /var/log/ounwan-storage-cleanup.log 2>&1
