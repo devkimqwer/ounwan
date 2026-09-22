@@ -1,4 +1,4 @@
-import { eq, or } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/db/client";
@@ -58,7 +58,7 @@ async function getAllowedFallbackContentType(storageKey: string, path: string[])
     const bankBalanceRecordRows = await db
       .select({ imageStorageKey: bankBalanceRecords.imageStorageKey })
       .from(bankBalanceRecords)
-      .where(eq(bankBalanceRecords.imageStorageKey, storageKey))
+      .where(and(eq(bankBalanceRecords.imageStorageKey, storageKey), isNull(bankBalanceRecords.deletedAt)))
       .limit(1);
 
     return bankBalanceRecordRows[0] ? inferImageContentType(storageKey) ?? "application/octet-stream" : null;

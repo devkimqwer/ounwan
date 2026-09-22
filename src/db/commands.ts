@@ -943,6 +943,66 @@ export async function createBankBalanceRecord(input: CreateBankBalanceRecordInpu
 
   return { id: recordId.toString() };
 }
+export async function updateBankBalanceRecord(input: { recordId: string; memo: string; imageFile?: File }) {
+  const context = await getCurrentGroupTreasurerContext();
+  let newStorageKey: string | undefined;
+  let oldStorageKey: string | undefined;
+  let updatedRecord;
+
+  try {
+    updatedRecord = await db.transaction(async (tx) => {
+      const [record] = await tx.select().from(bankBalanceRecords).where(and(
+        eq(bankBalanceRecords.id, BigInt(input.recordId)),
+        eq(bankBalanceRecords.groupId, BigInt(context.groupId)),
+        eq(bankBalanceRecords.createdByUserId, BigInt(context.userId)),
+        isNull(bankBalanceRecords.deletedAt),
+      )).for("update");
+      if (!record) {
+        throw new Error("Bank balance record is not editable.");
+      }
+      if (input.imageFile) {
+        const image = await saveBankBalanceRecordImage({ file: input.imageFile, groupId: context.groupId, recordId: input.recordId });
+        newStorageKey = image.storageKey;
+        oldStorageKey = record.imageStorageKey;
+      }
+      const [updated] = await tx.update(bankBalanceRecords).set({
+        memo: input.memo.trim() || null,
+        ...(newStorageKey ? { imageStorageKey: newStorageKey, imageUrl: null } : {}),
+      }).where(eq(bankBalanceRecords.id, record.id)).returning();
+      return updated;
+    });
+  } catch (error) {
+    if (newStorageKey) {
+      await deleteStorageFiles([newStorageKey]).catch((cleanupError) => console.error("[ounwan storage cleanup]", cleanupError));
+    }
+    throw error;
+  }
+  if (oldStorageKey) {
+    await deleteStorageFiles([oldStorageKey]).catch((error) => console.error("[ounwan storage cleanup]", error));
+  }
+  return {
+    id: updatedRecord.id.toString(),
+    groupId: updatedRecord.groupId.toString(),
+    createdByUserId: updatedRecord.createdByUserId.toString(),
+    createdAt: updatedRecord.createdAt.toISOString(),
+    memo: updatedRecord.memo ?? undefined,
+    imageUrl: updatedRecord.imageUrl ?? `/uploads/${updatedRecord.imageStorageKey}`,
+  };
+}
+
+export async function deleteBankBalanceRecord(recordId: string) {
+  const context = await getCurrentGroupTreasurerContext();
+  const rows = await db.update(bankBalanceRecords).set({ deletedAt: new Date() }).where(and(
+    eq(bankBalanceRecords.id, BigInt(recordId)),
+    eq(bankBalanceRecords.groupId, BigInt(context.groupId)),
+    eq(bankBalanceRecords.createdByUserId, BigInt(context.userId)),
+    isNull(bankBalanceRecords.deletedAt),
+  )).returning({ id: bankBalanceRecords.id });
+  if (!rows.length) {
+    throw new Error("Bank balance record is not deletable.");
+  }
+}
+
 export async function updateBankAccountInfo(input: UpdateBankAccountInfoInput) {
   const context = await getCurrentGroupTreasurerContext();
   const bankName = input.bankName.trim();

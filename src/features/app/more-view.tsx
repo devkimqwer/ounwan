@@ -320,7 +320,7 @@ export function MoreView({
   }
 
   if (activeMorePage === "balance-status") {
-    return <BalanceStatusView bankRecords={bankRecords} users={users} onBack={onCloseMorePage} />;
+    return <BalanceStatusView key={currentGroup.id} bankRecords={bankRecords} users={users} currentUserId={currentUserId} isTreasurer={isTreasurer} onBack={onCloseMorePage} />;
   }
 
   if (activeMorePage === "settlement-history") {

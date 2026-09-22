@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { getCurrentMemberWorkoutStatus, getCurrentUserNotificationPage, getCurrentUserSettlementDetail, getCurrentUserUnreadNotificationCount, getCurrentWorkoutPostById, getCurrentWorkoutPostPage } from "@/db/queries";
-import { activateCurrentGroupPendingSeason, closeActiveSeason, createBankBalanceRecord, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, expelGroupMember, confirmWeeklySettlement, getOrCreateCurrentGroupInvite, leaveGroup, markAllNotificationsRead, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostReaction, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateGroupMemberRoles, updateSeasonRules, updateWorkoutPost } from "@/db/commands";
+import { activateCurrentGroupPendingSeason, closeActiveSeason, createBankBalanceRecord, createGroup, createPostComment, createSeason, createWorkoutPost, deleteBankBalanceRecord, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, expelGroupMember, confirmWeeklySettlement, getOrCreateCurrentGroupInvite, leaveGroup, markAllNotificationsRead, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostReaction, toggleWorkoutPostInvalid, updateBankAccountInfo, updateBankBalanceRecord, updateCurrentUserProfile, updateGroupMemberRoles, updateSeasonRules, updateWorkoutPost } from "@/db/commands";
 import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError, WorkoutPostUpdateError } from "@/db/errors";
-import type { SettlementDetail, WorkoutPost, WorkoutPostCursor, WorkoutPostPage } from "@/domain/models";
+import type { BankRecord, SettlementDetail, WorkoutPost, WorkoutPostCursor, WorkoutPostPage } from "@/domain/models";
 import { isPostReactionType } from "@/domain/post-reactions";
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
@@ -64,6 +64,7 @@ export type CreateBankBalanceRecordState = {
   status: "idle" | "success" | "error";
   message: string;
   recordId?: string;
+  updatedRecord?: BankRecord;
 };
 
 export type CreateGroupInviteState = {
@@ -745,6 +746,53 @@ export async function createBankBalanceRecordAction(
     return { status: "error", message: "잔고 현황을 등록할 수 없습니다." };
   }
 }
+export async function updateBankBalanceRecordAction(
+  _previousState: CreateBankBalanceRecordState,
+  formData: FormData,
+): Promise<CreateBankBalanceRecordState> {
+  const recordId = String(formData.get("recordId") ?? "");
+  const memo = String(formData.get("memo") ?? "").trim();
+  const imageFiles = formData.getAll("imageFile").filter((value): value is File => value instanceof File && value.size > 0);
+  const imageFile = imageFiles[0];
+  if (!/^\d+$/.test(recordId)) {
+    return { status: "error", message: "수정할 잔고 게시글을 확인해주세요." };
+  }
+  if (imageFiles.length > 1) {
+    return { status: "error", message: "잔고 이미지는 1개만 등록할 수 있습니다." };
+  }
+  if (imageFile && !isSupportedImageFile(imageFile)) {
+    return { status: "error", message: "이미지 파일만 업로드할 수 있습니다." };
+  }
+  if (imageFile && imageFile.size > MAX_BANK_BALANCE_RECORD_IMAGE_BYTES) {
+    return { status: "error", message: "잔고 이미지는 5MB 이하로 선택해주세요." };
+  }
+  if (memo.length > MAX_BANK_BALANCE_RECORD_MEMO_LENGTH) {
+    return { status: "error", message: `내용은 ${MAX_BANK_BALANCE_RECORD_MEMO_LENGTH}자 이내로 입력해주세요.` };
+  }
+  try {
+    const updatedRecord = await updateBankBalanceRecord({ recordId, memo, imageFile });
+    revalidatePath("/");
+    return { status: "success", message: "잔고 현황이 수정됐습니다.", recordId, updatedRecord };
+  } catch (error) {
+    console.error("[ounwan error]", error);
+    return { status: "error", message: "잔고 현황을 수정할 수 없습니다. 총무 권한과 작성자를 확인해주세요." };
+  }
+}
+
+export async function deleteBankBalanceRecordAction(recordId: string): Promise<CreateBankBalanceRecordState> {
+  if (!/^\d+$/.test(recordId)) {
+    return { status: "error", message: "삭제할 잔고 게시글을 확인해주세요." };
+  }
+  try {
+    await deleteBankBalanceRecord(recordId);
+    revalidatePath("/");
+    return { status: "success", message: "잔고 현황이 삭제됐습니다.", recordId };
+  } catch (error) {
+    console.error("[ounwan error]", error);
+    return { status: "error", message: "잔고 현황을 삭제할 수 없습니다. 총무 권한과 작성자를 확인해주세요." };
+  }
+}
+
 export async function updateWorkoutPostAction(
   _previousState: CreateWorkoutPostState,
   formData: FormData,

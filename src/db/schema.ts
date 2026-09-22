@@ -430,6 +430,7 @@ export const bankBalanceRecords = pgTable(
     imageStorageKey: text("image_storage_key").notNull(),
     imageUrl: text("image_url"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [index("idx_bank_balance_records_group_created").on(table.groupId, table.createdAt.desc())],
 );

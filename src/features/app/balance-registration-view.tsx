@@ -1,7 +1,8 @@
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { createBankBalanceRecordAction, type CreateBankBalanceRecordState } from "@/app/actions";
+import { createBankBalanceRecordAction, updateBankBalanceRecordAction, type CreateBankBalanceRecordState } from "@/app/actions";
+import type { BankRecord } from "@/domain/models";
 import { AppDialog } from "@/components/ui/app-dialog";
 import { compressImageFileForUpload } from "./media-compression";
 import { AppSubPageHeader } from "./shared-ui";
@@ -16,7 +17,13 @@ type BalanceImagePreview = {
   file: File;
 };
 
-export function BalanceRegistrationView({ onBack, onCreated }: { onBack: () => void; onCreated: () => void }) {
+export function BalanceRegistrationView({ onBack, onCreated, recordToEdit, onUpdated }: {
+  onBack: () => void;
+  onCreated?: () => void;
+  recordToEdit?: BankRecord;
+  onUpdated?: (record: BankRecord) => void;
+}) {
+  const isEditing = Boolean(recordToEdit);
   const router = useRouter();
   const previewRef = useRef<BalanceImagePreview | null>(null);
   const [preview, setPreview] = useState<BalanceImagePreview | null>(null);
@@ -105,9 +112,14 @@ export function BalanceRegistrationView({ onBack, onCreated }: { onBack: () => v
         formData.append("imageFile", uploadFile);
       }
 
-      const result = await createBankBalanceRecordAction(initialState, formData);
+      if (recordToEdit) {
+        formData.set("recordId", recordToEdit.id);
+      }
+      const result = recordToEdit
+        ? await updateBankBalanceRecordAction(initialState, formData)
+        : await createBankBalanceRecordAction(initialState, formData);
       setState(result);
-      if (result.status === "success") {
+      if (result.status === "success" && !isEditing) {
         if (previewRef.current) {
           URL.revokeObjectURL(previewRef.current.url);
         }
@@ -117,7 +129,7 @@ export function BalanceRegistrationView({ onBack, onCreated }: { onBack: () => v
         router.refresh();
       }
     } catch {
-      setState({ status: "error", message: "잔고 현황을 등록할 수 없습니다." });
+      setState({ status: "error", message: isEditing ? "잔고 현황을 수정할 수 없습니다." : "잔고 현황을 등록할 수 없습니다." });
     } finally {
       setSubmitStatusMessage("");
       setIsSubmitting(false);
@@ -127,13 +139,17 @@ export function BalanceRegistrationView({ onBack, onCreated }: { onBack: () => v
   const handleCloseMessageDialog = () => {
     setMessageDialogOpen(false);
     if (state.status === "success") {
-      onCreated();
+      if (state.updatedRecord) {
+        onUpdated?.(state.updatedRecord);
+      } else {
+        onCreated?.();
+      }
     }
   };
 
   return (
     <form onSubmit={handleSubmit} className="min-h-full bg-slate-50 pb-24">
-      <AppSubPageHeader title="잔고 등록" onBack={onBack} />
+      <AppSubPageHeader title={isEditing ? "잔고 수정" : "잔고 등록"} onBack={onBack} />
 
       <div className="space-y-4 p-4">
         <section>
@@ -149,6 +165,7 @@ export function BalanceRegistrationView({ onBack, onCreated }: { onBack: () => v
                   type="file"
                   accept="image/*,.heic,.heif"
                   className="sr-only"
+                  disabled={isSubmitting}
                   onChange={handleImageChange}
                 />
               </label>
@@ -161,6 +178,7 @@ export function BalanceRegistrationView({ onBack, onCreated }: { onBack: () => v
                       aria-label={`${preview.name} 삭제`}
                       className="absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-full bg-slate-950/75 text-xs font-extrabold leading-none text-white shadow-sm"
                       onClick={handleRemoveImage}
+                      disabled={isSubmitting}
                     >
                       X
                     </button>
@@ -171,8 +189,16 @@ export function BalanceRegistrationView({ onBack, onCreated }: { onBack: () => v
               )}
             </div>
 
+            {!preview && recordToEdit && (
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <img src={recordToEdit.imageUrl} alt="기존 잔고 이미지" className="aspect-[4/3] w-full object-cover" />
+              </div>
+            )}
+
             <textarea
               name="memo"
+              defaultValue={recordToEdit?.memo ?? ""}
+              disabled={isSubmitting}
               maxLength={500}
               className="min-h-28 w-full resize-none rounded-2xl border border-slate-200 bg-white p-3.5 text-sm leading-5 outline-none placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5]"
               placeholder="내용을 입력하세요. (선택사항)"
@@ -189,13 +215,13 @@ export function BalanceRegistrationView({ onBack, onCreated }: { onBack: () => v
           disabled={isSubmitting}
           className="w-full rounded-2xl bg-slate-950 py-3.5 text-base font-extrabold text-white shadow-sm disabled:bg-slate-300"
         >
-          {isSubmitting ? submitStatusMessage || "등록 중" : "잔고 등록"}
+          {isSubmitting ? submitStatusMessage || "저장 중" : isEditing ? "수정 완료" : "잔고 등록"}
         </button>
       </div>
 
       <AppDialog
         open={messageDialogOpen && Boolean(state.message)}
-        title={state.status === "success" ? "등록 완료" : "확인해주세요"}
+        title={state.status === "success" ? isEditing ? "수정 완료" : "등록 완료" : "확인해주세요"}
         description={state.message}
         role="alertdialog"
         dismissOnBackdrop={state.status !== "success"}
