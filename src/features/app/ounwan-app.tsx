@@ -23,6 +23,7 @@ import { NotificationView } from "./notification-view";
 import { PostDetailView } from "./post-detail-view";
 import { TabIcon } from "./tab-icon";
 import { PageNotReadyView } from "./page-not-ready-view";
+import { WorkoutPostEditView } from "./workout-post-edit-view";
 
 const UNREAD_NOTIFICATION_POLL_INTERVAL_MS = 15000;
 type RefreshOnEnterOptions = {
@@ -59,6 +60,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [selectedPostSnapshot, setSelectedPostSnapshot] = useState<WorkoutPost | null>(null);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [pendingCreatedPostId, setPendingCreatedPostId] = useState<string | null>(null);
   const [activeMorePage, setActiveMorePage] = useState<MoreSubPage>("main");
   const [notificationOpen, setNotificationOpen] = useState(false);
@@ -69,6 +71,10 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   const feedScopeKey = `${appData.currentGroupId}:${appData.currentSeasonId ?? "none"}`;
   const [feedState, setFeedState] = useState({ scopeKey: feedScopeKey, page: appData.postPage, mineOnly: false });
   const detailHistoryActiveRef = useRef(false);
+  const postEditingRef = useRef(false);
+  const postEditClosingRef = useRef(false);
+  const postEditScrollTopRef = useRef(0);
+  const pendingPostEditNavigationRef = useRef<(() => void) | null>(null);
   const menuHistoryActiveRef = useRef(false);
   const tabHistoryActiveRef = useRef(false);
   const morePageHistoryActiveRef = useRef(false);
@@ -117,6 +123,20 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   }, [currentUserId]);
 
   useEffect(() => {
+    if (postEditingRef.current) {
+      setFeedState((previous) => {
+        if (previous.scopeKey !== feedScopeKey) {
+          return { scopeKey: feedScopeKey, page: appData.postPage, mineOnly: false };
+        }
+
+        const refreshedPosts = new Map(appData.postPage.posts.map((post) => [post.id, post]));
+        return {
+          ...previous,
+          page: { ...previous.page, posts: previous.page.posts.map((post) => refreshedPosts.get(post.id) ?? post) },
+        };
+      });
+      return;
+    }
     setFeedState({ scopeKey: feedScopeKey, page: appData.postPage, mineOnly: false });
   }, [appData.postPage, feedScopeKey]);
 
@@ -139,7 +159,50 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   };
 
 
+  const openPostEditor = (post: WorkoutPost) => {
+    if (post.userId !== currentUserId || postEditingRef.current) {
+      return;
+    }
+    postEditScrollTopRef.current = contentScrollRef.current?.scrollTop ?? 0;
+    postEditingRef.current = true;
+    window.history.pushState({ ...window.history.state, ounwanPostEdit: post.id }, "");
+    setEditingPostId(post.id);
+    requestAnimationFrame(() => contentScrollRef.current?.scrollTo({ top: 0 }));
+  };
+
+  const closePostEditor = () => {
+    if (!postEditingRef.current || postEditClosingRef.current) {
+      return;
+    }
+    postEditClosingRef.current = true;
+    window.history.back();
+  };
+
+  const deferUntilPostEditClosed = (navigate: () => void) => {
+    if (!postEditingRef.current) {
+      return false;
+    }
+    pendingPostEditNavigationRef.current = navigate;
+    closePostEditor();
+    return true;
+  };
+
+  const handlePostUpdated = (post?: WorkoutPost) => {
+    if (!post) {
+      router.refresh();
+      return;
+    }
+    setSelectedPostSnapshot((previous) => previous?.id === post.id ? post : previous);
+    setFeedState((previous) => ({
+      ...previous,
+      page: { ...previous.page, posts: previous.page.posts.map((item) => item.id === post.id ? post : item) },
+    }));
+  };
+
   const openNotifications = () => {
+    if (deferUntilPostEditClosed(openNotifications)) {
+      return;
+    }
     if (!notificationOpenRef.current) {
       notificationHistoryActiveRef.current = true;
       window.history.pushState({ ounwanNotifications: true }, "");
@@ -234,7 +297,25 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
     });
   };
 
+  const completePostEdit = (post?: WorkoutPost) => {
+    if (!editingPostId) {
+      return;
+    }
+    const postId = editingPostId;
+    deferUntilPostEditClosed(() => {
+      if (selectedPostIdRef.current === postId) {
+        requestAnimationFrame(() => contentScrollRef.current?.scrollTo({ top: 0 }));
+        return;
+      }
+      contentScrollRef.current?.scrollTo({ top: postEditScrollTopRef.current });
+      openPostDetail(postId, post);
+    });
+  };
+
   const openMenu = () => {
+    if (deferUntilPostEditClosed(openMenu)) {
+      return;
+    }
     if (menuOpenRef.current) {
       return;
     }
@@ -407,6 +488,9 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   };
 
   const openSettlementBannerDetail = (settlementId: string, targetGroupId = group.id) => {
+    if (deferUntilPostEditClosed(() => openSettlementBannerDetail(settlementId, targetGroupId))) {
+      return;
+    }
     dismissSettlementBanner(settlementId, targetGroupId);
     setSettlementDetailTargetId(settlementId);
     moveToTab("more");
@@ -429,6 +513,9 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
   };
 
   const selectTab = (tabId: TabId, options: RefreshOnEnterOptions = {}) => {
+    if (deferUntilPostEditClosed(() => selectTab(tabId, options))) {
+      return;
+    }
     if (menuHistoryActiveRef.current) {
       pendingMenuSelectionRef.current = tabId;
       pendingMenuSelectionRefreshRef.current = Boolean(options.refreshOnEnter);
@@ -584,6 +671,19 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
 
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
+      if (postEditingRef.current) {
+        postEditingRef.current = false;
+        postEditClosingRef.current = false;
+        setEditingPostId(null);
+        const navigate = pendingPostEditNavigationRef.current;
+        pendingPostEditNavigationRef.current = null;
+        if (navigate) {
+          navigate();
+        } else {
+          requestAnimationFrame(() => contentScrollRef.current?.scrollTo({ top: postEditScrollTopRef.current }));
+        }
+        return;
+      }
       const pendingMenuSelection = pendingMenuSelectionRef.current;
       if (pendingMenuSelection) {
         pendingMenuSelectionRef.current = null;
@@ -805,13 +905,16 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
         </AppDialog>
 
         <div ref={contentScrollRef} className="min-h-0 flex-1 overflow-y-auto bg-slate-50 pb-4">
-          {selectedPost ? (
+          {editingPostId ? (
+            <WorkoutPostEditView key={editingPostId} postId={editingPostId} currentUserId={currentUserId} onUpdated={handlePostUpdated} onComplete={completePostEdit} onBack={closePostEditor} />
+          ) : selectedPost ? (
             <PostDetailView
               post={selectedPost}
               currentUserId={currentUserId}
               isAdmin={isAdmin}
               users={users}
               onBack={closePostDetail}
+              onPostEdit={openPostEditor}
             />
           ) : notificationOpen ? (
             <NotificationView
@@ -830,6 +933,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                   onCert={() => selectTab("cert")}
                   onFeed={() => selectTab("feed", { refreshOnEnter: true })}
                   onPostOpen={openPostDetail}
+                  onPostEdit={openPostEditor}
                   isAdmin={isAdmin}
                   posts={posts}
                   users={users}
@@ -849,6 +953,7 @@ export function OunwanApp({ appData }: { appData: OunwanAppData }) {
                   scrollRootRef={contentScrollRef}
                   users={users}
                   onPostOpen={openPostDetail}
+                  onPostEdit={openPostEditor}
                   onFeedStateChange={(state) => setFeedState({ scopeKey: feedScopeKey, ...state })}
                 />
               )}

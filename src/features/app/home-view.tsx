@@ -9,6 +9,7 @@ export function HomeView({
   onCert,
   onFeed,
   onPostOpen,
+  onPostEdit,
   isAdmin,
   posts,
   users,
@@ -19,6 +20,7 @@ export function HomeView({
   onCert: () => void;
   onFeed: () => void;
   onPostOpen: (postId: string, post?: WorkoutPost) => void;
+  onPostEdit: (post: WorkoutPost) => void;
   isAdmin: boolean;
   posts: WorkoutPost[];
   users: User[];
@@ -119,7 +121,7 @@ export function HomeView({
         </div>
         <div className="space-y-3">
           {recentPosts.map((post) => (
-            <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} users={users} onOpen={(postId) => onPostOpen(postId, post)} />
+            <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} users={users} onOpen={(postId) => onPostOpen(postId, post)} onEdit={onPostEdit} />
           ))}
         </div>
       </section>

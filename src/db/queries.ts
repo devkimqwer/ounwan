@@ -803,6 +803,7 @@ async function hydrateWorkoutPosts(
         url: media.url ?? `/uploads/${media.storageKey}`,
         thumbnailUrl: media.thumbnailUrl ?? undefined,
         sortOrder: media.sortOrder,
+        fileSizeBytes: media.fileSizeBytes === null ? undefined : Number(media.fileSizeBytes),
       });
       mediaByPostId.set(postId, list);
     }
@@ -1083,7 +1084,7 @@ async function getBankRecords(groupId: string): Promise<BankRecord[]> {
   const rows = await db
     .select()
     .from(bankBalanceRecords)
-    .where(eq(bankBalanceRecords.groupId, BigInt(groupId)))
+    .where(and(eq(bankBalanceRecords.groupId, BigInt(groupId)), isNull(bankBalanceRecords.deletedAt)))
     .orderBy(desc(bankBalanceRecords.createdAt));
 
   return rows.map((row) => ({

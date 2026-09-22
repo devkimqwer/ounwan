@@ -16,6 +16,7 @@ export function FeedView({
   scrollRootRef,
   users,
   onPostOpen,
+  onPostEdit,
   onFeedStateChange,
 }: {
   isAdmin: boolean;
@@ -27,6 +28,7 @@ export function FeedView({
   scrollRootRef: RefObject<HTMLDivElement | null>;
   users: User[];
   onPostOpen: (postId: string, post?: WorkoutPost) => void;
+  onPostEdit: (post: WorkoutPost) => void;
   onFeedStateChange?: (state: { page: WorkoutPostPage; mineOnly: boolean }) => void;
 }) {
   const [mineOnly, setMineOnly] = useState(initialMineOnly);
@@ -127,7 +129,7 @@ export function FeedView({
         <FeedSkeleton />
       ) : (
         visiblePosts.map((post) => (
-          <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} users={users} onOpen={(postId) => onPostOpen(postId, post)} />
+          <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} users={users} onOpen={(postId) => onPostOpen(postId, post)} onEdit={onPostEdit} />
         ))
       )}
       {!isReloadingFilter && isLoadingMore && <FeedSkeleton />}

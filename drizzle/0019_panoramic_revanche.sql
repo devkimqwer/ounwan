@@ -1,0 +1,1 @@
+ALTER TABLE "bank_balance_records" ADD COLUMN "deleted_at" timestamp with time zone;

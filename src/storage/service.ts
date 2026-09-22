@@ -16,6 +16,7 @@ export async function saveWorkoutPostMediaFiles(input: {
 }) {
   const adapter = getConfiguredStorageAdapter();
   const savedFiles: StoredMediaFile[] = [];
+  const savedStorageKeys: string[] = [];
 
   try {
     for (const [index, file] of input.files.entries()) {
@@ -32,6 +33,7 @@ export async function saveWorkoutPostMediaFiles(input: {
       });
       const buffer = Buffer.from(await file.arrayBuffer());
       await adapter.put({ storageKey, body: buffer, contentType: file.type || undefined });
+      savedStorageKeys.push(storageKey);
 
       let thumbnailStorageKey: string | undefined;
       if (mediaType === "image") {
@@ -48,6 +50,7 @@ export async function saveWorkoutPostMediaFiles(input: {
           .webp({ quality: 78 })
           .toBuffer();
         await adapter.put({ storageKey: thumbnailStorageKey, body: thumbnailBuffer, contentType: "image/webp" });
+        savedStorageKeys.push(thumbnailStorageKey);
       }
 
       savedFiles.push({
@@ -59,7 +62,7 @@ export async function saveWorkoutPostMediaFiles(input: {
       });
     }
   } catch (error) {
-    await deleteStorageFiles(savedFiles.flatMap((file) => [file.storageKey, file.thumbnailStorageKey]));
+    await deleteStorageFiles(savedStorageKeys);
     throw error;
   }
 

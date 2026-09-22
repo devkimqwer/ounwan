@@ -14,12 +14,14 @@ export function PostDetailView({
   currentUserId,
   isAdmin,
   onBack,
+  onPostEdit,
 }: {
   post: WorkoutPost;
   users: User[];
   currentUserId: string;
   isAdmin: boolean;
   onBack: () => void;
+  onPostEdit: (post: WorkoutPost) => void;
 }) {
   const router = useRouter();
   const initialCommentState: CreatePostCommentState = { status: "idle", message: "" };
@@ -113,6 +115,7 @@ export function PostDetailView({
         isAdmin={isAdmin}
         users={users}
         mediaVariant="carousel"
+        onEdit={onPostEdit}
       />
       <section className="rounded-2xl border border-slate-200 bg-white p-4">
         <div className="flex items-center justify-between">
