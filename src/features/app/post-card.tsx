@@ -168,6 +168,7 @@ export function PostCard({
   const router = useRouter();
   const openPost = onOpen ? () => onOpen(post.id) : undefined;
   const selectedReactionTypes = new Set(post.currentUserReactionTypes);
+  const hasReacted = selectedReactionTypes.size > 0;
   const visibleReactionSummaries = POST_REACTION_OPTIONS
     .filter((option) => post.reactionSummaries.some((summary) => summary.type === option.type))
     .slice(0, 3);
@@ -328,7 +329,7 @@ export function PostCard({
                 {post.reactionCount > 0 ? (
                   <button
                     type="button"
-                    className="inline-flex min-h-9 items-center gap-1 rounded-full px-3 text-xs font-bold text-slate-700 ring-1 ring-slate-200"
+                    className={`inline-flex min-h-9 items-center gap-1 rounded-full px-3 text-xs font-bold ring-1 ${hasReacted ? "bg-[#F2F0FA] text-[#51438f] ring-[#8B7ED0]" : "text-slate-700 ring-slate-200"}`}
                     aria-label={`반응한 사람 ${post.reactionCount}명 보기`}
                     onClick={(event) => {
                       event.stopPropagation();
