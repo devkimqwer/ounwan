@@ -105,6 +105,7 @@ export interface PostMedia {
   url: string;
   thumbnailUrl?: string;
   sortOrder: number;
+  fileSizeBytes?: number;
 }
 
 export interface PostComment {

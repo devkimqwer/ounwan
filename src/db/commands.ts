@@ -10,7 +10,7 @@ import { getKoreanDate, getKoreanWorkoutDate, getNextSettlementAt, isSeasonStart
 import { deleteStorageFiles, saveBankBalanceRecordImage, saveUserAvatarSvg, saveWorkoutPostMediaFiles } from "@/storage/service";
 
 import { db } from "./client";
-import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError, GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, SeasonStartDateInPastError } from "./errors";
+import { ActiveSeasonNotFoundError, CurrentUserMembershipNotFoundError, GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, SeasonStartDateInPastError, WorkoutPostUpdateError } from "./errors";
 import { bankAccounts, bankBalanceRecords, groupInvites, groupJoinRequests, groupMembers, groups, notifications, postComments, postLikes, postMedia, pushSubscriptions, seasons, seasonParticipantPeriods, users, weeklySettlementRows, weeklySettlements, workoutPosts } from "./schema";
 import { activatePendingSeasonForGroup, initializeActiveSeason, runPendingSeasonActivationBatch } from "./season-activation";
 import { syncDraftSettlementRowForWorkoutPost } from "./weekly-settlement";
@@ -1147,6 +1147,89 @@ export async function closeActiveSeason(input: CloseSeasonInput) {
 export async function activateDuePendingSeasons(now = new Date()) {
   const result = await runPendingSeasonActivationBatch(now);
   return { activatedSeasonIds: [], result };
+}
+
+export async function updateWorkoutPost(input: CreateWorkoutPostInput & { postId: string; retainedMediaIds: string[] }) {
+  const context = await getCurrentSeedContext();
+  let storedFiles: Awaited<ReturnType<typeof saveWorkoutPostMediaFiles>> = [];
+  let removedFiles: Array<string | undefined> = [];
+
+  try {
+    await db.transaction(async (tx) => {
+      const [post] = await tx
+        .select({ id: workoutPosts.id })
+        .from(workoutPosts)
+        .where(and(
+          eq(workoutPosts.id, BigInt(input.postId)),
+          eq(workoutPosts.userId, BigInt(context.userId)),
+          eq(workoutPosts.groupId, BigInt(context.groupId)),
+          eq(workoutPosts.seasonId, BigInt(context.seasonId)),
+          isNull(workoutPosts.deletedAt),
+        ))
+        .for("update");
+
+      if (!post) {
+        throw new WorkoutPostUpdateError("수정할 수 없는 게시글입니다.");
+      }
+
+      const existingMedia = await tx.select().from(postMedia).where(eq(postMedia.postId, post.id)).orderBy(postMedia.sortOrder);
+      const retainedIds = new Set(input.retainedMediaIds);
+      const retainedMedia = existingMedia.filter((media) => retainedIds.has(media.id.toString()));
+      if (retainedMedia.length !== retainedIds.size) {
+        throw new WorkoutPostUpdateError("사진 또는 영상이 변경됐습니다. 수정 화면을 다시 열어주세요.");
+      }
+
+      const mediaCount = retainedMedia.length + input.mediaFiles.length;
+      if (mediaCount < 1 || mediaCount > 5) {
+        throw new WorkoutPostUpdateError("사진 또는 영상은 1개 이상, 최대 5개까지 등록할 수 있습니다.");
+      }
+      const totalBytes = retainedMedia.reduce((sum, media) => sum + Number(media.fileSizeBytes ?? 0), 0)
+        + input.mediaFiles.reduce((sum, file) => sum + file.size, 0);
+      if (totalBytes > 5 * 1024 * 1024) {
+        throw new WorkoutPostUpdateError("사진 또는 영상은 총 5MB 이하로 선택해주세요.");
+      }
+
+      storedFiles = await saveWorkoutPostMediaFiles({
+        files: input.mediaFiles, groupId: context.groupId, seasonId: context.seasonId, postId: input.postId,
+      });
+      const removedMedia = existingMedia.filter((media) => !retainedIds.has(media.id.toString()));
+      if (removedMedia.length > 0) {
+        await tx.delete(postMedia).where(inArray(postMedia.id, removedMedia.map((media) => media.id)));
+      }
+      for (const [index, media] of retainedMedia.entries()) {
+        await tx.update(postMedia).set({ sortOrder: index + 1 }).where(eq(postMedia.id, media.id));
+      }
+      if (storedFiles.length > 0) {
+        await tx.insert(postMedia).values(storedFiles.map((file, index) => ({
+          postId: post.id,
+          mediaType: file.mediaType,
+          storageKey: file.storageKey,
+          fileSizeBytes: file.fileSizeBytes,
+          contentType: file.contentType,
+          thumbnailUrl: file.thumbnailStorageKey ? `/uploads/${file.thumbnailStorageKey}` : null,
+          sortOrder: retainedMedia.length + index + 1,
+        })));
+      }
+      await tx.update(workoutPosts).set({
+        content: input.content ?? null,
+        workoutType: input.workoutType ?? null,
+        updatedAt: new Date(),
+      }).where(eq(workoutPosts.id, post.id));
+      removedFiles = removedMedia.flatMap((media) => [
+        media.storageKey ?? undefined,
+        media.thumbnailUrl?.startsWith("/uploads/") ? media.thumbnailUrl.slice("/uploads/".length) : undefined,
+      ]);
+    });
+  } catch (error) {
+    await deleteStorageFiles(storedFiles.flatMap((file) => [file.storageKey, file.thumbnailStorageKey])).catch((cleanupError) => {
+      console.error("[ounwan post edit cleanup error]", cleanupError);
+    });
+    throw error;
+  }
+
+  // 데이터베이스 커밋이 성공한 경우에만 기존 객체를 삭제
+  await deleteStorageFiles(removedFiles).catch((error) => console.error("[ounwan post edit cleanup error]", error));
+  return { id: input.postId };
 }
 
 export async function createWorkoutPost(input: CreateWorkoutPostInput) {

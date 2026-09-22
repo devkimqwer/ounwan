@@ -141,6 +141,7 @@ export function PostCard({
   compact = false,
   mediaVariant = "preview",
   onOpen,
+  onEdit,
 }: {
   post: WorkoutPost;
   users: User[];
@@ -149,6 +150,7 @@ export function PostCard({
   compact?: boolean;
   mediaVariant?: "preview" | "carousel";
   onOpen?: (postId: string) => void;
+  onEdit?: (post: WorkoutPost) => void;
 }) {
   const user = getUserById(users, post.userId);
   const displayUser = user ?? { name: "알 수 없는 사용자", avatarUrl: undefined };
@@ -277,6 +279,18 @@ export function PostCard({
                     </button>
                   </form>
                 )}
+                {isOwnPost && onEdit && (
+                  <button
+                    type="button"
+                    className="w-full px-4 py-3 text-left text-sm font-bold text-slate-950"
+                    onClick={() => {
+                      setAdminMenuOpen(false);
+                      onEdit(post);
+                    }}
+                  >
+                    수정
+                  </button>
+                )}
                 {isOwnPost && (
                   <button
                     type="button"
@@ -295,7 +309,7 @@ export function PostCard({
         )}
       </div>
       {!compact && (
-        <MediaCarousel media={post.media} variant={mediaVariant} isInvalid={post.isInvalid} onOpen={onOpen ? () => onOpen(post.id) : undefined} />
+        <MediaCarousel key={post.media.map((media) => media.id).join(":")} media={post.media} variant={mediaVariant} isInvalid={post.isInvalid} onOpen={onOpen ? () => onOpen(post.id) : undefined} />
       )}
       <div
         className={`space-y-3 p-4 ${openPost ? "cursor-pointer" : ""}`}

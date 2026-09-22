@@ -1,6 +1,7 @@
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
-import { createWorkoutPostAction } from "@/app/actions";
+import { createWorkoutPostAction, updateWorkoutPostAction } from "@/app/actions";
+import type { WorkoutPost } from "@/domain/models";
 import type { CreateWorkoutPostState } from "@/app/actions";
 import { AppDialog } from "@/components/ui/app-dialog";
 import { compressMediaFilesForUpload } from "./media-compression";
@@ -9,7 +10,9 @@ type CertMediaPreview = {
   name: string;
   type: "image" | "video";
   url: string;
-  file: File;
+  file?: File;
+  mediaId?: string;
+  fileSizeBytes?: number;
 };
 
 const MAX_WORKOUT_POST_MEDIA_COUNT = 5;
@@ -18,10 +21,23 @@ const DEFAULT_WORKOUT_TYPES = ["러닝", "헬스"];
 const MAX_RECENT_WORKOUT_TYPE_COUNT = 10;
 const RECENT_WORKOUT_TYPES_STORAGE_KEY = "ounwan.recentWorkoutTypes";
 
-export function CertView({ onPostCreated }: { onPostCreated: (postId: string) => void }) {
-  const [workoutType, setWorkoutType] = useState("");
+export function CertView({ onPostCreated, postToEdit, onPostUpdated, onEditComplete }: {
+  onPostCreated?: (postId: string) => void;
+  postToEdit?: WorkoutPost;
+  onPostUpdated?: (post?: WorkoutPost) => void;
+  onEditComplete?: (post?: WorkoutPost) => void;
+}) {
+  const isEditing = Boolean(postToEdit);
+  const [workoutType, setWorkoutType] = useState(postToEdit?.workoutType ?? "");
   const [recentWorkoutTypes, setRecentWorkoutTypes] = useState<string[]>(DEFAULT_WORKOUT_TYPES);
-  const [mediaPreviews, setMediaPreviews] = useState<CertMediaPreview[]>([]);
+  const [mediaPreviews, setMediaPreviews] = useState<CertMediaPreview[]>(() => postToEdit?.media.map((media, index) => ({
+    id: `existing-${media.id}`,
+    mediaId: media.id,
+    name: `${media.type === "image" ? "사진" : "영상"} ${index + 1}`,
+    type: media.type,
+    url: media.type === "image" ? media.thumbnailUrl ?? media.url : media.url,
+    fileSizeBytes: media.fileSizeBytes,
+  })) ?? []);
   const [certMessageDialogOpen, setCertMessageDialogOpen] = useState(false);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const mediaPreviewsRef = useRef<CertMediaPreview[]>([]);
@@ -57,7 +73,11 @@ export function CertView({ onPostCreated }: { onPostCreated: (postId: string) =>
     }
 
     const dataTransfer = new DataTransfer();
-    previews.forEach((preview) => dataTransfer.items.add(preview.file));
+    previews.forEach((preview) => {
+      if (preview.file) {
+        dataTransfer.items.add(preview.file);
+      }
+    });
     mediaInputRef.current.files = dataTransfer.files;
   };
 
@@ -117,9 +137,10 @@ export function CertView({ onPostCreated }: { onPostCreated: (postId: string) =>
     setSubmitStatusMessage("업로드 중입니다.");
 
     try {
-      const compressionResults = await compressMediaFilesForUpload(mediaPreviews.map((preview) => preview.file));
+      const compressionResults = await compressMediaFilesForUpload(mediaPreviews.flatMap((preview) => preview.file ? [preview.file] : []));
       const uploadFiles = compressionResults.map((result) => result.file);
-      const uploadTotalBytes = uploadFiles.reduce((total, file) => total + file.size, 0);
+      const retainedTotalBytes = mediaPreviews.reduce((total, preview) => total + (preview.mediaId ? preview.fileSizeBytes ?? 0 : 0), 0);
+      const uploadTotalBytes = uploadFiles.reduce((total, file) => total + file.size, retainedTotalBytes);
 
       if (uploadTotalBytes > MAX_WORKOUT_POST_UPLOAD_BYTES) {
         setState({ status: "error", message: "사진 또는 영상은 최대 5개, 총 5MB 이하로 선택해주세요." });
@@ -128,20 +149,35 @@ export function CertView({ onPostCreated }: { onPostCreated: (postId: string) =>
 
       uploadFiles.forEach((file) => formData.append("mediaFiles", file));
 
-      const result = await createWorkoutPostAction(state, formData);
+      if (postToEdit) {
+        formData.set("postId", postToEdit.id);
+        mediaPreviews.forEach((preview) => {
+          if (preview.mediaId) {
+            formData.append("retainedMediaIds", preview.mediaId);
+          }
+        });
+      }
+      const result = postToEdit
+        ? await updateWorkoutPostAction(state, formData)
+        : await createWorkoutPostAction(state, formData);
       setState(result);
 
       if (result.status === "success") {
+        setRecentWorkoutTypes(saveRecentWorkoutType(workoutType));
+        if (isEditing) {
+          onPostUpdated?.(result.updatedPost);
+        }
+      }
+      if (result.status === "success" && !isEditing) {
         mediaPreviewsRef.current.forEach((preview) => URL.revokeObjectURL(preview.url));
         mediaPreviewsRef.current = [];
         setMediaPreviews([]);
         syncMediaInputFiles([]);
-        setRecentWorkoutTypes(saveRecentWorkoutType(workoutType));
         setWorkoutType("");
         form.reset();
       }
     } catch {
-      setState({ status: "error", message: "인증 등록 중 문제가 발생했습니다." });
+      setState({ status: "error", message: isEditing ? "게시글 수정 중 문제가 발생했습니다." : "인증 등록 중 문제가 발생했습니다." });
     } finally {
       setSubmitStatusMessage("");
       setIsSubmitting(false);
@@ -152,7 +188,11 @@ export function CertView({ onPostCreated }: { onPostCreated: (postId: string) =>
     setCertMessageDialogOpen(false);
 
     if (state.status === "success" && state.postId) {
-      onPostCreated(state.postId);
+      if (isEditing) {
+        onEditComplete?.(state.updatedPost);
+      } else {
+        onPostCreated?.(state.postId);
+      }
     }
   };
 
@@ -176,9 +216,9 @@ export function CertView({ onPostCreated }: { onPostCreated: (postId: string) =>
 
   return (
     <form onSubmit={handleSubmit} className="pb-24">
-      <div className="p-4">
-        <h2 className="text-base font-extrabold">운동 인증 등록</h2>
-        <div className="mt-4 space-y-4">
+      <fieldset disabled={isSubmitting} className="p-4">
+        {!isEditing && <h2 className="text-base font-extrabold">운동 인증 등록</h2>}
+        <div className={`space-y-4 ${isEditing ? "" : "mt-4"}`}>
         <div>
           <label className="block cursor-pointer rounded-2xl border border-dashed border-[#CDC6E8] bg-[#F7F5FC] p-6 text-center">
             <span className="block text-sm font-extrabold text-[#51438f]">사진 또는 영상 업로드</span>
@@ -224,6 +264,7 @@ export function CertView({ onPostCreated }: { onPostCreated: (postId: string) =>
         <div className="space-y-2">
           <textarea
             name="content"
+            defaultValue={postToEdit?.content ?? ""}
             className="min-h-24 w-full resize-none rounded-2xl border border-slate-200 bg-white p-3.5 text-sm leading-5 outline-none placeholder:text-sm placeholder:text-slate-400 focus:border-[#5e4ea5]"
             placeholder="운동 소감을 입력하세요. (선택사항)"
           />
@@ -286,7 +327,7 @@ export function CertView({ onPostCreated }: { onPostCreated: (postId: string) =>
         />
         <AppDialog
           open={certMessageDialogOpen && Boolean(state.message)}
-          title={state.status === "success" ? "등록 완료" : "확인해주세요"}
+          title={state.status === "success" ? isEditing ? "수정 완료" : "등록 완료" : "확인해주세요"}
           description={state.message}
           role="alertdialog"
           dismissOnBackdrop={state.status !== "success"}
@@ -300,14 +341,14 @@ export function CertView({ onPostCreated }: { onPostCreated: (postId: string) =>
           ]}
         />
         </div>
-      </div>
+      </fieldset>
       <div className="sticky bottom-0 z-30 px-4">
         <button
           type="submit"
           disabled={isSubmitting}
           className="w-full rounded-2xl bg-slate-950 py-3.5 text-base font-extrabold text-white shadow-sm disabled:bg-slate-300"
         >
-          {isSubmitting ? (submitStatusMessage || "등록 중") : "인증 등록"}
+          {isSubmitting ? (submitStatusMessage || "저장 중") : isEditing ? "수정 완료" : "인증 등록"}
         </button>
       </div>
     </form>

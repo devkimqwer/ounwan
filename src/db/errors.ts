@@ -1,3 +1,10 @@
+export class WorkoutPostUpdateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WorkoutPostUpdateError";
+  }
+}
+
 export class CurrentUserMembershipNotFoundError extends Error {
   constructor() {
     super("Current user membership not found.");

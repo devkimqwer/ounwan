@@ -803,6 +803,7 @@ async function hydrateWorkoutPosts(
         url: media.url ?? `/uploads/${media.storageKey}`,
         thumbnailUrl: media.thumbnailUrl ?? undefined,
         sortOrder: media.sortOrder,
+        fileSizeBytes: media.fileSizeBytes === null ? undefined : Number(media.fileSizeBytes),
       });
       mediaByPostId.set(postId, list);
     }

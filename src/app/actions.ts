@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { getCurrentMemberWorkoutStatus, getCurrentUserNotificationPage, getCurrentUserSettlementDetail, getCurrentUserUnreadNotificationCount, getCurrentWorkoutPostById, getCurrentWorkoutPostPage } from "@/db/queries";
-import { activateCurrentGroupPendingSeason, closeActiveSeason, createBankBalanceRecord, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, expelGroupMember, confirmWeeklySettlement, getOrCreateCurrentGroupInvite, leaveGroup, markAllNotificationsRead, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostReaction, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateGroupMemberRoles, updateSeasonRules } from "@/db/commands";
-import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError } from "@/db/errors";
+import { activateCurrentGroupPendingSeason, closeActiveSeason, createBankBalanceRecord, createGroup, createPostComment, createSeason, createWorkoutPost, deleteCurrentUserPushSubscription, deleteNotification, deletePendingSeason, deletePostComment, deleteWorkoutPost, deleteGroup, expelGroupMember, confirmWeeklySettlement, getOrCreateCurrentGroupInvite, leaveGroup, markAllNotificationsRead, markNotificationsRead, regenerateCurrentGroupInvite, refreshCurrentUserAvatar, reviewGroupJoinRequest, saveCurrentUserPushSubscription, switchCurrentGroup, togglePostReaction, toggleWorkoutPostInvalid, updateBankAccountInfo, updateCurrentUserProfile, updateGroupMemberRoles, updateSeasonRules, updateWorkoutPost } from "@/db/commands";
+import { GroupLeaveDelegateNotFoundError, GroupLeaveRequiresDelegationError, PendingSeasonAlreadyExistsError, PendingSeasonNotFoundError, SeasonStartDateInPastError, WorkoutPostUpdateError } from "@/db/errors";
 import type { SettlementDetail, WorkoutPost, WorkoutPostCursor, WorkoutPostPage } from "@/domain/models";
 import { isPostReactionType } from "@/domain/post-reactions";
 
@@ -37,6 +37,7 @@ export type CreateWorkoutPostState = {
   status: "idle" | "success" | "error";
   message: string;
   postId?: string;
+  updatedPost?: WorkoutPost;
 };
 
 export type CreateSeasonState = {
@@ -744,6 +745,41 @@ export async function createBankBalanceRecordAction(
     return { status: "error", message: "잔고 현황을 등록할 수 없습니다." };
   }
 }
+export async function updateWorkoutPostAction(
+  _previousState: CreateWorkoutPostState,
+  formData: FormData,
+): Promise<CreateWorkoutPostState> {
+  const postId = String(formData.get("postId") ?? "");
+  const retainedMediaIds = formData.getAll("retainedMediaIds").map(String);
+  const workoutType = String(formData.get("workoutType") ?? "").trim();
+  const content = String(formData.get("content") ?? "").trim();
+  const mediaFiles = formData.getAll("mediaFiles").filter((value): value is File => value instanceof File && value.size > 0);
+  if (!/^\d+$/.test(postId) || retainedMediaIds.some((id) => !/^\d+$/.test(id)) || new Set(retainedMediaIds).size !== retainedMediaIds.length) {
+    return { status: "error", message: "게시글 정보를 확인해주세요." };
+  }
+  if (retainedMediaIds.length + mediaFiles.length < 1 || retainedMediaIds.length + mediaFiles.length > MAX_WORKOUT_POST_MEDIA_COUNT) {
+    return { status: "error", message: "사진 또는 영상은 1개 이상, 최대 5개까지 등록할 수 있습니다." };
+  }
+  if (getTotalFileSize(mediaFiles) > MAX_WORKOUT_POST_UPLOAD_BYTES) {
+    return { status: "error", message: "사진 또는 영상은 총 5MB 이하로 선택해주세요." };
+  }
+  if (mediaFiles.some((file) => !isSupportedMediaFile(file))) {
+    return { status: "error", message: "이미지 또는 영상 파일만 업로드할 수 있습니다." };
+  }
+  if (workoutType.length > 50) {
+    return { status: "error", message: "운동 종류는 50자 이내로 입력해주세요." };
+  }
+  try {
+    await updateWorkoutPost({ postId, retainedMediaIds, workoutType: workoutType || undefined, content: content || undefined, mediaFiles });
+  } catch (error) {
+    console.error("[ounwan post edit error]", error);
+    return { status: "error", message: error instanceof WorkoutPostUpdateError ? error.message : "게시글 수정 중 문제가 발생했습니다." };
+  }
+  revalidatePath("/");
+  const updatedPost = await getCurrentWorkoutPostById(postId).catch(() => undefined);
+  return { status: "success", message: "운동 인증이 수정됐습니다.", postId, updatedPost };
+}
+
 export async function createWorkoutPostAction(
   _previousState: CreateWorkoutPostState,
   formData: FormData,
