@@ -1,6 +1,7 @@
 import "server-only";
 
 import { NextRequest } from "next/server";
+import { getAppOrigin } from "@/app-origin";
 
 export type KakaoTokenResponse = {
   access_token: string;
@@ -63,6 +64,42 @@ export async function fetchKakaoUser(accessToken: string) {
   return (await response.json()) as KakaoUserResponse;
 }
 
+export function validateKakaoUnlinkConfiguration() {
+  getKakaoAdminKey();
+}
+
+export async function unlinkKakaoAccount(kakaoId: string) {
+  if (!/^\d+$/.test(kakaoId)) {
+    throw new Error("Invalid Kakao account id.");
+  }
+  const response = await fetch("https://kapi.kakao.com/v1/user/unlink", {
+    method: "POST",
+    headers: {
+      Authorization: `KakaoAK ${getKakaoAdminKey()}`,
+      "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
+    },
+    body: new URLSearchParams({ target_id_type: "user_id", target_id: kakaoId }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
+  });
+  const result = await response.json() as { id?: number | string; code?: number };
+  // 연결해제 후 DB 저장이 실패한 경우에도 재시도할 수 있도록 이미 해제된 계정을 허용한다.
+  if (response.status === 400 && result.code === -101) {
+    return;
+  }
+  if (!response.ok || String(result.id) !== kakaoId) {
+    throw new Error(`Kakao unlink failed: status=${response.status}, code=${result.code ?? "unknown"}`);
+  }
+}
+
+function getKakaoAdminKey() {
+  const key = process.env.KAKAO_ADMIN_KEY?.trim();
+  if (!key) {
+    throw new Error("KAKAO_ADMIN_KEY is required.");
+  }
+  return key;
+}
+
 function getKakaoClientId() {
   const clientId = process.env.KAKAO_REST_API_KEY;
   if (!clientId) {
@@ -70,11 +107,6 @@ function getKakaoClientId() {
   }
 
   return clientId;
-}
-
-export function getAppOrigin(request: NextRequest) {
-  const configuredOrigin = process.env.OUNWAN_APP_ORIGIN?.trim();
-  return configuredOrigin || request.nextUrl.origin;
 }
 
 function getKakaoRedirectUri(request: NextRequest) {

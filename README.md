@@ -115,6 +115,20 @@ Docker 배포 구성은 `Dockerfile`, `compose.yaml`, `compose.prod.yaml`을 기
 
 업로드 파일 조회는 공개 bucket에 직접 의존하지 않고 `/uploads/{storageKey}` 서버 라우트를 통해 처리합니다.
 
+## 회원탈퇴
+
+더보기 화면의 로그아웃 아래에서 회원탈퇴를 요청할 수 있습니다. 재확인 후 OAuth 연결해제가 완료되어야 사용자 논리삭제를 진행합니다.
+
+- 카카오 연결해제에는 서버 전용 `KAKAO_ADMIN_KEY`가 필요합니다. 카카오디벨로퍼스에서 해당 키의 연결해제 API 호출 권한을 허용해야 합니다. 브라우저에 키를 노출하지 않습니다.
+- 관리자인 그룹이 남아 있으면 먼저 관리자 위임 또는 그룹 삭제가 필요합니다.
+- 탈퇴 시 사용자 상태를 deleted로 변경하고 그룹·시즌 참여를 종료하며, 가입 대기 요청을 취소하고 푸시 구독을 비활성화합니다.
+- 게시글·댓글·결산 기록은 보존합니다. 탈퇴한 계정은 복원하지 않으며 재가입 시 기존 신규 사용자 발급 흐름을 사용합니다.
+- 연결해제 실패 시 사용자 논리삭제는 수행하지 않습니다. 연결해제 후 DB 처리 실패는 외부 API와 DB가 하나의 트랜잭션이 아니므로 카카오 연결 자체를 되돌릴 수 없습니다. 재시도 시 카카오의 이미 미연결 상태(-101)를 허용하여 DB 탈퇴 처리를 다시 시도합니다.
+- 기존 기기의 세션 쿠키도 사용자 활성 상태 검사에서 거부합니다.
+- 공급자별 연결해제는 `src/auth/oauth-unlink.ts`에서 선택합니다. OAuth 공급자를 추가할 때 해당 공급자의 설정 검증과 재시도 가능한 연결해제 핸들러를 함께 등록해야 합니다.
+
+연결해제 API와 오류 코드는 [카카오 REST API](https://developers.kakao.com/docs/ko/kakaologin/rest-api#unlink), [오류 코드 문서](https://developers.kakao.com/docs/ko/rest-api/error-code)를 참고합니다.
+
 ## 알림
 
 앱 내부 알림은 DB에 저장되며, Web Push 키가 설정된 경우 구독된 브라우저로 푸시 알림을 발송합니다. 로컬 개발 환경에서 origin 설정이 맞지 않거나 VAPID 키가 비어 있으면 푸시 발송은 비활성화될 수 있습니다.
@@ -144,3 +158,56 @@ sudo cp ops/logrotate/ounwan-season-activation /etc/logrotate.d/ounwan-season-ac
 ```bash
 npm run batch:activate-pending-seasons:local
 ```
+
+## 저장소 미참조 파일 정리 배치
+
+매일 한국시간 05:10에 현재 저장소(local/S3)의 전체 파일을 순회합니다.
+그룹이나 시즌 상태로 필터링하지 않으며, 종료된 시즌도 동일하게 처리합니다.
+
+- 삭제되지 않은 인증 게시글의 원본·썸네일, 삭제되지 않은 잔고 게시글 이미지, 삭제되지 않은 사용자의 아바타는 보존합니다.
+- 위 데이터에서 참조하지 않는 파일 중 마지막 수정 시각이 24시간 이상 지난 파일만 삭제합니다. 따라서 업로드 중인 파일이나 최근 교체된 파일은 바로 정리하지 않습니다.
+- 삭제 직전에 DB 참조와 파일 변경 여부를 다시 확인합니다. DB 조회에 실패하면 삭제를 중단합니다.
+- DB 데이터는 수정하지 않습니다. 실패한 파일은 저장소에 남아 다음 실행에서 다시 검사되므로 별도 마이그레이션이나 삭제 완료 컬럼은 필요하지 않습니다.
+- 동시 실행은 DB 트랜잭션 advisory lock으로 차단합니다. 개별 파일 삭제 실패는 로그를 남기고 계속 진행하며 종료 코드는 1입니다.
+- 로컬은 설정된 업로드 루트 아래 일반 파일만 처리하며 심볼릭 링크는 건너뜁니다.
+- S3 버전 관리가 켜져 있거나 일시 중지된 경우 미참조 키의 파일 버전을 개별 삭제합니다. 사용 중인 키는 과거 버전도 보존하고, 데이터가 없는 삭제 마커는 정리하지 않습니다. Object Lock 등으로 삭제가 거부되면 우회하지 않고 실패로 기록합니다.
+
+**현재 DB와 저장소가 같은 환경인지 반드시 확인하세요.** 버킷 전체를 검사하므로 다른 서비스와 공유하는 버킷에는 사용하지 마세요. 최초 실행 전 dry-run 결과를 검토하세요.
+
+```bash
+# 로컬: 조회만 수행
+npm run batch:cleanup-storage:local -- --dry-run
+# 로컬: 실제 삭제
+npm run batch:cleanup-storage:local
+# 운영: 조회만 수행
+docker exec ounwan-app npm run batch:cleanup-storage -- --dry-run
+# 운영: 실제 삭제
+docker exec ounwan-app npm run batch:cleanup-storage
+```
+
+### 운영 스케줄 및 로그
+
+기존 Docker 이미지에 배치 소스가 포함되므로 재배포 후 사용합니다. cron은 별도로 설치해야 합니다.
+
+```bash
+timedatectl
+# 서버 시간대가 UTC인 경우: 20:10 UTC = 다음 날 05:10 KST
+sudo cp ops/cron/ounwan-storage-cleanup /etc/cron.d/ounwan-storage-cleanup
+sudo chmod 0644 /etc/cron.d/ounwan-storage-cleanup
+sudo cp ops/logrotate/ounwan-storage-cleanup /etc/logrotate.d/ounwan-storage-cleanup
+sudo chmod 0644 /etc/logrotate.d/ounwan-storage-cleanup
+```
+
+서버 시간대가 Asia/Seoul이면 cron 파일의 시간 부분을 `10 5 * * *`로 변경합니다.
+이 파일은 `/etc/cron.d`용이므로 사용자 crontab에 그대로 붙이지 않습니다. 두 곳에 중복 등록하지 마세요.
+로그는 `/var/log/ounwan-storage-cleanup.log`에 기록하며 기존 배치와 동일한 logrotate 정책을 적용합니다.
+
+### S3 IAM 권한
+
+기존 AWS SDK default credential provider chain과 EC2 Instance Profile을 그대로 사용합니다. 별도 Access Key 환경변수는 추가하지 않습니다.
+
+- 버킷 ARN: `s3:GetBucketVersioning`, `s3:ListBucket`
+- 객체 ARN: `s3:GetObject`, `s3:DeleteObject`
+- 버전 관리 버킷 추가 권한: 버킷 ARN에 `s3:ListBucketVersions`, 객체 ARN에 `s3:GetObjectVersion`, `s3:DeleteObjectVersion`
+
+S3의 버전별 물리삭제와 조건부 삭제는 [AWS DeleteObject 문서](https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html)를 따릅니다.
