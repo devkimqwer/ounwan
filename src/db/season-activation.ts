@@ -1,8 +1,8 @@
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 
-import { getKoreanWeekRange, getNextSettlementAt, getSeasonLogicalStartAt, isSeasonStartDue } from "../lib/season-time";
+import { getNextSettlementAt, getSeasonLogicalStartAt, isSeasonStartDue } from "../lib/season-time";
 import { db } from "./database";
-import { groupMembers, seasonParticipantPeriods, seasons, weeklySettlementRows, weeklySettlements } from "./schema";
+import { groupMembers, seasonParticipantPeriods, seasons } from "./schema";
 
 const SEASON_ACTIVATION_BATCH_LOCK_KEY = 90314002;
 
@@ -179,33 +179,6 @@ export async function initializeActiveSeason(
     );
   }
 
-  const weekRange = getKoreanWeekRange(activationDate, weekStartDay);
-  const settlementRows = await tx
-    .insert(weeklySettlements)
-    .values({
-      groupId,
-      seasonId,
-      weekStartDate: weekRange.weekStartDate,
-      weekEndDate: weekRange.weekEndDate,
-      status: "draft",
-    })
-    .onConflictDoNothing()
-    .returning({ id: weeklySettlements.id });
-
-  const settlementId = settlementRows[0]?.id;
-  if (settlementId && memberRows.length > 0) {
-    await tx.insert(weeklySettlementRows).values(
-      memberRows.map((member) => ({
-        settlementId,
-        userId: member.userId,
-        validWorkoutCount: 0,
-        missedCount: 0,
-        autoFineAmount: 0,
-        finalFineAmount: 0,
-        dailyResults: {},
-      })),
-    );
-  }
 }
 
 async function acquireBatchLock() {
