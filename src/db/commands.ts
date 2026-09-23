@@ -32,7 +32,8 @@ export async function createGroup(name: string) {
       .select({ id: users.id })
       .from(users)
       .where(and(eq(users.id, BigInt(userId)), eq(users.status, "active"), isNull(users.deletedAt)))
-      .limit(1);
+      .limit(1)
+      .for("update");
 
     if (!userRows[0]) {
       throw new Error("Current user not found.");
@@ -202,7 +203,8 @@ export async function leaveGroup(input: LeaveGroupInput) {
             isNull(users.deletedAt),
           ),
         )
-        .limit(1);
+        .limit(1)
+        .for("update", { of: users });
       const delegate = delegateRows[0];
 
       if (!delegate) {
@@ -596,7 +598,8 @@ export async function reviewGroupJoinRequest(requestId: string, decision: "appro
           isNull(users.deletedAt),
         ),
       )
-      .limit(1);
+      .limit(1)
+      .for("update", { of: users });
 
     const target = requestRows[0];
     if (!target) {
@@ -721,7 +724,8 @@ export async function updateGroupMemberRoles(input: UpdateGroupMemberRolesInput)
           isNull(users.deletedAt),
         ),
       )
-      .limit(1);
+      .limit(1)
+      .for("update", { of: users });
     const target = targetRows[0];
 
     if (!target) {

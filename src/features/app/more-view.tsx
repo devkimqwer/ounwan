@@ -6,6 +6,7 @@ import type { CreateGroupState, DeleteGroupState, LeaveGroupState, RefreshCurren
 import { AppDialog } from "@/components/ui/app-dialog";
 import type { AccountInfo, AdminGroupMember, BankRecord, Group, Season, SeasonParticipant, SettlementSummary, User, UserGroupMembership } from "@/domain/models";
 import { TextLogoutButton } from "@/features/auth/logout-controls";
+import { TextWithdrawalButton } from "@/features/auth/withdrawal-controls";
 import { initialTabOptions, type InitialTabId, type MoreSubPage } from "./app-types";
 import { BalanceRegistrationView } from "./balance-registration-view";
 import { BalanceStatusView } from "./balance-status-view";
@@ -463,8 +464,9 @@ export function MoreView({
           ]}
         />
       )}
-      <div className="flex justify-center bg-slate-50 px-4 py-3">
+      <div className="flex flex-col items-center bg-slate-50 px-4 py-3">
         <TextLogoutButton />
+        <TextWithdrawalButton />
       </div>
 
       <AppDialog

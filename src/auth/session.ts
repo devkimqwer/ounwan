@@ -2,6 +2,10 @@ import "server-only";
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { and, eq, isNull } from "drizzle-orm";
+
+import { db } from "@/db/client";
+import { users } from "@/db/schema";
 
 const sessionCookieName = "ounwan_session";
 const currentGroupCookieName = "ounwan_current_group";
@@ -40,7 +44,16 @@ export async function getCurrentUserId() {
     return undefined;
   }
 
-  return payload.userId;
+  if (!/^\d+$/.test(payload.userId)) {
+    return undefined;
+  }
+  // 다른 기기에 남아 있는 세션도 탈퇴 후에는 인증에 사용할 수 없다.
+  const [user] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.id, BigInt(payload.userId)), eq(users.status, "active"), isNull(users.deletedAt)))
+    .limit(1);
+  return user ? payload.userId : undefined;
 }
 
 export async function requireCurrentUserId() {
