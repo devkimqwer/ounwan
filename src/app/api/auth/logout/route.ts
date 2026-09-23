@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { clearSession } from "@/auth/session";
+import { getAppOrigin } from "@/app-origin";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   await clearSession();
-  return NextResponse.redirect(new URL("/", request.url), 303);
+  return NextResponse.redirect(new URL("/", getAppOrigin(request)), 303);
 }

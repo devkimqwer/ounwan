@@ -1,6 +1,7 @@
 import "server-only";
 
 import { NextRequest } from "next/server";
+import { getAppOrigin } from "@/app-origin";
 
 export type KakaoTokenResponse = {
   access_token: string;
@@ -106,11 +107,6 @@ function getKakaoClientId() {
   }
 
   return clientId;
-}
-
-export function getAppOrigin(request: NextRequest) {
-  const configuredOrigin = process.env.OUNWAN_APP_ORIGIN?.trim();
-  return configuredOrigin || request.nextUrl.origin;
 }
 
 function getKakaoRedirectUri(request: NextRequest) {

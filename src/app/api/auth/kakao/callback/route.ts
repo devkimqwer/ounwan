@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { exchangeKakaoToken, fetchKakaoUser, getAppOrigin } from "@/auth/kakao";
+import { exchangeKakaoToken, fetchKakaoUser } from "@/auth/kakao";
 import { getKakaoAccountAuthState } from "@/auth/users";
 import { consumeOAuthReturnTo, setPendingKakaoId, setSessionUserId, verifyOAuthState } from "@/auth/session";
+import { getAppOrigin } from "@/app-origin";
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
